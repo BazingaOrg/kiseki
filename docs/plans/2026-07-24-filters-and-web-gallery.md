@@ -28,8 +28,8 @@
 
 ## 阶段二：滤镜体验完善
 
-6. [ ] 交互菜单：render/still 流程选完路径后追加"选滤镜（默认：无）"一步，列注册表 label；菜单只组装 argv，不引入菜单专属逻辑。
-7. [ ] 逐张覆盖：素材夹项目配置（`project.mjs` 管理）记录 `{ filter, intensity, perPhoto }`，CLI flag 优先级高于配置文件。
+6. [x] 交互菜单：render/still 流程选完路径后追加"选滤镜（默认：无）"一步，列注册表 label；菜单只组装 argv，不引入菜单专属逻辑。
+7. [x] 逐张覆盖：素材夹项目配置（`project.mjs` 管理）记录 `{ filter, intensity, perPhoto }`，CLI flag 优先级高于配置文件。
 8. [x] `riso` 滤镜（本次参考图的孔版印刷风格）：duotone（feComponentTransfer 灰阶映射墨蓝→橙→纸白）+ 半调网点（grayscale/contrast + repeating radial-gradient 叠层 mix-blend-mode）+ 毛边（feTurbulence + feDisplacementMap 作用于 mask）；套印偏移为可选加分项。intensity 控制网点密度与油墨浓度。
    - **部分完成**：duotone（feColorMatrix saturate(0) + feComponentTransfer 三段查表 暗部#1d4e5f→中间调#e8763a→高光#f5f0e6）与半调网点（overlay 双层错位 radial-gradient + mix-blend-mode: overlay）已落地。毛边（feTurbulence+feDisplacementMap）与套印偏移**未做**，留作后续增强。
    - → 验证：still 导出命令跑通（`node cli/tsuzuri.mjs still ... --filter riso` 成功生成 PNG），renderer tsc/8 test、cli 153 test 全绿。
@@ -57,12 +57,30 @@
 - 目检修正：teal-orange 初版用对称 feColorMatrix 交叉混合，效果几乎不可见；重写为分离色调（feComponentTransfer 按通道曲线：蓝抬暗部压高光、绿暗部半量抬升、红抬中间调 + saturate），demo 素材目检确认暗部青、高光橙。教训：调色类滤镜必须真图目检，哈希不同 ≠ 效果达标。
 - 测试修正：filters.test.ts 原断言"每滤镜恰好一种实现"过严，与设计（允许 css/svg/overlay 组合，riso 将全用）冲突，改为"至少一种"。
 
+## 实施记录（阶段二步骤 6/7，2026-07-24）
+
+- 步骤 6：`cli/menu.mjs` 在 render/still 流程画幅选择之后追加一次 `ask.pick('选择滤镜', ['无滤镜', ...FILTER_IDS])`，`defaultIndex: 0` 复用与画幅选择相同的模式（回车 = 无滤镜/沿用默认）。`buildArgvFromChoices` 新增 `filter` 参数，非空时追加 `--filter <id>`；不引入 `--filter-intensity` 的菜单交互（计划只要求"选滤镜"一步）。`cli/menu.test.mjs` 补充 4 个用例：argv 组装、默认无滤镜、选中滤镜后的等效命令。
+- 步骤 7a：`project.mjs` 新增 `readFilterConfig(folder)` 读取素材夹根目录 `tsuzuri.json`（新文件，独立于扁平的 `tsuzuri.toml`，因为 `perPhoto` 是嵌套结构）；字段非法（未知 filter id、intensity 越界、JSON 语法错误）时抛 `CliError`。`resolveFilterForPhoto({config, cliFilter, photoName})` 实现优先级 CLI flag > perPhoto > 全局配置 > 无。
+  - `render.mjs`：`applyRenderVariants` 新增 `deps.filterConfig`，对每张 photo clip 按 `resolveFilterForPhoto` 写入 `clip.filter`（`--filter` 存在时对所有照片一视同仁，等价于原有全局覆盖语义）；`main()` 用 `publicDir`（即素材夹）读取配置。
+  - `still.mjs`：`runStill` 读取 `canvasFolder` 下的配置，每个 job 按 `job.src`（文件名）解析滤镜，替换原先固定的 `opts.filter ?? null`。
+  - 单测：`cli/project.test.mjs` 新增 5 个用例覆盖 `readFilterConfig`（缺省/解析/校验报错）与 `resolveFilterForPhoto`（优先级矩阵）；`cli/render.test.mjs` 新增 2 个用例覆盖 filterConfig 写入 clip.filter 与 CLI 覆盖。
+- 步骤 7b：`renderer/src/filters.ts` 的 `svgFilterId` 从 `tsuzuri-filter-${id}` 改为 `tsuzuri-filter-${id}-${Math.round(intensity*100)}`，修复逐张不同 intensity 共享 SVG filter id 互相污染的遗留问题；`filters.test.ts` 新增一个用例断言同一滤镜不同 intensity 产生不同 id。
+- 偏离：README 顺带修正了此前遗漏的 `riso` 未出现在 `--filter` 内置列表文案里的问题（中英文档均补上）——不在步骤 6/7 范围内，但与本次编辑的同一行相邻，顺手改掉。
+- 验证：cli `node --test` 163/163 通过；renderer `npx tsc --noEmit` 无输出、`npm test` 9/9 通过。
+
 ## Review 记录（2026-07-24）
 
 - 中等：cli/renderer 两份滤镜 id 副本无防漂移校验 → 已修：`cli/filters.test.mjs` 从 renderer 源码正则抽取 id 与 `FILTER_IDS` 断言一致。
 - 低：`cli/filters.mjs` 的 label 字段无人消费（推测性数据）→ 已修：改为纯 id 数组。
 - 低：FramedPhoto 无滤镜时也包 wrapper div，DOM 非严格恒等 → 已修：恒等路径直接返回裸 `<Img>`。
 - 低（遗留到阶段二）：SVG filter id 按滤镜 id 生成，交叉淡化时两张照片重复 id；全局滤镜下内容相同无害，但逐张滤镜（阶段二步骤 7）落地时必须给 id 加 intensity/索引指纹，否则不同参数互相污染。
+
+## Review 记录（阶段二 review，2026-07-24）
+
+- 中等：`resolveFilterForPhoto` 的 perPhoto 条目此前是"整体覆盖"语义（有 `filter` 才生效，`intensity` 附带在同一分支内），导致 perPhoto 只想调 intensity（不换滤镜）或只想换 filter（沿用全局 intensity）都无法表达 → 已修：改为逐字段回退——`id = perPhotoEntry?.filter ?? config?.filter`，`intensity = perPhotoEntry?.intensity ?? config?.intensity`；CLI flag 仍最高优先且整体覆盖不参与合并；resolve 不出 `id` 时返回 `null`。`cli/project.test.mjs` 补充两个用例：intensity-only 条目继承全局 filter、filter-only 条目继承全局 intensity。
+- 中等：README.md / README.en.md 未说明 perPhoto 字段可部分覆盖及文件名匹配规则 → 已修：两份文档均补充"字段可省略并继承全局值"及"perPhoto 键为文件名，精确匹配、大小写敏感"的说明。
+- 低（已知限制，不改）：`svgFilterId` 按 `Math.round(intensity*100)` 生成 id，两张 intensity 落入同一舍入桶（如 0.601 与 0.604）时仍共享 SVG filter，交叉淡化的中间帧理论上可能取错对方的滤镜参数；误差幅度 < 1%，且需要恰好落在同一整数桶才会触发，暂不处理。
+- 低（已知限制，已文档化）：`perPhoto` 的键是文件名精确匹配、大小写敏感（如 `IMG_0001.jpg` 与 `img_0001.jpg` 不等价），不做归一化；已在 README.md / README.en.md 中明确说明，避免用户误用。
 
 ## 风险
 
