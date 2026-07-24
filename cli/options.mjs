@@ -1,12 +1,29 @@
+import {FILTER_IDS} from './filters.mjs';
+
 export class CliError extends Error {}
 
-const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)';
+const parseFilterIntensity = (raw, flagLabel) => {
+  const value = Number(raw);
+  if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !Number.isFinite(value) || value < 0 || value > 1) {
+    throw new CliError(`${flagLabel} 需要 0–1 之间的数字,收到 ${raw}`);
+  }
+  return value;
+};
+
+const parseFilterId = (raw) => {
+  if (!FILTER_IDS.includes(raw)) {
+    throw new CliError(`--filter 未知滤镜 id: ${raw}(可选: ${FILTER_IDS.join(', ')})`);
+  }
+  return raw;
+};
+
+const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
 export const STILL_USAGE = `用法: tsuzuri still <photo|folder> ${STILL_OPTIONS}`;
 
 export const USAGE =
   '用法:\n' +
   '  tsuzuri                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数]  渲染相册视频(默认命令)\n' +
+  '  tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>]  渲染相册视频(默认命令)\n' +
   '  tsuzuri still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  tsuzuri doctor                             检查依赖是否就绪\n' +
   '  tsuzuri lyrics <folder>                    只识别歌词并预览(不渲染)\n' +
@@ -17,7 +34,9 @@ export const USAGE =
   '若文件夹名恰好叫 doctor / lyrics / still / fetch / help,用路径前缀转义,如 tsuzuri ./still';
 
 const parseRenderArgs = (argv) => {
-  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null};
+  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null};
+  let filterId = null;
+  let filterIntensity = null;
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '-o' || argv[i] === '--output') {
       if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
@@ -36,6 +55,16 @@ const parseRenderArgs = (argv) => {
       args.square = true;
     } else if (argv[i] === '--draft') {
       args.draft = true;
+    } else if (argv[i] === '--filter') {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
+        throw new CliError(`--filter 需要滤镜 id(可选: ${FILTER_IDS.join(', ')})`);
+      }
+      filterId = parseFilterId(argv[++i]);
+    } else if (argv[i] === '--filter-intensity') {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
+        throw new CliError('--filter-intensity 需要 0–1 之间的数字');
+      }
+      filterIntensity = parseFilterIntensity(argv[++i], '--filter-intensity');
     } else if (argv[i] === '--trim') {
       if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
         throw new CliError('--trim 需要 auto、full 或正数秒数');
@@ -60,6 +89,10 @@ const parseRenderArgs = (argv) => {
     throw new CliError(USAGE);
   }
   if (args.portrait && args.square) throw new CliError('--portrait 与 --square 不能同时使用');
+  if (filterIntensity !== null && filterId === null) {
+    throw new CliError('--filter-intensity 需要搭配 --filter <id> 使用');
+  }
+  if (filterId !== null) args.filter = {id: filterId, ...(filterIntensity !== null ? {intensity: filterIntensity} : {})};
   return args;
 };
 
@@ -115,7 +148,10 @@ const parseStillArgs = (rest) => {
     square: false,
     skipExisting: false,
     scale: 2,
+    filter: null,
   };
+  let filterId = null;
+  let filterIntensity = null;
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i];
     if (token === '-o' || token === '--output') {
@@ -144,6 +180,16 @@ const parseStillArgs = (rest) => {
         throw new CliError(`--scale 必须是 1–4 的整数,收到 ${raw}`);
       }
       args.scale = Number(raw);
+    } else if (token === '--filter') {
+      if (i + 1 >= rest.length || rest[i + 1].startsWith('-')) {
+        throw new CliError(`--filter 需要滤镜 id(可选: ${FILTER_IDS.join(', ')})`);
+      }
+      filterId = parseFilterId(rest[++i]);
+    } else if (token === '--filter-intensity') {
+      if (i + 1 >= rest.length || rest[i + 1].startsWith('-')) {
+        throw new CliError('--filter-intensity 需要 0–1 之间的数字');
+      }
+      filterIntensity = parseFilterIntensity(rest[++i], '--filter-intensity');
     } else if (token.startsWith('-')) {
       throw new CliError(`未知参数: ${token}\n${STILL_USAGE}`);
     } else if (!args.target) {
@@ -156,6 +202,10 @@ const parseStillArgs = (rest) => {
     throw new CliError(STILL_USAGE);
   }
   if (args.portrait && args.square) throw new CliError('--portrait 与 --square 不能同时使用');
+  if (filterIntensity !== null && filterId === null) {
+    throw new CliError('--filter-intensity 需要搭配 --filter <id> 使用');
+  }
+  if (filterId !== null) args.filter = {id: filterId, ...(filterIntensity !== null ? {intensity: filterIntensity} : {})};
   return args;
 };
 

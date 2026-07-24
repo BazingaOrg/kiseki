@@ -5,7 +5,7 @@ import {CliError, parseArgs} from './options.mjs';
 
 test('bare folder argument routes to the render command', () => {
   assert.deepEqual(parseArgs(['album']), {
-    command: 'render', folder: 'album', output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null,
+    command: 'render', folder: 'album', output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4']), {
     command: 'render',
@@ -18,6 +18,7 @@ test('bare folder argument routes to the render command', () => {
     square: false,
     draft: false,
     trim: null,
+    filter: null,
   });
 });
 
@@ -33,6 +34,7 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     square: false,
     draft: false,
     trim: null,
+    filter: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4', '--exif']), {
     command: 'render',
@@ -45,6 +47,7 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     square: false,
     draft: false,
     trim: null,
+    filter: null,
   });
 });
 
@@ -121,7 +124,7 @@ test('a leading `help` token (or -h / --help) routes to the help command', () =>
 });
 
 test('a path-qualified folder named doctor/lyrics/still/fetch/help is the escape hatch, not a verb', () => {
-  const flags = {exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null};
+  const flags = {exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null};
   assert.deepEqual(parseArgs(['./lyrics']), {command: 'render', folder: './lyrics', output: null, ...flags});
   assert.deepEqual(parseArgs(['./fetch']), {command: 'render', folder: './fetch', output: null, ...flags});
   assert.deepEqual(parseArgs(['./doctor']), {command: 'render', folder: './doctor', output: null, ...flags});
@@ -147,6 +150,7 @@ test('a leading `still` token routes to the still command with defaults', () => 
     square: false,
     skipExisting: false,
     scale: 2,
+    filter: null,
   });
 });
 
@@ -162,6 +166,7 @@ test('still accepts -o, --exif, and --scale', () => {
     square: false,
     skipExisting: false,
     scale: 3,
+    filter: null,
   });
 });
 
@@ -195,6 +200,42 @@ test('still without a target is a usage error', () => {
   assert.throws(() => parseArgs(['still']), /tsuzuri still/);
   assert.throws(() => parseArgs(['still']), /--dark/);
   assert.throws(() => parseArgs(['still']), /--skip-existing/);
+});
+
+test('render command accepts --filter with optional --filter-intensity', () => {
+  assert.deepEqual(parseArgs(['album', '--filter', 'mono']).filter, {id: 'mono'});
+  assert.deepEqual(parseArgs(['album', '--filter', 'mono', '--filter-intensity', '0.5']).filter, {
+    id: 'mono',
+    intensity: 0.5,
+  });
+  assert.deepEqual(parseArgs(['album', '--filter-intensity', '0.5', '--filter', 'warm']).filter, {
+    id: 'warm',
+    intensity: 0.5,
+  });
+});
+
+test('render command rejects unknown filter id and lists available ids', () => {
+  assert.throws(() => parseArgs(['album', '--filter', 'nope']), /未知滤镜 id: nope/);
+  assert.throws(() => parseArgs(['album', '--filter', 'nope']), /faded/);
+});
+
+test('render command rejects --filter-intensity outside 0-1 or without --filter', () => {
+  assert.throws(() => parseArgs(['album', '--filter', 'mono', '--filter-intensity', '1.5']), /--filter-intensity/);
+  assert.throws(() => parseArgs(['album', '--filter', 'mono', '--filter-intensity', '-0.1']), /--filter-intensity/);
+  assert.throws(() => parseArgs(['album', '--filter-intensity', '0.5']), /--filter-intensity 需要搭配 --filter/);
+});
+
+test('still accepts --filter with optional --filter-intensity', () => {
+  assert.deepEqual(parseArgs(['still', 'a.jpg', '--filter', 'vintage']).filter, {id: 'vintage'});
+  assert.deepEqual(parseArgs(['still', 'a.jpg', '--filter', 'vintage', '--filter-intensity', '0.8']).filter, {
+    id: 'vintage',
+    intensity: 0.8,
+  });
+});
+
+test('still rejects unknown filter id and lists available ids', () => {
+  assert.throws(() => parseArgs(['still', 'a.jpg', '--filter', 'nope']), /未知滤镜 id: nope/);
+  assert.throws(() => parseArgs(['still', 'a.jpg', '--filter', 'nope']), /faded/);
 });
 
 test('missing folder in the default command reports usage listing all forms', () => {

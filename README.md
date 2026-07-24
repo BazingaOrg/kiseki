@@ -64,6 +64,8 @@ node cli/tsuzuri.mjs help
 
 `still` 支持 `-o`、`--exif`、`--sign`、`--dark`、`--skip-existing` 和 `--scale <1-4>`；视频渲染同样支持 `--exif`、`--sign`、`--dark`，效果与 still 对齐（渲染时覆盖，不写入 timeline.json）。`--draft` 会按正式分辨率的 2/3 快速输出预览（默认配置为 720p）并跳过响度归一；不带 `-o` 时，默认文件名会追加相应变体和 `-draft` 后缀。完整用法以 `node cli/tsuzuri.mjs help` 为准。
 
+`--filter <id>` 和 `--filter-intensity <0-1>`（默认按滤镜自带强度）为 still 与视频渲染通用的滤镜开关，内置：`faded`（褪色）、`warm`（暖阳）、`cool`（冷调）、`mono`（黑白）、`vintage`（怀旧）、`vignette`（暗角）、`teal-orange`（青橙）、`film`（胶片褪色）。
+
 视频默认使用可用逻辑 CPU 数减一并发渲染；内存紧张时可用 `TSUZURI_CONCURRENCY=4`
 或 `TSUZURI_CONCURRENCY=50%` 临时降低并发，不写入项目配置。
 

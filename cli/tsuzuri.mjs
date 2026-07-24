@@ -111,7 +111,7 @@ export const runCommandFromArgv = async (
   }
   if (parsed.command === 'still') return runStill(parsed);
 
-  const {folder: folderArg, output, exif, sign, dark, portrait, square, draft, trim} = parsed;
+  const {folder: folderArg, output, exif, sign, dark, portrait, square, draft, trim, filter} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -250,6 +250,8 @@ export const runCommandFromArgv = async (
     ...(portrait ? ['--portrait'] : []),
     ...(square ? ['--square'] : []),
     ...(draft ? ['--draft'] : []),
+    ...(filter ? ['--filter', filter.id] : []),
+    ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
   ]);
   if (renderCode !== 0) return renderCode;
   term.success('视频渲染完成');

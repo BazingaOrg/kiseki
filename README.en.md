@@ -64,6 +64,8 @@ completion or failure, and `q` exits. Commands with arguments remain one-shot. T
 
 `still` supports `-o`, `--exif`, `--sign`, `--dark`, `--skip-existing`, and `--scale <1-4>`; video rendering supports the same `--exif`, `--sign`, and `--dark` flags, matching still's behavior (applied at render time, never written to timeline.json), and appends an `-exif`/`-sign`/`-dark` suffix to the default output filename when `-o` is omitted. Run `node cli/tsuzuri.mjs help` for the current full syntax.
 
+`--filter <id>` and `--filter-intensity <0-1>` (defaults to the filter's own intensity) are shared by still and video rendering. Built-in filters: `faded`, `warm`, `cool`, `mono`, `vintage`, `vignette`, `teal-orange`, and `film`.
+
 The signature SVG used by `--sign` can be designed visually with
 [animated-signature](https://github.com/BazingaOrg/animated-signature): type a
 name, pick a handwriting font, then export a **static SVG (tight bounds, fixed

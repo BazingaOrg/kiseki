@@ -176,7 +176,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
 };
 
 /**
- * @param {{target: string, output: string | null, exif: boolean, sign: boolean, dark: boolean, skipExisting: boolean, scale: number}} opts
+ * @param {{target: string, output: string | null, exif: boolean, sign: boolean, dark: boolean, skipExisting: boolean, scale: number, filter?: {id: string, intensity?: number} | null}} opts
  */
 export const runStill = async (opts) => {
   const rendererPackage = path.join(RENDERER, 'node_modules', '@remotion', 'renderer');
@@ -213,6 +213,7 @@ export const runStill = async (opts) => {
       exif: null,
       sign: opts.sign,
       ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
+      filter: opts.filter ?? null,
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error'});
     for (let i = 0; i < jobs.length; i++) {
@@ -242,6 +243,7 @@ export const runStill = async (opts) => {
         sign: opts.sign,
         ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
         exif: exifProps ?? null,
+        filter: opts.filter ?? null,
       };
 
       fs.mkdirSync(path.dirname(job.outPath), {recursive: true});
