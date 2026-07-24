@@ -17,6 +17,7 @@ export type StillProps = {
   exif?: StillExif | null;
   sign?: boolean;
   signatureSrc?: string;
+  filter?: {id: string; intensity?: number} | null;
 };
 
 const toStatic = (src: string) => staticFile(src.replace(/^\.\//, ''));
@@ -33,6 +34,7 @@ export const Still: React.FC<StillProps> = ({
   exif,
   sign = false,
   signatureSrc,
+  filter,
 }) => {
   const scale = getVisualScale(width, height);
   const palette = getPalette(background);
@@ -50,7 +52,7 @@ export const Still: React.FC<StillProps> = ({
           alignItems: 'center',
         }}
       >
-        <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} />
+        <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} filter={filter} />
         {sign && signature ? (
           <div style={{position: 'absolute', left: 0, right: 0, bottom: STILL.signature.bottomInset * scale, display: 'flex', justifyContent: 'center', color: palette.text, opacity: STILL.signature.opacity}}>
             <Signature data={signature} style={{height: STILL.signature.height * scale, maxWidth: safeW}} pathProps={{fill: 'currentColor'}} />
@@ -86,6 +88,7 @@ export const Still: React.FC<StillProps> = ({
           maxHeight={layout.photoMaxHeight}
           renderScale={scale}
           palette={palette}
+          filter={filter}
         />
         <ExifPanel exif={exif!} scale={scale} width={layout.panelWidth} sign={sign} signature={signature} palette={palette} />
       </div>

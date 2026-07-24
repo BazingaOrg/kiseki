@@ -24,6 +24,8 @@ export type PhotoClip = {
   motion: MotionSpec;
   /** 渲染时覆盖注入的 EXIF 展签数据;无内容或未开启 --exif 时为空 */
   exif?: StillExif | null;
+  /** 渲染时覆盖注入的滤镜;id 见 renderer/src/filters.ts 注册表,intensity 缺省用滤镜自身默认值 */
+  filter?: {id: string; intensity?: number} | null;
 };
 
 export type ChapterClip = {kind: 'chapter'; text: string; start: number; end: number};
@@ -69,6 +71,8 @@ export type TimelineMeta = {
   branding?: Branding;
   /** 渲染时覆盖注入的照片签名落款开关;缺省 false */
   sign?: boolean;
+  /** 渲染时覆盖注入的全局滤镜;逐张覆盖见 PhotoClip.filter(阶段二实现) */
+  filter?: {id: string; intensity?: number} | null;
   chapters?: {enabled: boolean; day_count: number; card_count: number};
 };
 

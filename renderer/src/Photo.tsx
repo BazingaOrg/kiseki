@@ -28,7 +28,8 @@ export const Photo: React.FC<{
   canvasHeight: number;
   sign?: boolean;
   signature?: SignatureData | null;
-}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature}) => {
+  filter?: {id: string; intensity?: number} | null;
+}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
@@ -72,6 +73,7 @@ export const Photo: React.FC<{
             maxHeight={layout.photoMaxHeight}
             renderScale={renderScale}
             palette={palette}
+            filter={filter}
           />
           <ExifPanel exif={clip.exif!} scale={renderScale} width={layout.panelWidth} sign={sign} signature={signature ?? null} palette={palette} />
         </div>
@@ -102,6 +104,7 @@ export const Photo: React.FC<{
           maxHeight={safeHeight}
           renderScale={renderScale}
           palette={palette}
+          filter={filter}
         />
         {/* 视频底部中线让给字幕带,落款按摄影钤印惯例退居右下(still 无字幕,维持居中,Still.tsx 不动) */}
         <div
@@ -135,6 +138,7 @@ export const Photo: React.FC<{
         maxHeight={safeHeight}
         renderScale={renderScale}
         palette={palette}
+        filter={filter}
       />
     </AbsoluteFill>
   );
