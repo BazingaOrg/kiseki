@@ -49,6 +49,16 @@ test('svg filters produce matching defMarkup and filterId referencing each other
   }
 });
 
+test('svg filter id fingerprints intensity so different intensities never collide', () => {
+  for (const def of FILTERS.filter((f) => f.svg)) {
+    const low = getFilter(def.id, 0.2);
+    const high = getFilter(def.id, 0.8);
+    assert.notEqual(low.svgFilterId, high.svgFilterId);
+    assert.ok(low.svgDefMarkup?.includes(low.svgFilterId!));
+    assert.ok(high.svgDefMarkup?.includes(high.svgFilterId!));
+  }
+});
+
 test('overlay filters return a style object at nonzero intensity', () => {
   for (const def of FILTERS.filter((f) => f.overlay)) {
     const resolved = getFilter(def.id, 0.5);
