@@ -5,8 +5,9 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
-  copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, hasExplicitTrimConfig, readTrimPreference,
-  resolveProjectPaths, scanFolder, scanFolderLoose, writeTrimPreference,
+  copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, hasExplicitTrimConfig, readFilterConfig,
+  readTrimPreference, resolveFilterForPhoto, resolveProjectPaths, scanFolder, scanFolderLoose,
+  writeTrimPreference,
 } from './project.mjs';
 
 const makeFolder = (files) => {
@@ -113,4 +114,102 @@ test('legacy metadata is copied only into an empty new directory, then root JSON
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
   }
+});
+
+test('readFilterConfig returns null when tsuzuri.json is absent', () => {
+  const dir = makeFolder(['a.jpg']);
+  try {
+    assert.equal(readFilterConfig(dir), null);
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('readFilterConfig parses global filter/intensity and perPhoto overrides', () => {
+  const dir = makeFolder(['a.jpg']);
+  try {
+    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({
+      filter: 'mono',
+      intensity: 0.5,
+      perPhoto: {'a.jpg': {filter: 'riso', intensity: 0.9}},
+    }));
+    assert.deepEqual(readFilterConfig(dir), {
+      filter: 'mono',
+      intensity: 0.5,
+      perPhoto: {'a.jpg': {filter: 'riso', intensity: 0.9}},
+    });
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('readFilterConfig rejects invalid JSON, unknown filter ids and out-of-range intensity', () => {
+  const dir = makeFolder(['a.jpg']);
+  try {
+    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), '{not json');
+    assert.throws(() => readFilterConfig(dir), /不是合法 JSON/);
+
+    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({filter: 'does-not-exist'}));
+    assert.throws(() => readFilterConfig(dir), /未知滤镜 id/);
+
+    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({intensity: 1.5}));
+    assert.throws(() => readFilterConfig(dir), /0–1 之间的数字/);
+
+    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({perPhoto: {'a.jpg': {filter: 'nope'}}}));
+    assert.throws(() => readFilterConfig(dir), /perPhoto\.a\.jpg\.filter 未知滤镜 id/);
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('resolveFilterForPhoto follows CLI flag > perPhoto > global config > none priority', () => {
+  const config = {
+    filter: 'mono',
+    intensity: 0.5,
+    perPhoto: {'a.jpg': {filter: 'riso', intensity: 0.9}},
+  };
+  assert.deepEqual(
+    resolveFilterForPhoto({config, cliFilter: {id: 'warm'}, photoName: 'a.jpg'}),
+    {id: 'warm'},
+  );
+  assert.deepEqual(
+    resolveFilterForPhoto({config, cliFilter: null, photoName: 'a.jpg'}),
+    {id: 'riso', intensity: 0.9},
+  );
+  assert.deepEqual(
+    resolveFilterForPhoto({config, cliFilter: null, photoName: 'b.jpg'}),
+    {id: 'mono', intensity: 0.5},
+  );
+  assert.equal(resolveFilterForPhoto({config: null, cliFilter: null, photoName: 'a.jpg'}), null);
+});
+
+test('resolveFilterForPhoto lets a perPhoto entry override only intensity and inherit the global filter', () => {
+  const config = {
+    filter: 'mono',
+    intensity: 0.5,
+    perPhoto: {'a.jpg': {intensity: 0.9}},
+  };
+  assert.deepEqual(
+    resolveFilterForPhoto({config, cliFilter: null, photoName: 'a.jpg'}),
+    {id: 'mono', intensity: 0.9},
+  );
+});
+
+test('resolveFilterForPhoto lets a perPhoto entry override only the filter and inherit the global intensity', () => {
+  const config = {
+    filter: 'mono',
+    intensity: 0.5,
+    perPhoto: {'a.jpg': {filter: 'riso'}},
+  };
+  assert.deepEqual(
+    resolveFilterForPhoto({config, cliFilter: null, photoName: 'a.jpg'}),
+    {id: 'riso', intensity: 0.5},
+  );
+});
+
+test('resolveFilterForPhoto ignores a perPhoto entry with only intensity and no filter anywhere', () => {
+  const config = {
+    perPhoto: {'a.jpg': {intensity: 0.9}},
+  };
+  assert.equal(resolveFilterForPhoto({config, cliFilter: null, photoName: 'a.jpg'}), null);
 });

@@ -12,6 +12,7 @@ import {
   writeBanner,
   writeFarewell,
 } from './menu.mjs';
+import {FILTER_IDS} from './filters.mjs';
 import {PICK_BACK} from './prompts.mjs';
 
 const interact = async ({lines, confirms = [], picks = []}) => {
@@ -169,4 +170,39 @@ test('render (choice 1) asks presentation questions and defaults to the project 
 test('menu adds portrait and square presets to render and still argv', () => {
   assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip', portrait: true}), ['./trip', '--portrait']);
   assert.deepEqual(buildArgvFromChoices({choice: '2', target: './photo.jpg', square: true}), ['still', './photo.jpg', '--square']);
+});
+
+test('buildArgvFromChoices appends --filter only when a filter is chosen', () => {
+  assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip', filter: 'mono'}), ['./trip', '--filter', 'mono']);
+  assert.deepEqual(buildArgvFromChoices({choice: '2', target: './p', filter: 'riso'}), ['still', './p', '--filter', 'riso']);
+  assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip', filter: null}), ['./trip']);
+});
+
+test('runMenu asks for a filter after the format pick and defaults to none on enter', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  try {
+    const {result} = await interact({
+      lines: ['1', root],
+      confirms: [false, false, false],
+      picks: [{index: 0}, {index: 0}],
+    });
+    assert.deepEqual(result, [root]);
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('runMenu wires a chosen filter id into the equivalent argv', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  try {
+    const filterIndex = FILTER_IDS.indexOf('mono') + 1; // 0 号是「无滤镜」
+    const {result} = await interact({
+      lines: ['1', root],
+      confirms: [false, false, false],
+      picks: [{index: 0}, {index: filterIndex}],
+    });
+    assert.deepEqual(result, [root, '--filter', 'mono']);
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
 });

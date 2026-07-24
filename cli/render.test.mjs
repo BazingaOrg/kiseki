@@ -42,6 +42,31 @@ test('sign sets meta.sign to true', async () => {
   assert.equal(result.meta.sign, true);
 });
 
+test('filterConfig writes per-photo clip.filter, and a --filter flag overrides every clip', async () => {
+  const filterConfig = {
+    filter: 'mono',
+    intensity: 0.5,
+    perPhoto: {'b.jpg': {filter: 'riso', intensity: 0.9}},
+  };
+  const withConfig = await applyRenderVariants(timeline(), {}, {resolvePhotoPath: (src) => src, filterConfig});
+  assert.deepEqual(withConfig.photos[0].filter, {id: 'mono', intensity: 0.5});
+  assert.deepEqual(withConfig.photos[1].filter, {id: 'riso', intensity: 0.9});
+  assert.deepEqual(withConfig.photos[2].filter, {id: 'mono', intensity: 0.5});
+
+  const withCliOverride = await applyRenderVariants(
+    timeline(),
+    {filter: {id: 'warm'}},
+    {resolvePhotoPath: (src) => src, filterConfig},
+  );
+  assert.deepEqual(withCliOverride.photos[0].filter, {id: 'warm'});
+  assert.deepEqual(withCliOverride.photos[1].filter, {id: 'warm'});
+});
+
+test('without filterConfig, clip.filter is left untouched', async () => {
+  const result = await applyRenderVariants(timeline(), {}, {resolvePhotoPath: (src) => src});
+  assert.equal(result.photos[0].filter, undefined);
+});
+
 test('exif extracts once per unique src and attaches to every matching clip', async () => {
   const calls = [];
   const extractExif = async (absPath) => {

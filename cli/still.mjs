@@ -11,6 +11,7 @@ import {extractFormattedExif} from './exif.mjs';
 import {CliError} from './options.mjs';
 import {bundleRenderer, loadRemotionRenderer, RENDERER} from './bundle.mjs';
 import {createPercentProgress} from './progress.mjs';
+import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {term} from './term.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -186,6 +187,9 @@ export const runStill = async (opts) => {
 
   const {publicDir, canvasFolder, jobs} = resolveJobs(opts.target, opts.output, opts);
   const canvas = loadStillCanvasConfig(canvasFolder);
+  const filterConfig = readFilterConfig(canvasFolder);
+  const resolveJobFilter = (job) =>
+    resolveFilterForPhoto({config: filterConfig, cliFilter: opts.filter ?? null, photoName: job.src});
   if (opts.dark) canvas.background = '#000000';
   if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
   if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
@@ -213,7 +217,7 @@ export const runStill = async (opts) => {
       exif: null,
       sign: opts.sign,
       ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
-      filter: opts.filter ?? null,
+      filter: resolveJobFilter(jobs[0]),
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error'});
     for (let i = 0; i < jobs.length; i++) {
@@ -243,7 +247,7 @@ export const runStill = async (opts) => {
         sign: opts.sign,
         ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
         exif: exifProps ?? null,
-        filter: opts.filter ?? null,
+        filter: resolveJobFilter(job),
       };
 
       fs.mkdirSync(path.dirname(job.outPath), {recursive: true});

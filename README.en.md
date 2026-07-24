@@ -64,7 +64,21 @@ completion or failure, and `q` exits. Commands with arguments remain one-shot. T
 
 `still` supports `-o`, `--exif`, `--sign`, `--dark`, `--skip-existing`, and `--scale <1-4>`; video rendering supports the same `--exif`, `--sign`, and `--dark` flags, matching still's behavior (applied at render time, never written to timeline.json), and appends an `-exif`/`-sign`/`-dark` suffix to the default output filename when `-o` is omitted. Run `node cli/tsuzuri.mjs help` for the current full syntax.
 
-`--filter <id>` and `--filter-intensity <0-1>` (defaults to the filter's own intensity) are shared by still and video rendering. Built-in filters: `faded`, `warm`, `cool`, `mono`, `vintage`, `vignette`, `teal-orange`, and `film`.
+`--filter <id>` and `--filter-intensity <0-1>` (defaults to the filter's own intensity) are shared by still and video rendering. Built-in filters: `faded`, `warm`, `cool`, `mono`, `vintage`, `vignette`, `teal-orange`, `riso`, and `film`. The bare-command menu also asks a "choose a filter" question for render/still flows; press enter for no filter.
+
+Per-photo filters can be set in `tsuzuri.json` at the material folder root (missing file falls back to the previous behavior unchanged):
+
+```json
+{
+  "filter": "mono",
+  "intensity": 0.6,
+  "perPhoto": {
+    "IMG_0001.jpg": {"filter": "riso", "intensity": 0.8}
+  }
+}
+```
+
+`filter`/`intensity` are the global default; `perPhoto` overrides a single photo by filename. Priority: CLI `--filter` > `perPhoto` > global default > no filter. Each `perPhoto` entry may omit `filter` and/or `intensity`; an omitted field inherits the global value (e.g. specifying only `intensity` keeps the global filter and just adjusts strength). `perPhoto` keys are photo filenames and must match exactly, case-sensitively.
 
 The signature SVG used by `--sign` can be designed visually with
 [animated-signature](https://github.com/BazingaOrg/animated-signature): type a

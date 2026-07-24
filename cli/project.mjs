@@ -4,6 +4,7 @@ import path from 'node:path';
 
 import {CliError} from './options.mjs';
 import {formatEquivalentCommand} from './command-format.mjs';
+import {FILTER_IDS} from './filters.mjs';
 
 const LEGACY_JSON = ['beats.json', 'lyrics.json', 'analysis.json', 'timeline.json'];
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -147,4 +148,80 @@ export const hasExplicitTrimConfig = (folder) => {
   const tomlPath = path.join(folder, 'tsuzuri.toml');
   if (!fs.existsSync(tomlPath)) return false;
   return fs.readFileSync(tomlPath, 'utf8').split(/\r?\n/).some((line) => trimKeyPattern.test(line));
+};
+
+const isValidIntensity = (value) =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
+
+/**
+ * 素材夹逐张滤镜偏好:`<folder>/tsuzuri.json`,结构
+ * `{ filter?, intensity?, perPhoto?: { "<照片文件名>": { filter?, intensity? } } }`。
+ * tsuzuri.toml 是画布用的扁平配置,不适合嵌套的 perPhoto 结构,故用独立 JSON 文件。
+ * 文件不存在时返回 null;字段非法时抛 CliError,便于用户第一时间发现拼写错误。
+ */
+export const readFilterConfig = (folder) => {
+  const jsonPath = path.join(folder, 'tsuzuri.json');
+  if (!fs.existsSync(jsonPath)) return null;
+  let raw;
+  try {
+    raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
+  } catch {
+    throw new CliError(`tsuzuri.json 不是合法 JSON: ${jsonPath}`);
+  }
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+    throw new CliError(`tsuzuri.json 顶层必须是对象: ${jsonPath}`);
+  }
+  const config = {};
+  if (raw.filter !== undefined) {
+    if (!FILTER_IDS.includes(raw.filter)) {
+      throw new CliError(`tsuzuri.json 里 filter 未知滤镜 id: ${raw.filter}(可选: ${FILTER_IDS.join(', ')})`);
+    }
+    config.filter = raw.filter;
+  }
+  if (raw.intensity !== undefined) {
+    if (!isValidIntensity(raw.intensity)) {
+      throw new CliError(`tsuzuri.json 里 intensity 需要 0–1 之间的数字,收到 ${raw.intensity}`);
+    }
+    config.intensity = raw.intensity;
+  }
+  if (raw.perPhoto !== undefined) {
+    if (typeof raw.perPhoto !== 'object' || raw.perPhoto === null || Array.isArray(raw.perPhoto)) {
+      throw new CliError(`tsuzuri.json 里 perPhoto 必须是对象: ${jsonPath}`);
+    }
+    const perPhoto = {};
+    for (const [photoName, entry] of Object.entries(raw.perPhoto)) {
+      if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
+        throw new CliError(`tsuzuri.json 里 perPhoto.${photoName} 必须是对象`);
+      }
+      const photoConfig = {};
+      if (entry.filter !== undefined) {
+        if (!FILTER_IDS.includes(entry.filter)) {
+          throw new CliError(`tsuzuri.json 里 perPhoto.${photoName}.filter 未知滤镜 id: ${entry.filter}(可选: ${FILTER_IDS.join(', ')})`);
+        }
+        photoConfig.filter = entry.filter;
+      }
+      if (entry.intensity !== undefined) {
+        if (!isValidIntensity(entry.intensity)) {
+          throw new CliError(`tsuzuri.json 里 perPhoto.${photoName}.intensity 需要 0–1 之间的数字,收到 ${entry.intensity}`);
+        }
+        photoConfig.intensity = entry.intensity;
+      }
+      perPhoto[photoName] = photoConfig;
+    }
+    config.perPhoto = perPhoto;
+  }
+  return config;
+};
+
+/**
+ * 优先级:CLI flag > perPhoto > 配置全局 > 无。
+ * cliFilter 非空时对所有照片一视同仁(渲染/still 全局 --filter 语义不变)。
+ */
+export const resolveFilterForPhoto = ({config = null, cliFilter = null, photoName}) => {
+  if (cliFilter) return cliFilter;
+  const perPhotoEntry = config?.perPhoto?.[photoName];
+  const id = perPhotoEntry?.filter ?? config?.filter;
+  if (!id) return null;
+  const intensity = perPhotoEntry?.intensity ?? config?.intensity;
+  return {id, ...(intensity !== undefined ? {intensity} : {})};
 };

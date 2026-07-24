@@ -8,6 +8,7 @@ import {fileURLToPath} from 'node:url';
 import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
+import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 
 export const detectParallelism = (osModule = os) =>
   typeof osModule.availableParallelism === 'function'
@@ -43,12 +44,12 @@ export const resolveRenderSettings = (
  * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null。
  * @param {object} timeline
  * @param {{exif?: boolean, sign?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null}} flags
- * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void}} deps
+ * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null}} deps
  */
 export const applyRenderVariants = async (
   timeline,
   {exif = false, sign = false, dark = false, portrait = false, square = false, filter = null} = {},
-  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage} = {},
+  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null} = {},
 ) => {
   if (portrait && square) throw new Error('--portrait 与 --square 不能同时使用');
   if (portrait) timeline.meta = {...timeline.meta, width: 1080, height: 1920};
@@ -61,6 +62,18 @@ export const applyRenderVariants = async (
   }
   if (filter) {
     timeline.meta = {...timeline.meta, filter};
+  }
+  // 逐张滤镜:CLI --filter > tsuzuri.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
+  if (filterConfig) {
+    timeline.photos = (timeline.photos ?? []).map((photo) => {
+      if ((photo.kind !== undefined && photo.kind !== 'photo') || typeof photo.src !== 'string') return photo;
+      const resolved = resolveFilterForPhoto({
+        config: filterConfig,
+        cliFilter: filter,
+        photoName: path.basename(photo.src),
+      });
+      return resolved ? {...photo, filter: resolved} : photo;
+    });
   }
   if (exif) {
     const exifBySrc = new Map();
@@ -113,9 +126,11 @@ const main = async () => {
   const renderSettings = resolveRenderSettings({draft: flags.draft});
   let cleanup = () => {};
 
+  const filterConfig = readFilterConfig(publicDir);
   const inputProps = await applyRenderVariants(timeline, flags, {
     resolvePhotoPath: (src) => path.join(publicDir, src),
     onExifShortage: (count) => progress.println(`└ ${count} 张照片 EXIF 信息不足,视频中不显示展签`),
+    filterConfig,
   });
 
   try {
