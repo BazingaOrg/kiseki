@@ -48,10 +48,17 @@ export const useAudioPlayer = (src: string | null) => {
     ref: audioRef,
     src: src ?? undefined,
     preload: 'metadata' as const,
-    onTimeUpdate: (event: React.SyntheticEvent<HTMLAudioElement>) =>
-      setState((prev) => ({...prev, currentTime: event.currentTarget.currentTime})),
-    onLoadedMetadata: (event: React.SyntheticEvent<HTMLAudioElement>) =>
-      setState((prev) => ({...prev, duration: event.currentTarget.duration})),
+    // 必须**同步**把值取出来再进 setState。updater 函数是 React 在渲染阶段才调用的,
+    // 那时事件处理早已返回、currentTarget 被重置成 null,在里面读它会直接抛
+    // "Cannot read properties of null (reading 'duration')" 并打断整棵组件树。
+    onTimeUpdate: (event: React.SyntheticEvent<HTMLAudioElement>) => {
+      const {currentTime} = event.currentTarget;
+      setState((prev) => ({...prev, currentTime}));
+    },
+    onLoadedMetadata: (event: React.SyntheticEvent<HTMLAudioElement>) => {
+      const {duration} = event.currentTarget;
+      setState((prev) => ({...prev, duration}));
+    },
     onPlay: () => setState((prev) => ({...prev, playing: true})),
     onPause: () => setState((prev) => ({...prev, playing: false})),
     onEnded: () => setState((prev) => ({...prev, playing: false})),
