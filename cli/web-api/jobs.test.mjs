@@ -1,9 +1,18 @@
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import {PassThrough} from 'node:stream';
 import test from 'node:test';
 
-import {buildJobArgv, createJobManager, JobValidationError} from './jobs.mjs';
+import {
+  buildJobArgv,
+  buildJobSpec,
+  createJobManager,
+  JobValidationError,
+  parseYtDlpProgress,
+} from './jobs.mjs';
 
 // ---- buildJobArgv --------------------------------------------------------
 
@@ -411,4 +420,309 @@ test('killAll signals every running job so Ctrl+C leaves no orphans', () => {
   manager.killAll();
   // detached 的子进程收不到终端的 SIGINT,不显式杀就会变成孤儿继续渲染
   assert.deepEqual(signals, [[-12345, 'SIGTERM']]);
+});
+
+// ---- 批 C:kind 泛化 -------------------------------------------------------
+
+test('parseYtDlpProgress:标准进度行', () => {
+  assert.deepEqual(parseYtDlpProgress('[download]  42.3% of ~10.00MiB at 1.00MiB/s ETA 00:06'), {
+    kind: 'progress',
+    label: '下载音频',
+    percent: 42,
+  });
+});
+
+test('parseYtDlpProgress:100% 与 0%', () => {
+  assert.equal(parseYtDlpProgress('[download] 100% of 10.00MiB in 00:05').percent, 100);
+  assert.equal(parseYtDlpProgress('[download]   0.0% of ~10.00MiB').percent, 0);
+});
+
+test('parseYtDlpProgress:带 ANSI 颜色码仍然认得出', () => {
+  // 源码里不放裸 ESC 字节(不可见、容易被编辑器吃掉),现拼一个
+  const esc = String.fromCharCode(27);
+  const colored = `${esc}[0;94m[download]${esc}[0m ${esc}[0;33m  7.5%${esc}[0m of 10.00MiB`;
+  assert.equal(parseYtDlpProgress(colored).percent, 8);
+});
+
+test('parseYtDlpProgress:畸形行一律返回 null', () => {
+  for (const line of [
+    '',
+    null,
+    undefined,
+    '[download] Destination: /tmp/x.m4a',
+    '[download] % of 10.00MiB',
+    '[download] 999% of 10.00MiB',
+    '[ExtractAudio] Destination: /tmp/x.m4a',
+    'progress 42%',
+  ]) {
+    assert.equal(parseYtDlpProgress(line), null, `不该把 ${JSON.stringify(line)} 当成进度`);
+  }
+});
+
+test('buildJobArgv:lyrics 只有 folder,多余选项一律不影响 argv', () => {
+  assert.deepEqual(buildJobArgv({kind: 'lyrics', folder: '/f'}), ['lyrics', '/f']);
+  assert.deepEqual(
+    buildJobArgv({kind: 'lyrics', folder: '/f', options: {format: 'bogus', scale: 99}}),
+    ['lyrics', '/f'],
+  );
+});
+
+test('buildJobArgv:未知 kind 仍然抛 JobValidationError', () => {
+  assert.throws(() => buildJobArgv({kind: 'fetch-audio', folder: '/f'}), (error) => {
+    assert.equal(error.field, 'kind');
+    return true;
+  });
+});
+
+test('buildJobSpec:lyrics 走 CLI + fd3', () => {
+  const spec = buildJobSpec({kind: 'lyrics', folder: '/f'});
+  assert.equal(spec.command, process.execPath);
+  assert.equal(spec.progressSource, 'fd3');
+  assert.deepEqual(spec.args.slice(-2), ['lyrics', '/f']);
+  assert.equal(spec.env.TSUZURI_JSON_PROGRESS, '1');
+  // stdin 必须是 ignore,否则 offerFetch 会卡在一个看不见的终端提问上
+  assert.equal(spec.stdio[0], 'ignore');
+});
+
+test('buildJobSpec:render/still 的命令组装不回归', () => {
+  const render = buildJobSpec({kind: 'render', folder: '/f', options: {draft: true}});
+  assert.deepEqual(render.args.slice(-2), ['/f', '--draft']);
+  assert.deepEqual(render.stdio, ['ignore', 'pipe', 'pipe', 'pipe']);
+  assert.equal(render.progressSource, 'fd3');
+  const still = buildJobSpec({kind: 'still', folder: '/f'});
+  assert.deepEqual(still.args.slice(-4), ['still', '/f', '--scale', '2']);
+});
+
+test('buildJobSpec:fetch-audio 直接跑 yt-dlp,下载到素材夹外的临时目录', () => {
+  const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-jobspec-'));
+  const spec = buildJobSpec({
+    kind: 'fetch-audio',
+    folder: '/f',
+    options: {id: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist'},
+    tempParent,
+  });
+  assert.equal(spec.command, 'yt-dlp');
+  assert.equal(spec.progressSource, 'ytdlp-stdout');
+  assert.ok(spec.args.includes('--newline'), '不加 --newline 就一行进度都读不到');
+  assert.ok(spec.args.includes('https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
+  const output = spec.args[spec.args.indexOf('-o') + 1];
+  assert.ok(output.startsWith(tempParent), '下载目标必须在素材夹之外');
+});
+
+test('buildJobSpec:fetch-audio 非法字段被拒绝,且不留临时目录', () => {
+  const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-jobspec-'));
+  const bad = [
+    [{id: '../../etc/passwd', title: 'x'}, 'id'],
+    [{id: 'https://evil.example/x', title: 'x'}, 'id'],
+    [{id: 42, title: 'x'}, 'id'],
+    [{title: 'x'}, 'id'],
+    [{id: 'dQw4w9WgXcQ'}, 'title'],
+    [{id: 'dQw4w9WgXcQ', title: '   '}, 'title'],
+    [{id: 'dQw4w9WgXcQ', title: 'x', artist: 5}, 'artist'],
+  ];
+  for (const [options, field] of bad) {
+    assert.throws(
+      () => buildJobSpec({kind: 'fetch-audio', folder: '/f', options, tempParent}),
+      (error) => {
+        assert.ok(error instanceof JobValidationError);
+        assert.equal(error.field, field, `options=${JSON.stringify(options)}`);
+        return true;
+      },
+    );
+  }
+  assert.deepEqual(fs.readdirSync(tempParent), [], '校验失败不该在临时目录里留垃圾');
+});
+
+/** 只有三路 stdio 的假子进程:yt-dlp 不认识 fd 3,进度写在 stdout 上。 */
+const makeFakeYtDlpChild = () => {
+  const child = new EventEmitter();
+  child.pid = 4321;
+  child.stdio = [null, new PassThrough(), new PassThrough()];
+  child.kill = () => {};
+  return child;
+};
+
+const makeTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
+
+test('fetch-audio:stdout 的百分比被翻译成契约一的 progress 事件,重复百分比去重', async () => {
+  const child = makeFakeYtDlpChild();
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: () => {},
+    tempParent: makeTempDir('tsuzuri-jobrun-'),
+  });
+  const {id} = manager.createJob({
+    kind: 'fetch-audio',
+    folder: makeTempDir('tsuzuri-jobdest-'),
+    options: {id: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist'},
+  });
+
+  child.stdio[1].write('[download] Destination: /tmp/x.m4a\n');
+  child.stdio[1].write('[download]   0.0% of 10.00MiB\n');
+  child.stdio[1].write('[download]  42.3% of 10.00MiB\n');
+  child.stdio[1].write('[download]  42.4% of 10.00MiB\n');
+  child.stdio[1].write('[download] 100% of 10.00MiB\n');
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const progress = manager.getJob(id).events.filter((event) => event.kind === 'progress');
+  assert.deepEqual(progress.map((event) => event.percent), [0, 42, 100]);
+  assert.equal(progress[0].label, '下载音频');
+  child.emit('exit', 1);
+});
+
+test('fetch-audio:下载失败时任务判 failed 并给出一条 error 事件', async () => {
+  const child = makeFakeYtDlpChild();
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: () => {},
+    tempParent: makeTempDir('tsuzuri-jobrun-'),
+  });
+  const {id} = manager.createJob({
+    kind: 'fetch-audio',
+    folder: makeTempDir('tsuzuri-jobdest-'),
+    options: {id: 'dQw4w9WgXcQ', title: 'Song'},
+  });
+  child.emit('exit', 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  const job = manager.getJob(id);
+  assert.equal(job.status, 'failed');
+  assert.ok(job.events.some((event) => event.kind === 'error'));
+});
+
+test('fetch-audio:退出码 0 时把下载结果安装进 audio/ 并清掉临时目录', async () => {
+  const folder = makeTempDir('tsuzuri-jobdest-');
+  const child = makeFakeYtDlpChild();
+  let tempDir = null;
+  const manager = createJobManager({
+    // 伪造一个"yt-dlp 已经下载好"的现场:往 -o 指定的临时目录里放一个音频文件
+    spawnImpl: (command, args) => {
+      tempDir = path.dirname(args[args.indexOf('-o') + 1]);
+      fs.writeFileSync(path.join(tempDir, 'raw.m4a'), 'audio');
+      return child;
+    },
+    killImpl: () => {},
+    tempParent: makeTempDir('tsuzuri-jobrun-'),
+  });
+  const {id} = manager.createJob({
+    kind: 'fetch-audio',
+    folder,
+    options: {id: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist'},
+  });
+  child.emit('exit', 0);
+  await new Promise((resolve) => setImmediate(resolve));
+
+  const job = manager.getJob(id);
+  assert.equal(job.status, 'done');
+  assert.ok(fs.existsSync(path.join(folder, 'audio', 'Song - Artist.m4a')));
+  assert.ok(job.events.some((event) => event.kind === 'success'));
+  assert.equal(fs.existsSync(tempDir), false, '临时目录必须被清掉');
+});
+
+test('fetch-audio:目标已存在时判 failed,不静默覆盖已有音频', async () => {
+  const folder = makeTempDir('tsuzuri-jobdest-');
+  fs.mkdirSync(path.join(folder, 'audio'));
+  fs.writeFileSync(path.join(folder, 'audio', 'Song.m4a'), 'old');
+  const child = makeFakeYtDlpChild();
+  const manager = createJobManager({
+    spawnImpl: (command, args) => {
+      fs.writeFileSync(path.join(path.dirname(args[args.indexOf('-o') + 1]), 'raw.m4a'), 'new');
+      return child;
+    },
+    killImpl: () => {},
+    tempParent: makeTempDir('tsuzuri-jobrun-'),
+  });
+  const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
+  child.emit('exit', 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(manager.getJob(id).status, 'failed');
+  assert.equal(fs.readFileSync(path.join(folder, 'audio', 'Song.m4a'), 'utf8'), 'old');
+});
+
+test('新 kind 同样受并发锁、取消与 killAll 约束', async () => {
+  const folder = makeTempDir('tsuzuri-jobdest-');
+  const child = makeFakeYtDlpChild();
+  const signals = [];
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: (pid, signal) => signals.push([pid, signal]),
+    tempParent: makeTempDir('tsuzuri-jobrun-'),
+  });
+  const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
+  assert.deepEqual(manager.createJob({kind: 'lyrics', folder}), {error: 'busy'});
+
+  assert.equal(manager.cancelJob(id), true);
+  assert.deepEqual(signals, [[-4321, 'SIGTERM']]);
+  child.emit('exit', null);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(manager.getJob(id).status, 'cancelled');
+
+  // 锁已释放,新任务能起来;killAll 对新 kind 同样生效
+  manager.createJob({kind: 'lyrics', folder});
+  manager.killAll();
+  assert.equal(signals.length, 2);
+});
+
+test('lyrics 任务仍然读 fd 3(泛化没有把原路径改漏)', async () => {
+  const child = makeFakeChild();
+  const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
+  const {id} = manager.createJob({kind: 'lyrics', folder: '/f'});
+  writeNdjson(child.stdio[3], [{kind: 'progress', label: '识别歌词', percent: 30}]);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(manager.getJob(id).events, [{kind: 'progress', label: '识别歌词', percent: 30}]);
+  child.emit('exit', 0);
+});
+
+test('fetch-audio:spawn 失败(没装 yt-dlp)释放并发锁并清掉临时目录', () => {
+  const tempParent = makeTempDir('tsuzuri-jobrun-');
+  const folder = makeTempDir('tsuzuri-jobdest-');
+  const child = makeFakeYtDlpChild();
+  const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}, tempParent});
+  const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
+  child.emit('error', new Error('ENOENT'));
+  assert.equal(manager.getJob(id).status, 'failed');
+  assert.deepEqual(fs.readdirSync(tempParent), [], 'spawn 失败也要清临时目录');
+  assert.ok(manager.createJob({kind: 'lyrics', folder}).id);
+});
+
+test('fetch-audio 失败时带上 yt-dlp 的真实报错,而不是一句放之四海皆准的"下载失败"', async () => {
+  const child = makeFakeChild();
+  const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-'));
+  const {id} = manager.createJob({
+    kind: 'fetch-audio',
+    folder,
+    options: {id: 'dQw4w9WgXcQ', title: 'Song'},
+  });
+  child.stdio[2].write('ERROR: [youtube] Video unavailable\n');
+  await new Promise((resolve) => setImmediate(resolve));
+  child.emit('exit', 1);
+  const text = manager.getJob(id).events.map((event) => event.text).join('\n');
+  assert.match(text, /Video unavailable/, 'stderr 的真实原因必须带出来,否则无从排查');
+});
+
+test('yt-dlp 起不来时不该报成"网络或地区限制"', async () => {
+  const child = makeFakeChild();
+  const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-'));
+  const {id} = manager.createJob({
+    kind: 'fetch-audio',
+    folder,
+    options: {id: 'dQw4w9WgXcQ', title: 'Song'},
+  });
+  child.emit('error', Object.assign(new Error('spawn yt-dlp ENOENT'), {code: 'ENOENT'}));
+  const text = manager.getJob(id).events.map((event) => event.text).join('\n');
+  assert.match(text, /起不了 yt-dlp/, '没装和下载失败是两回事,提示不能混为一谈');
+});
+
+test('CLI 入口路径必须真实存在', () => {
+  // 这一条是唯一能抓到"路径拼错"的测试:其余用例全都注入 spawnImpl,
+  // 永远碰不到真实文件系统。曾经这里拼出的是 cli/cli/tsuzuri.mjs,
+  // 子进程起手就 Cannot find module 退出 1,stderr 被丢、fd 3 无事件,
+  // 前端只看到一句"失败了"——从网页起任务这个功能整个是坏的。
+  for (const kind of ['render', 'still', 'lyrics']) {
+    const spec = buildJobSpec({kind, folder: '/tmp/x', options: {}});
+    assert.equal(spec.command, process.execPath);
+    assert.ok(fs.existsSync(spec.args[0]), `${kind} 的入口不存在: ${spec.args[0]}`);
+    assert.ok(spec.args[0].endsWith(path.join('cli', 'tsuzuri.mjs')), `路径可疑: ${spec.args[0]}`);
+  }
 });

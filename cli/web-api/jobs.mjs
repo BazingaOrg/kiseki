@@ -1,19 +1,33 @@
 /**
- * 任务执行:把网页发来的结构化选项组装成 tsuzuri CLI 的 argv,起子进程渲染/出图,
- * 并把子进程 fd 3 上的 NDJSON 进度事件(契约一,由 term.mjs/progress.mjs 产出)
- * 收集起来供 HTTP 层轮询或 SSE 推送。本模块不碰 http/fs,argv 组装是纯函数,
- * 方便单测直接调用。
+ * 任务执行:把网页发来的结构化选项组装成一条"命令 + 参数 + 进度来源"的任务描述,
+ * 起子进程执行,并把进度事件(契约一的形状)收集起来供 HTTP 层轮询或 SSE 推送。
+ *
+ * 任务有两种形态,差异全部收敛在 buildJobSpec 里,对前端完全透明:
+ * - `progressSource: 'fd3'` —— 跑 tsuzuri CLI,读 fd 3 上的 NDJSON(term.mjs 产出)。
+ * - `progressSource: 'ytdlp-stdout'` —— 直接跑 yt-dlp,它不认识 fd 3,进度写在
+ *   stdout 上的 `[download]  42.3% of ...`,由本模块翻译成同一份事件形状。
+ *
+ * 本模块不碰 http,argv/spec 组装尽量做成纯函数,方便单测直接调用。
  */
 import {spawn as spawnActual} from 'node:child_process';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 import {fileURLToPath} from 'node:url';
 
+import {buildAudioFilename, installDownloadedAudio, sanitizeFilePart} from '../fetch.mjs';
+import {FIXES} from '../dependencies.mjs';
 import {FILTER_IDS} from '../filters.mjs';
+import {scanFolderLoose} from '../project.mjs';
 
-const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const TSUZURI_ENTRY = path.join(REPO_ROOT, 'cli', 'tsuzuri.mjs');
+// 本文件在 cli/web-api/ 下,往上两级正好是 cli/ —— 不是仓库根目录。
+// 之前这里当成仓库根再拼 'cli/tsuzuri.mjs',结果是 cli/cli/tsuzuri.mjs,
+// 子进程起手就 Cannot find module 退出 1,而且 stderr 被丢弃、fd 3 一条事件
+// 都没有,前端只看到一句"失败了"。单测全都注入 spawnImpl,碰不到真实路径。
+const CLI_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const TSUZURI_ENTRY = path.join(CLI_DIR, 'tsuzuri.mjs');
 
 export class JobValidationError extends Error {
   constructor(field, message) {
@@ -21,6 +35,9 @@ export class JobValidationError extends Error {
     this.field = field;
   }
 }
+
+/** 失败时回带的 stderr 行数上限,够定位又不至于把整屏日志灌给前端。 */
+const STDERR_TAIL_LINES = 5;
 
 const FORMATS = ['landscape', 'portrait', 'square'];
 const TRIM_VALUES = ['auto', 'full'];
@@ -34,8 +51,11 @@ const TRIM_VALUES = ['auto', 'full'];
  * @returns {string[]}
  */
 export const buildJobArgv = ({kind, folder, options = {}}) => {
+  // lyrics 只认一个文件夹,没有任何选项;放在最前面,免得下面的渲染选项校验
+  // 对它生效(前端就算多传了 format 之类也一律不影响 argv)。
+  if (kind === 'lyrics') return ['lyrics', folder];
   if (kind !== 'render' && kind !== 'still') {
-    throw new JobValidationError('kind', 'kind 必须是 render 或 still');
+    throw new JobValidationError('kind', 'kind 必须是 render、still 或 lyrics');
   }
   const opts = options ?? {};
   const flags = [];
@@ -102,73 +122,230 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
   return kind === 'still' ? ['still', folder, ...flags] : [folder, ...flags];
 };
 
+// ---------------------------------------------------------------------------
+// yt-dlp 进度解析
+// ---------------------------------------------------------------------------
+
+// yt-dlp 在有 tty 时会给百分比上色(即使我们传了 --no-color,某些版本/插件仍会漏),
+// 先剥掉 CSI 序列再匹配,免得 `[download]` 前面挂着颜色码就整行认不出来。
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const YTDLP_PROGRESS_RE = /^\[download\]\s+(\d{1,3}(?:\.\d+)?)%/;
+
+/** yt-dlp 下载进度事件的标签,前端拿到的形状与渲染任务完全一致。 */
+export const YTDLP_PROGRESS_LABEL = '下载音频';
+
+/**
+ * 把 yt-dlp 的一行 stdout 翻译成契约一的 progress 事件;不是进度行返回 null。
+ * @param {string} line
+ * @returns {{kind: 'progress', label: string, percent: number}|null}
+ */
+export const parseYtDlpProgress = (line) => {
+  const clean = String(line ?? '').replace(ANSI_RE, '').trim();
+  const match = YTDLP_PROGRESS_RE.exec(clean);
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]);
+  // `\d{1,3}` 会放过 999% 这种畸形输出,percent 必须是 0–100 的整数(契约一)。
+  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
+  return {kind: 'progress', label: YTDLP_PROGRESS_LABEL, percent: Math.round(value)};
+};
+
+// ---------------------------------------------------------------------------
+// 任务描述:命令 + 参数 + 进度来源
+// ---------------------------------------------------------------------------
+
+const YTDLP_ID_RE = /^[A-Za-z0-9_-]{5,64}$/;
+
+const readOptionalString = (value, field) => {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value !== 'string') throw new JobValidationError(field, `${field} 必须是字符串`);
+  return value;
+};
+
+/**
+ * fetch-audio:直接跑 yt-dlp 下载到素材夹外的临时目录,退出后再安装进 audio/。
+ * 下载参数与 cli/ytdlp.mjs 的 downloadWithYtDlp 保持一致(那边是 spawnSync,
+ * 拿不到流式进度,所以这里只能自己拼参数);**安装逻辑仍然复用 fetch.mjs**,
+ * 不另写一份替换/回滚。
+ */
+const buildFetchAudioSpec = ({folder, options, tempParent}) => {
+  const id = options?.id;
+  if (typeof id !== 'string' || !YTDLP_ID_RE.test(id)) {
+    throw new JobValidationError('id', 'id 必须是 yt-dlp 视频 id(字母、数字、- 和 _)');
+  }
+  const title = sanitizeFilePart(readOptionalString(options?.title, 'title'));
+  if (!title) throw new JobValidationError('title', 'title 不能为空');
+  const artist = sanitizeFilePart(readOptionalString(options?.artist, 'artist'));
+
+  // 先校验完再建临时目录,非法请求不该在 /tmp 里留垃圾。
+  const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
+  return {
+    command: 'yt-dlp',
+    // --newline:yt-dlp 默认用 \r 原地刷进度条,不换行的话 readline 一行都读不到,
+    // 进度会一直卡在不确定态直到下载结束。
+    args: [
+      '-x', '--audio-format', 'm4a', '--no-playlist', '--newline', '--no-color',
+      '-o', path.join(tempDir, '%(title)s.%(ext)s'),
+      `https://www.youtube.com/watch?v=${id}`,
+    ],
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+    progressSource: 'ytdlp-stdout',
+    finalize: (code, {stderrTail = [], spawnFailed = false} = {}) => {
+      try {
+        if (spawnFailed) {
+          // 进程压根没起来,几乎只有一种原因:yt-dlp 没装或不在 PATH。
+          // 报"网络/地区限制"会把人带到完全错误的方向。
+          return {ok: false, events: [{kind: 'error', text: `起不了 yt-dlp,确认它已安装并在 PATH 里。${FIXES['yt-dlp']}`}]};
+        }
+        if (code !== 0) {
+          const detail = stderrTail.length > 0 ? `\n${stderrTail.join('\n')}` : '';
+          return {ok: false, events: [{kind: 'error', text: `下载失败(网络、地区限制或 yt-dlp 版本过旧)${detail}`}]};
+        }
+        const audios = scanFolderLoose(tempDir).audios;
+        if (audios.length !== 1) {
+          return {ok: false, events: [{kind: 'error', text: '下载结果不是单个音频文件'}]};
+        }
+        const filename = buildAudioFilename({title, artist, ext: path.extname(audios[0])});
+        const installed = installDownloadedAudio({
+          source: path.join(tempDir, audios[0]),
+          folder,
+          filename,
+        });
+        return {ok: true, events: [{kind: 'success', text: `音频已就绪: ${installed}`}]};
+      } catch (error) {
+        // 目标文件已存在等安装期错误在这里落地成一条 error 事件,任务判失败。
+        // 绝不能往上抛:这是在子进程 'exit' 回调里跑的,抛出去就是 uncaughtException。
+        return {ok: false, events: [{kind: 'error', text: error.message}]};
+      } finally {
+        fs.rmSync(tempDir, {recursive: true, force: true});
+      }
+    },
+  };
+};
+
+/**
+ * 按 kind 分派出"命令 + 参数 + 进度来源"。这是 createJob 与具体命令之间唯一的接缝,
+ * 新增任务形态只需要在这里加一支,并发锁/取消/SSE 收尾全部自动生效。
+ * @param {{kind: string, folder: string, options?: object, tempParent?: string}} params
+ */
+export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir()}) => {
+  if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent});
+  return {
+    command: process.execPath,
+    args: [TSUZURI_ENTRY, ...buildJobArgv({kind, folder, options})],
+    // stdin 'ignore' 让子进程的 process.stdin.isTTY 为 false,
+    // maybePersistTrimChoice / offerFetch 的交互分支会自动跳过(契约二)。
+    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+    env: {...process.env, TSUZURI_JSON_PROGRESS: '1'},
+    progressSource: 'fd3',
+    finalize: null,
+  };
+};
+
 /** 取消后等子进程体面退出的宽限期,超时就 SIGKILL。 */
 const FORCE_KILL_AFTER_MS = 8000;
 
 /**
- * @param {{spawnImpl?: Function, killImpl?: Function}} [deps]
+ * @param {{spawnImpl?: Function, killImpl?: Function, tempParent?: string}} [deps]
  *   spawnImpl 默认真实 child_process.spawn,测试可注入假实现避免真的起渲染进程。
  *   killImpl 同理默认真实 process.kill,单测用它断言"取消时确实尝试杀了整个
  *   进程组"而不依赖真实进程组行为——生产代码不要传这个参数。
+ *   tempParent 是 fetch-audio 下载中转目录的父目录,同样只为单测可观测。
  */
-export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kill} = {}) => {
+export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kill, tempParent = os.tmpdir()} = {}) => {
   /** @type {Map<string, object>} */
   const jobs = new Map();
   let runningJobId = null;
+
+  /** 记录一条事件并即时推给所有 SSE 订阅者。两种进度来源共用同一个出口。 */
+  const emit = (job, event) => {
+    job.events.push(event);
+    const chunk = `data: ${JSON.stringify(event)}\n\n`;
+    for (const listener of job.listeners) listener(chunk);
+  };
+
+  /**
+   * 挂上进度来源。fd 3(NDJSON)与 yt-dlp stdout(文本百分比)在这里被抹平成
+   * 同一份事件形状,前端不需要知道进度是从哪来的。
+   * 整段都必须静默容错:进度只是旁路信息,读不到/读坏了不该把任务管理带崩。
+   */
+  const attachProgress = (job, child, progressSource) => {
+    const stream = progressSource === 'ytdlp-stdout' ? child.stdio?.[1] : child.stdio?.[3];
+    if (!stream) return null;
+    const toEvent = progressSource === 'ytdlp-stdout'
+      ? parseYtDlpProgress
+      : (line) => {
+        try {
+          return JSON.parse(line);
+        } catch {
+          // 单行解析失败直接跳过,不能让一行坏数据打断后续事件。
+          return null;
+        }
+      };
+    // yt-dlp 一秒能刷几十行进度,同一个百分比重复推没有信息量,只会把 events
+    // 数组和 SSE 撑大;去重后前端看到的仍是单调递增的百分比。
+    let lastPercent = null;
+    try {
+      const rl = readline.createInterface({input: stream});
+      rl.on('line', (line) => {
+        const event = toEvent(line);
+        if (!event) return;
+        if (event.kind === 'progress' && progressSource === 'ytdlp-stdout') {
+          if (event.percent === lastPercent) return;
+          lastPercent = event.percent;
+        }
+        emit(job, event);
+      });
+      rl.on('error', () => {});
+      stream.on?.('error', () => {});
+      return rl;
+    } catch {
+      return null;
+    }
+  };
 
   const createJob = ({kind, folder, options}) => {
     if (runningJobId !== null) {
       return {error: 'busy'};
     }
     // 校验失败在这里往外抛 JobValidationError,交给 HTTP 层捕获转 400。
-    const argv = buildJobArgv({kind, folder, options});
+    const spec = buildJobSpec({kind, folder, options, tempParent});
 
     const id = crypto.randomUUID();
     // detached: true 让子进程成为一个新进程组的组长。渲染/出图任务会再往下拉起
     // remotion/chromium 等孙子进程,child.kill() 只能杀直接子进程,孙子进程(尤其
     // 是渲染用的 chromium)会变成孤儿继续占着资源跑;取消时改用
     // process.kill(-child.pid, 'SIGTERM')(负 pid 表示对整个进程组发信号)才能
-    // 把这一整棵进程树斩草除根。
-    const child = spawnImpl(process.execPath, [TSUZURI_ENTRY, ...argv], {
-      stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+    // 把这一整棵进程树斩草除根。yt-dlp 同理(它会拉起 ffmpeg 做转码)。
+    const child = spawnImpl(spec.command, spec.args, {
+      stdio: spec.stdio,
       detached: true,
-      env: {...process.env, TSUZURI_JSON_PROGRESS: '1'},
+      env: spec.env,
     });
 
     const job = {id, kind, status: 'running', exitCode: null, events: [], child, cancelled: false, listeners: new Set(), killTimer: null};
     jobs.set(id, job);
     runningJobId = id;
 
-    // stdout/stderr 不需要暴露给前端(契约没有要求),但必须消费掉,否则子进程
-    // 写满 pipe 缓冲区之后会被阻塞挂起。
-    child.stdio[1]?.resume?.();
-    child.stdio[2]?.resume?.();
-
-    let rl = null;
-    const fd3 = child.stdio[3];
-    if (fd3) {
-      // fd 3 是否存在、读取过程中是否出错,都必须静默处理——它只是进度信息的
-      // 旁路出口,不能因为读不到/读坏了就把整个任务管理流程带崩。
-      try {
-        rl = readline.createInterface({input: fd3});
-        rl.on('line', (line) => {
-          let event;
-          try {
-            event = JSON.parse(line);
-          } catch {
-            // 单行解析失败直接跳过,不能让一行坏数据打断后续事件。
-            return;
-          }
-          job.events.push(event);
-          const chunk = `data: ${JSON.stringify(event)}\n\n`;
-          for (const listener of job.listeners) listener(chunk);
-        });
-        rl.on('error', () => {});
-        fd3.on?.('error', () => {});
-      } catch {
-        rl = null;
+    // 没被当作进度来源的那几路输出不暴露给前端(契约没有要求),但必须消费掉,
+    // 否则子进程写满 pipe 缓冲区之后会被阻塞挂起。
+    if (spec.progressSource !== 'ytdlp-stdout') child.stdio[1]?.resume?.();
+    // stderr 不推给前端(契约没要求),但也不能全丢:yt-dlp 的真实报错
+    // (Video unavailable / Sign in to confirm / 地区限制)全在这里,丢掉之后
+    // 用户只会看到一句放之四海皆准的"下载失败",完全无从排查。留最后几行。
+    const stderrTail = [];
+    child.stdio[2]?.setEncoding?.('utf8');
+    child.stdio[2]?.on?.('data', (chunk) => {
+      for (const line of String(chunk).split('\n')) {
+        const text = line.trim();
+        if (text) stderrTail.push(text);
       }
-    }
+      if (stderrTail.length > STDERR_TAIL_LINES) stderrTail.splice(0, stderrTail.length - STDERR_TAIL_LINES);
+    });
+    child.stdio[2]?.resume?.();
+    job.stderrTail = stderrTail;
+
+    const rl = attachProgress(job, child, spec.progressSource);
 
     // spawn 失败(EAGAIN/EMFILE 等)时 ChildProcess 发 'error' 而**不发** 'exit'。
     // 没有监听器时 EventEmitter 会直接 throw,在 server 里就是 uncaughtException;
@@ -178,21 +355,40 @@ export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kil
       job.status = 'failed';
       job.exitCode = null;
       rl?.close();
+      // 命令根本没起来(比如没装 yt-dlp),善后逻辑仍要跑一遍,否则临时目录会漏。
+      runFinalize(job, spec, null, {spawnFailed: true});
       finish(job);
     });
 
     child.on('exit', (code) => {
-      job.status = job.cancelled ? 'cancelled' : code === 0 ? 'done' : 'failed';
+      rl?.close();
+      // finalize 决定"退出码 0 但收尾失败"这种情况(比如下载成功却装不进 audio/),
+      // 必须在定 status 之前跑完,而且它自己保证不抛。
+      const ok = runFinalize(job, spec, code, {spawnFailed: false});
+      job.status = job.cancelled ? 'cancelled' : ok ? 'done' : 'failed';
       job.exitCode = code;
       if (job.killTimer !== null) {
         clearTimeout(job.killTimer);
         job.killTimer = null;
       }
-      rl?.close();
       finish(job);
     });
 
     return {id};
+  };
+
+  /** 跑任务自带的收尾钩子(安装下载结果、清临时目录),返回任务是否算成功。 */
+  const runFinalize = (job, spec, code, {spawnFailed = false} = {}) => {
+    if (!spec.finalize) return code === 0;
+    let outcome;
+    try {
+      outcome = spec.finalize(code, {stderrTail: job.stderrTail ?? [], spawnFailed});
+    } catch {
+      // finalize 是在子进程回调里跑的,漏出去就是 uncaughtException 直接崩 server。
+      return false;
+    }
+    for (const event of outcome.events ?? []) emit(job, event);
+    return outcome.ok === true;
   };
 
   /** 广播 end 帧、清监听器、释放并发锁。exit 与 error 两条收尾路径共用。 */
