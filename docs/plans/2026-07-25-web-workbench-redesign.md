@@ -403,3 +403,53 @@ readline 正确缓冲；fd 3 不会造成背压卡死渲染。
 - `web.test.mjs` 的端口测试硬编码 3000，建议改成先探测空闲端口。
 - `jobs` Map 不做清理（单人本地工具、一次一个任务，影响很小）。
 - 浏览器里点按钮起任务的完整交互尚未实测（本轮验证走的是 CLI 直跑 + API 单测）。
+
+---
+
+## 批 C 契约（orchestrator 先行固定）
+
+**前提修正**：计划 §2.3 写的"唯一需要在 cli 侧做导出重构"基本不成立 —— `fetch.mjs`
+早已把决策逻辑抽成导出函数（`searchLyricsRecords` / `filterSyncedRecords` /
+`formatLyricsCandidate` / `buildLyricsQuery` / `buildAudioFilename` / `installDownloadedAudio` /
+`installDownloadedLyrics` / `probeAudio`），`ytdlp.mjs` 同理（`checkYtDlp` / `searchYtDlp` /
+`downloadWithYtDlp`）。批 C 直接复用它们，**不要重写任何搜索/下载/安装逻辑**。
+
+### 快操作走普通端点，慢操作走任务系统
+
+判据是"会不会让用户盯着转圈"：LRCLIB 搜索是一次 HTTP 往返，写 `.lrc` 是一次文件写，
+都在百毫秒级；yt-dlp 下载与 whisper 识别是分钟级，必须能看进度、能取消。
+
+```jsonc
+// —— 快:普通端点 ——
+// GET  /api/fetch/lyrics-search?folder=<abs>          → {candidates:[{id,title,artist,duration,delta,synced}]}
+//      复用 searchLyricsRecords + filterSyncedRecords + formatLyricsCandidate,
+//      查询词由 buildLyricsQuery 从素材夹里的音频文件名推出,时长用 probeAudio 取。
+// POST /api/fetch/lyrics   {folder, id}               → {ok:true, file}
+//      复用 installDownloadedLyrics 落到 audio/。
+// GET  /api/fetch/audio-search?q=<关键词>              → {candidates:[{id,title,duration,uploader}]}
+//      复用 searchYtDlp。yt-dlp 缺失时回 503 并带上 FIXES['yt-dlp'] 文案。
+
+// —— 慢:并入既有任务系统(SSE/取消/并发锁全部复用) ——
+// POST /api/jobs {kind:'fetch-audio', folder, options:{id, title, artist}}
+// POST /api/jobs {kind:'lyrics', folder}
+```
+
+### 任务系统要做的一处泛化
+
+现在 `createJobManager` 写死了"spawn tsuzuri CLI 并读 fd 3"。批 C 有两种新形态：
+
+- `kind: 'lyrics'` —— 仍是 tsuzuri CLI（`tsuzuri lyrics <folder>`），fd 3 照旧。
+- `kind: 'fetch-audio'` —— 直接 spawn `yt-dlp`，它把进度写在 **stdout**（`[download]  42.3% of ...`），
+  不认识 fd 3。
+
+所以把"命令 + 参数 + 进度来源"抽成按 kind 分派的一张表：`{command, args, progressSource: 'fd3' | 'ytdlp-stdout'}`。
+`'ytdlp-stdout'` 用正则把百分比解析成契约一的 `{"kind":"progress","label":"下载音频","percent":N}`，
+**对前端完全透明** —— 前端不需要知道进度是从哪来的。
+
+### 两个必须注意的点
+
+1. **`checkYtDlp` / `searchYtDlp` / `probeAudio` 内部是 `spawnSync`**，直接在请求处理里调用会
+   阻塞整个单线程 server（`/api/doctor` 已经因此被加过超时）。搜索类端点必须改成异步 spawn
+   或放进 worker，**不要**在 HTTP handler 里同步调用。
+2. **`runFetch` / `offerFetch` / `lyricsFlow` 是交互流程，一律不要碰**。批 C 只复用它们下面的
+   纯函数层。`kind:'lyrics'` 走 CLI 时 `stdin: 'ignore'` 已经能让 `offerFetch` 自动跳过。
