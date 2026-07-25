@@ -275,3 +275,70 @@
 - 批 B（任务执行）与批 C（fetch / 歌词识别）未动，`Make` 区段目前只给等效命令。
 - `web.test.mjs` 的端口测试硬编码 3000，建议改为先探测空闲端口。
 - `/api/thumb` 的缓存目录不做上限清理，靠系统临时目录的回收；素材夹极大时可能堆积，需要时再加 LRU。
+
+---
+
+## 批 B 契约（由 orchestrator 先行固定，供并行实现共同遵守）
+
+三个实现单元并行推进，彼此只通过下面两份契约耦合。**契约以本节为准**，任何一方
+想改都要先回来改这里，不要在自己那一侧擅自扩展字段。
+
+### 契约一：CLI 的结构化进度出口
+
+`term.mjs` / `progress.mjs` 的现有输出是给人看的，正则解析既脆又丑。改为：
+
+- 开关：环境变量 `TSUZURI_JSON_PROGRESS=1`。**未开启时代码路径与现在完全一致**，
+  一个字节都不该变（这是本项改动的首要约束，doctor 那次拆分已有先例）。
+- 出口：**文件描述符 3**，每行一个 JSON（NDJSON）。选 fd 3 而不是 stdout/stderr，
+  是为了不与人类可读输出混流；fd 3 未打开时 `writeSync` 会抛 `EBADF`，必须吞掉，
+  绝不能因为没人接就让 CLI 崩掉。
+- 事件形状，只有两种：
+
+```jsonc
+{"kind":"start|info|success|warn|error|detail","text":"分析音频"}
+{"kind":"progress","label":"渲染视频","percent":42}
+```
+
+`percent` 是 0–100 的整数。`term.*` 的每一次调用发一条对应 `kind` 的事件（多行
+消息按行拆成多条，与终端行为一致）；`createPercentProgress.update` 发 `progress`。
+
+### 契约二：任务 HTTP API
+
+**安全前提（不可协商）**：
+1. 服务端**只接受结构化选项，绝不接受前端直传的 argv 数组或命令字符串**。argv 一律
+   由服务端从白名单字段自己拼。
+2. `folder` 必须过 `resolveSafePath`，越界 403。
+3. 所有非 GET 请求必须带 `X-Tsuzuri-Token`，值来自启动时生成的随机 token；
+   不匹配一律 403。自定义头会强制预检，天然免疫表单型 CSRF。token 通过在
+   `index.html` 里注入 `<meta name="tsuzuri-token" content="...">` 下发 ——
+   **不要**做成一个 `GET /api/token` 端点，那等于把它白送出去。
+4. 现有的 `Host` 头校验保持不变，与 token 构成双控制。
+
+```jsonc
+// POST /api/jobs  → 201 {"id":"..."}
+{
+  "kind": "render",          // "render" | "still"
+  "folder": "/abs/path",
+  "options": {
+    "exif": false, "sign": false, "dark": false,
+    "format": "landscape",   // "landscape" | "portrait" | "square"
+    "filter": null,          // FILTER_IDS 之一，或 null
+    "filterIntensity": null, // 0–1，或 null
+    "draft": false,          // 仅 render
+    "trim": null,            // 仅 render："auto" | "full" | null
+    "scale": 2               // 仅 still：1–4
+  }
+}
+
+// GET /api/jobs/:id          → {"id","kind","status","exitCode","events":[...]}
+//   status: "running" | "done" | "failed" | "cancelled"
+// GET /api/jobs/:id/events   → SSE，逐条推契约一的事件，末尾一条
+//                              event: end / data: {"status":...,"exitCode":...}
+// POST /api/jobs/:id/cancel  → {"ok":true}
+```
+
+**执行方式**：`spawn(process.execPath, [cli/tsuzuri.mjs, ...argv], {stdio: ['ignore','pipe','pipe','pipe'], env: {...process.env, TSUZURI_JSON_PROGRESS: '1'}})`，
+读 fd 3 的 NDJSON。`stdin: 'ignore'` 让 `process.stdin.isTTY` 为 false，
+`maybePersistTrimChoice` 与 `offerFetch` 的交互分支自动跳过 —— 否则网页上的任务
+会卡在一个看不见的终端提问上。**同一时刻只允许一个任务在跑**（本地单人工具，
+一次一个足够；第二个请求回 409，不做队列）。
