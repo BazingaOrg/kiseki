@@ -72,3 +72,67 @@ test('400s when the path is a file, not a folder', () => {
   const result = getProject(root, file);
   assert.equal(result.status, 400);
 });
+
+// --- 歌词归一:.lrc 与本地识别产物的取舍 ---------------------------------
+
+const writeRecognized = (root, segments) => {
+  const metadataDir = path.join(root, 'output', 'metadata');
+  fs.mkdirSync(metadataDir, {recursive: true});
+  fs.writeFileSync(path.join(metadataDir, 'lyrics.json'), JSON.stringify({segments}));
+};
+
+test('an empty .lrc does not mask lyrics that were already recognized', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  // 只有元数据标签、没有一行带时间的歌词 —— parseLrc 会回 [] 而不是抛错
+  fs.writeFileSync(path.join(root, 'music.lrc'), '[ti:Yellow]\n[ar:Coldplay]\n');
+  writeRecognized(root, [{start: 1.5, text: 'recognized line', confidence: 0.9}]);
+
+  const {body} = getProject(root, root);
+  assert.equal(body.lyricsSource, 'recognized', '空 .lrc 不该占住歌词来源');
+  assert.deepEqual(body.lyrics, [{time: 1.5, text: 'recognized line', confidence: 0.9}]);
+});
+
+test('recognized segments are sorted by time', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  // whisper 的输出顺序不保证升序,而前端找当前行是"遇到第一个更晚的就停"
+  writeRecognized(root, [
+    {start: 9, text: 'third'},
+    {start: 1, text: 'first'},
+    {start: 5, text: 'second'},
+  ]);
+
+  const {body} = getProject(root, root);
+  assert.deepEqual(body.lyrics.map((line) => line.text), ['first', 'second', 'third']);
+});
+
+test('a recognition result whose segments are all malformed counts as no lyrics', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  writeRecognized(root, [{start: 'nope', text: 1}, {}]);
+
+  const {body} = getProject(root, root);
+  assert.equal(body.lyrics, null);
+  assert.equal(body.lyricsSource, null, '一行都没剩下时不该标注成 recognized');
+});
+
+test('a real .lrc still wins over the recognized product', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  fs.writeFileSync(path.join(root, 'music.lrc'), '[00:01.00]from lrc\n');
+  writeRecognized(root, [{start: 2, text: 'from whisper'}]);
+
+  const {body} = getProject(root, root);
+  assert.equal(body.lyricsSource, 'lrc');
+  assert.equal(body.lyrics[0].text, 'from lrc');
+});
+
+test('missing confidence becomes null rather than being dropped', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  writeRecognized(root, [{start: 0, text: 'no confidence field'}]);
+
+  const {body} = getProject(root, root);
+  assert.equal(body.lyrics[0].confidence, null);
+});

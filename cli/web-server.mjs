@@ -1,6 +1,8 @@
 /**
- * 本地只读画廊 server:Node 原生 http,不引入 express。三个只读 API +
- * 静态前端(`web/dist`,阶段三下一步才会生成,现在先占位不阻塞)。
+ * 本地网页工作台 server:Node 原生 http,不引入 express。
+ * 五个 API(dirs / project / doctor / exif / thumb)+ 媒体透传(media)+ 静态前端
+ * (`web/dist`,未构建时回退占位页)。除 /api/thumb 会往系统临时目录写缩略图缓存外,
+ * 全部只读,不碰用户的素材夹。
  * `root` 是路径沙箱的允许根目录,由 cli/web.mjs 决定(锁定素材夹或用户主目录)。
  */
 import fs from 'node:fs';
@@ -9,8 +11,11 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {listDirs} from './web-api/dirs.mjs';
+import {getDoctor} from './web-api/doctor.mjs';
+import {getExif} from './web-api/exif.mjs';
 import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
+import {resolveThumb} from './web-api/thumb.mjs';
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const STATIC_DIR = path.join(REPO, 'web', 'dist');
@@ -133,8 +138,26 @@ export const createGalleryServer = (root) => {
       sendJson(res, getProject(root, url.searchParams.get('path')));
       return;
     }
+    if (url.pathname === '/api/doctor') {
+      sendJson(res, getDoctor());
+      return;
+    }
+    if (url.pathname === '/api/exif') {
+      // 唯一的异步 handler(exifr 解析)。失败一律回 500 而不是让 promise 逃逸,
+      // 否则未捕获的 rejection 会连整个 server 一起带走。
+      getExif(root, url.searchParams.get('path'))
+        .then((result) => sendJson(res, result))
+        .catch(() => sendJson(res, {status: 500, body: {error: '读取 EXIF 失败'}}));
+      return;
+    }
     if (url.pathname === '/media') {
       sendMedia(res, resolveMedia(root, url.searchParams.get('path'), req.headers.range));
+      return;
+    }
+    if (url.pathname === '/api/thumb') {
+      resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'))
+        .then((result) => sendMedia(res, result))
+        .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}));
       return;
     }
     serveStatic(req, res);
