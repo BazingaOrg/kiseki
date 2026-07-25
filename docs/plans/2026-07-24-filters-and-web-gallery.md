@@ -45,8 +45,8 @@
 
 ## 阶段四：Web 播放与歌词（后续）
 
-12. [ ] Player 视图：渲染视频 / 音乐播放。
-13. [ ] Lyrics 视图：读 lrc（复用 lrc.mjs 解析），随播放高亮当前行。
+12. [x] Player 视图：渲染视频 / 音乐播放。
+13. [x] Lyrics 视图：读 lrc（复用 lrc.mjs 解析），随播放高亮当前行。
 14. [ ] （谨慎，另立计划）触发渲染 + 进度；Web 滤镜实时预览选择器（与渲染同源 CSS）。
 
 ## 实施记录（阶段一，2026-07-24）
@@ -120,8 +120,26 @@
 - 用真实素材夹 `~/Downloads/Downloads/demo` 实测三个 API：`/api/project` 返回 19 张照片 / 5 张导出图 / 音频存在，`/api/dirs` 的 `root` 字段与沙箱根一致，`/media?path=/etc/passwd` 穿越 → 403，正常 still 透传 → 200（3.4MB）。
 - 浏览器实测完整流程（`tsuzuri web <demo>` → localhost:3000）：面包屑正确截断到 `demo`（无越界可点项）、选择文件夹后照片网格渲染 5 张导出图（含 riso 橙青半调那张）、点击弹出 Lightbox 大图正常、步骤导航可自由切换、控制台无报错。
 
+## 实测验证（阶段四，2026-07-25）
+
+- 浏览器实测 demo 素材夹（有音频 + .lrc，无渲染成片，正好覆盖 Player 的视频空状态）。
+- **歌词高亮逻辑已验证正确**：因该自动化浏览器禁用媒体解码（见下），改用伪造 `currentTime` + 派发 `timeupdate` 事件驱动。结果——首句 33.48s 之前无高亮（正确，前奏段）、t=41.9s 命中「And everything you do」（边界值精确）、t=120s 命中「You know I love you so」、超出末句时间仍停在最后一行。37 行歌词全部由后端 `parseLrc` 解析后直接消费，前端未重复解析。
+- **自动滚动已验证接线正确**：对 `Element.prototype.scrollIntoView` 打桩，确认每次高亮行变化都以正确的目标元素调用 `{block:'center', behavior:'smooth'}`。
+- **本环境无法验证的部分（环境限制，非代码问题）**：① 音频/视频实际播放——该自动化浏览器媒体解码整体不可用，连合成的 WAV blob 都停在 `readyState 0`、无报错，故 `<audio>` 始终显示 `0:00/0:00`；已用 curl 单独验证服务端正确（`audio/mp4` Content-Type、`Accept-Ranges`、`Range: bytes=0-` 与 `bytes=0-1023` 均正确返回 206 与 `Content-Range`），页面内 `fetch` 同一 URL 也 8ms 拿到 206，故判定为浏览器侧限制。② `behavior:'smooth'` 的滚动动画在此环境不执行（`scrollTop` 纹丝不动，改 `behavior:'auto'` 立刻滚到位；已排除 `prefers-reduced-motion` 与 CSS `scroll-behavior` 干扰）。两项都需在用户的常规 Chrome 里最终确认。
+- **实测发现并修复**：Player 视图原本仅在「视频和音频都没有」时才显示空状态，导致 demo 这种"有音频、无成片"的常见情况下，名为「播放成片」的页签里对缺失的成片只字不提，只孤零零显示一个音频播放器。已补 `还没有渲染好的成片。` 提示（与既有 `.hint` 空状态同款语气），UI 流程复测确认提示出现且音频播放器仍在。
+- 验证：`cd web && npx tsc --noEmit` 干净、`npm run build` 成功；`cd cli && node --test` 214/214 通过（本阶段纯前端改动，未动 cli）。
+
 ## 风险
 
 - 半调/毛边滤镜在 Remotion 逐帧渲染的性能开销未知——先在 `--draft` 上量化，超预算则 riso 限 still 使用。
 - SVG filter 在 Chromium headless 与本地浏览器的渲染一致性需在阶段一目检确认。
 - `/media` 路径透传是唯一安全敏感面，白名单校验必须有测试覆盖。
+
+## 实施记录（阶段四步骤 12/13，2026-07-25）
+
+- 新增 `web/src/Player.tsx`：渲染 `project.output.videos`（多个时先给一份 `.video-list` 选择器，`useState<string | null>` 记录当前选中项，默认取第一个），只对"当前选中"的一条渲染 `<video controls>`，避免一次性挂载 N 个 `<video>` 标签占带宽；`project.audio` 存在时另起一个 `.player-section` 渲染独立 `<audio controls>`。两者都缺失时才展示 `.hint`「还没有可播放的内容，先渲染一段吧。」，其余情况下缺失的一侧静默不渲染。
+- 新增 `web/src/Lyrics.tsx`：`project.lyrics` 为空/`null` 时展示 `.hint`「还没有歌词。」；否则渲染独立 `<audio controls>`（`project.audio` 存在时），通过 `onTimeUpdate` 回调把 `currentTime` 存进 `useState`，再对已按时间升序排列的 `lyrics` 数组做线性扫描找出最后一条 `time <= currentTime` 的行作为高亮行；用 `useRef` 数组存每个 `<li>` 的 DOM 引用，`useEffect` 依赖当前高亮 index，变化时 `scrollIntoView({block:'center', behavior:'smooth'})`。
+- `web/src/App.tsx`：`Step` 类型从 `1 | 2` 扩到 `1 | 2 | 3 | 4`，`.step-nav` 新增「③ 播放成片」「④ 歌词」两个按钮，`goToStep` 的守卫从只锁步骤 2 改为 `target !== 1 && !project` 统一锁住 2/3/4；步骤 3/4 复用与步骤 2 相同的 `project ? <View project={project} /> : <p className="hint">先选择一个素材夹吧。</p>` 兜底模式。
+- `web/src/App.css` 新增 `.player-section`/`.video-list`/`.video-item(-active)`/`.player-video`（播放器）与 `.lyrics-list`/`.lyric-line(-active)`（歌词），均为 rem 间距、复用既有 `--color-text`/`--color-secondary-text`/`--color-divider`/`--shadow-photo` 变量，未新增颜色、未触碰 FolderPicker/PhotoGrid/Lightbox 现有规则。
+- **关键技术选择：Player 与 Lyrics 各自持有独立的 `<audio>` DOM 元素，不在 App 层共享播放状态**——两者是两个互不相关的收听场景（随便听 vs. 看歌词跟播），不共享状态换来的是零跨组件 props/context 传递、两个文件互不依赖，可独立理解和修改；代价是从「③ 播放成片」切到「④ 歌词」时播放进度不会带过去（用户需要在新 tab 重新播放），这是本次明确接受的简化，不是遗留 bug。
+- 验证：`cd web && npx tsc --noEmit` 无输出、`npm run build` 成功（`dist/index.html` + `assets/*.js`/`*.css` 正常产出）；`cd cli && node --test` 205/205 通过（本次未改动 `cli/` 任何文件，只读跑测确认无回归）。
