@@ -11,6 +11,7 @@ import {
   buildJobSpec,
   createJobManager,
   JobValidationError,
+  listDescendants,
   parseYtDlpProgress,
 } from './jobs.mjs';
 
@@ -373,7 +374,10 @@ test('cancel escalates to SIGKILL when the child ignores SIGTERM', async () => {
   assert.deepEqual(signals[1], [-12345, 'SIGKILL']);
 });
 
-test('a child that exits in time is never SIGKILLed', async () => {
+test('取消过的任务即使直接子进程已退出,仍要对进程组补 SIGKILL', async () => {
+  // 直接子进程只是个很薄的 tsuzuri.mjs 壳,SIGTERM 一到立刻就死;真正吃 CPU 的
+  // render.mjs 与十几个 chromium 会扛住 SIGTERM。以前兜底判 status === 'running',
+  // 壳一死状态就变 cancelled,那一刀被跳过 —— 实测点了取消 14 个进程一个没少。
   const child = makeFakeChild();
   const signals = [];
   const manager = createJobManager({
@@ -383,9 +387,23 @@ test('a child that exits in time is never SIGKILLed', async () => {
   const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
   manager.cancelJob(id);
   child.emit('exit', null);
-  await new Promise((resolve) => setTimeout(resolve, 8100));
-  assert.equal(signals.length, 1, '按时退出的子进程不该再挨一刀');
   assert.equal(manager.getJob(id).status, 'cancelled');
+  await new Promise((resolve) => setTimeout(resolve, 3200));
+  assert.deepEqual(signals, [[-12345, 'SIGTERM'], [-12345, 'SIGKILL']]);
+});
+
+test('正常结束的任务不该收到任何信号', async () => {
+  const child = makeFakeChild();
+  const signals = [];
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: (pid, signal) => signals.push([pid, signal]),
+  });
+  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  child.emit('exit', 0);
+  await new Promise((resolve) => setTimeout(resolve, 3200));
+  assert.deepEqual(signals, [], '没取消过的任务不该被杀');
+  assert.equal(manager.getJob(id).status, 'done');
 });
 
 test('a spawn failure releases the concurrency lock instead of wedging it', () => {
@@ -418,8 +436,9 @@ test('killAll signals every running job so Ctrl+C leaves no orphans', () => {
   });
   manager.createJob({kind: 'render', folder: '/tmp/x', options: {}});
   manager.killAll();
-  // detached 的子进程收不到终端的 SIGINT,不显式杀就会变成孤儿继续渲染
-  assert.deepEqual(signals, [[-12345, 'SIGTERM']]);
+  // detached 的子进程收不到终端的 SIGINT,不显式杀就会变成孤儿继续渲染。
+  // Ctrl+C 后进程马上就走,没有等它体面退出的余地,所以两刀一起发。
+  assert.deepEqual(signals, [[-12345, 'SIGTERM'], [-12345, 'SIGKILL']]);
 });
 
 // ---- 批 C:kind 泛化 -------------------------------------------------------
@@ -656,10 +675,10 @@ test('新 kind 同样受并发锁、取消与 killAll 约束', async () => {
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(manager.getJob(id).status, 'cancelled');
 
-  // 锁已释放,新任务能起来;killAll 对新 kind 同样生效
+  // 锁已释放,新任务能起来;killAll 对新 kind 同样生效(SIGTERM + SIGKILL 两刀)
   manager.createJob({kind: 'lyrics', folder});
   manager.killAll();
-  assert.equal(signals.length, 2);
+  assert.deepEqual(signals.slice(1), [[-4321, 'SIGTERM'], [-4321, 'SIGKILL']]);
 });
 
 test('lyrics 任务仍然读 fd 3(泛化没有把原路径改漏)', async () => {
@@ -725,4 +744,47 @@ test('CLI 入口路径必须真实存在', () => {
     assert.ok(fs.existsSync(spec.args[0]), `${kind} 的入口不存在: ${spec.args[0]}`);
     assert.ok(spec.args[0].endsWith(path.join('cli', 'tsuzuri.mjs')), `路径可疑: ${spec.args[0]}`);
   }
+});
+
+test('listDescendants 递归枚举后代,不含自身', () => {
+  // 进程组够不到 puppeteer 自己 detach 出去的 chromium,只能靠 ppid 走树。
+  const table = ['  100     1', '  200   100', '  300   200', '  400     1', '  500   400'].join('\n');
+  const found = listDescendants(100, () => table);
+  assert.deepEqual(found.sort(), [200, 300], '只要 100 这一支,不含自身也不含别人的');
+});
+
+test('listDescendants 对畸形输出与环不炸', () => {
+  assert.deepEqual(listDescendants(1, () => ''), []);
+  assert.deepEqual(listDescendants(1, () => 'garbage\nnot a table'), []);
+  // ppid 指回自己形成环:seen 集合必须挡住,否则死循环
+  assert.deepEqual(listDescendants(7, () => '    7     7').sort(), []);
+});
+
+test('取消时先快照后代,并立刻逐个 SIGKILL', async () => {
+  // 两个时机都是实测逼出来的:
+  // 1. 快照必须在树还完整时做 —— render.mjs 一死,chromium 就被 reparent 到
+  //    launchd,从我们的 pid 再也走不到它们。
+  // 2. 后代必须立刻杀,不能等宽限期 —— 实测等 3 秒之后快照里的 pid 全部 ESRCH,
+  //    却又有 13 个新的 chromium 在跑,快照就此失效。
+  const child = makeFakeChild();
+  const signals = [];
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: (pid, signal) => signals.push([pid, signal]),
+    readProcessTable: () => ['12345     1', '55555 12345', '66666 55555'].join('\n'),
+  });
+  const {id} = manager.createJob({kind: 'render', folder: '/tmp/x', options: {}});
+  manager.cancelJob(id);
+  // SIGTERM 给自家那个壳留体面,后代同一时刻就下手
+  assert.deepEqual(signals[0], [-12345, 'SIGTERM']);
+  assert.deepEqual(
+    signals.slice(1).map(([pid]) => pid).sort(),
+    [55555, 66666],
+    'detach 出去的孙进程必须立刻被逐个杀掉',
+  );
+
+  child.emit('exit', null);
+  await new Promise((resolve) => setTimeout(resolve, 3200));
+  // 宽限期过后仍对整个进程组补一刀,兜住扛过 SIGTERM 的自家进程
+  assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });

@@ -9,7 +9,7 @@
  *
  * 本模块不碰 http,argv/spec 组装尽量做成纯函数,方便单测直接调用。
  */
-import {spawn as spawnActual} from 'node:child_process';
+import {spawn as spawnActual, spawnSync} from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -242,8 +242,54 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir
   };
 };
 
-/** 取消后等子进程体面退出的宽限期,超时就 SIGKILL。 */
-const FORCE_KILL_AFTER_MS = 8000;
+/**
+ * 取消后等进程组体面退出的宽限期,超时就 SIGKILL。
+ * 取 3 秒而不是更长:取消的语义是"现在就停",而这期间十几个 chromium 在满负荷跑。
+ */
+const FORCE_KILL_AFTER_MS = 3000;
+
+  /**
+ * 列出某个 pid 的全部后代(含自身之外的各级子孙)。
+ *
+ * 为什么不能只靠进程组:puppeteer/remotion 起 chromium 时自己也用了 detached,
+ * 浏览器进城在**它自己的进程组**里,`kill(-pgid)` 够不到 —— 实测取消一次渲染,
+ * render.mjs 死了但 13 个 chromium 全部存活(闲置不吃 CPU,但也永远不退)。
+ *
+ * 必须在树还完整的时候快照:一旦中间的 render.mjs 被杀,chromium 会被 reparent
+ * 到 launchd/init,从我们的 pid 再也走不到它们。
+ */
+export const listDescendants = (rootPid, readTable = defaultReadProcessTable) => {
+  const table = readTable();
+  const childrenOf = new Map();
+  for (const line of table.split('\n')) {
+    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+    if (!match) continue;
+    const pid = Number(match[1]);
+    const ppid = Number(match[2]);
+    if (!childrenOf.has(ppid)) childrenOf.set(ppid, []);
+    childrenOf.get(ppid).push(pid);
+  }
+  const found = [];
+  const queue = [rootPid];
+  const seen = new Set([rootPid]);
+  while (queue.length > 0) {
+    for (const child of childrenOf.get(queue.shift()) ?? []) {
+      if (seen.has(child)) continue;
+      seen.add(child);
+      found.push(child);
+      queue.push(child);
+    }
+  }
+  return found;
+};
+
+const defaultReadProcessTable = () => {
+  try {
+    return spawnSync('ps', ['-Ao', 'pid=,ppid='], {encoding: 'utf8', timeout: 2000}).stdout ?? '';
+  } catch {
+    return '';
+  }
+};
 
 /**
  * @param {{spawnImpl?: Function, killImpl?: Function, tempParent?: string}} [deps]
@@ -252,7 +298,12 @@ const FORCE_KILL_AFTER_MS = 8000;
  *   进程组"而不依赖真实进程组行为——生产代码不要传这个参数。
  *   tempParent 是 fetch-audio 下载中转目录的父目录,同样只为单测可观测。
  */
-export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kill, tempParent = os.tmpdir()} = {}) => {
+export const createJobManager =({
+  spawnImpl = spawnActual,
+  killImpl = process.kill,
+  tempParent = os.tmpdir(),
+  readProcessTable = defaultReadProcessTable,
+} = {}) => {
   /** @type {Map<string, object>} */
   const jobs = new Map();
   let runningJobId = null;
@@ -367,7 +418,9 @@ export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kil
       const ok = runFinalize(job, spec, code, {spawnFailed: false});
       job.status = job.cancelled ? 'cancelled' : ok ? 'done' : 'failed';
       job.exitCode = code;
-      if (job.killTimer !== null) {
+      // 取消过的任务**不清**兜底定时器:退出的只是那个薄壳,孙进程可能还活着,
+      // 那一刀必须照常补。只有正常结束的任务才需要撤掉定时器。
+      if (job.killTimer !== null && !job.cancelled) {
         clearTimeout(job.killTimer);
         job.killTimer = null;
       }
@@ -421,7 +474,8 @@ export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kil
     return () => job.listeners.delete(listener);
   };
 
-  /** 向整个进程组发信号。负 pid 配合 detached: true 覆盖 remotion 拉起的孙进程。 */
+
+/** 向整个进程组发信号。负 pid 配合 detached: true 覆盖同组的孙进程。 */
   const signalGroup = (job, signal) => {
     try {
       killImpl(-job.child.pid, signal);
@@ -430,19 +484,44 @@ export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kil
     }
   };
 
+  /** 逐个杀掉快照里的后代。它们可能已经退出,ESRCH 一律忽略。 */
+  const killSnapshot = (job, signal) => {
+    for (const pid of job.descendants ?? []) {
+      try {
+        killImpl(pid, signal);
+      } catch {
+        // 已经退出了,正常
+      }
+    }
+  };
+
   const cancelJob = (id) => {
     const job = jobs.get(id);
     if (!job) return false;
     if (job.status !== 'running') return false;
     job.cancelled = true;
+    // 趁进程树还完整先快照:render.mjs 一死,chromium 就被 reparent 到 launchd,
+    // 从我们的 pid 再也走不到它们。
+    job.descendants = listDescendants(job.child.pid, readProcessTable);
     signalGroup(job, 'SIGTERM');
-    // SIGTERM 是"请你退出",remotion/chromium 吞掉它是常见现象。没有兜底的话
-    // 子进程不死 → 'exit' 不来 → runningJobId 永不释放 → 之后每个任务都 409,
-    // 用户只能重启 server。给它 8 秒体面退出的机会,然后 SIGKILL。
+    // 后代**立刻**杀,不给宽限期。SIGTERM 的宽限是留给我们自己那个 tsuzuri.mjs
+    // 壳的(它可能要收尾),而 chromium 没有任何要 flush 的状态;更要命的是实测
+    // 发现等 3 秒之后那批 pid 已经全部 ESRCH、却又有 13 个新的 chromium 在跑,
+    // 快照就此失效。只有"快照完立刻动手"才抓得住。
+    killSnapshot(job, 'SIGKILL');
+    // SIGTERM 是"请你退出",render.mjs 与 chromium 扛住它是实测出来的常态。
+    //
+    // 兜底**不能**以"直接子进程是否退出"为条件:直接子进程只是个很薄的
+    // tsuzuri.mjs 壳,SIGTERM 一到立刻就死,真正吃 CPU 的是它下面的 render.mjs
+    // 和十几个 chromium。以前这里判 `job.status === 'running'`,而壳一死状态就
+    // 变成 cancelled,兜底直接被跳过——实测点了取消之后 14 个进程一个没少,
+    // render.mjs 还在 33% CPU 上跑。所以这里无条件对整个进程组补一刀。
+    // 组里已经空了的话 kill 会抛 ESRCH,被 signalGroup 吞掉,无害。
     if (job.killTimer === null) {
       job.killTimer = setTimeout(() => {
         job.killTimer = null;
-        if (job.status === 'running') signalGroup(job, 'SIGKILL');
+        signalGroup(job, 'SIGKILL');
+        killSnapshot(job, 'SIGKILL');
       }, FORCE_KILL_AFTER_MS);
       // 这个定时器不该拖着进程不让退出
       job.killTimer.unref?.();
@@ -459,7 +538,12 @@ export const createJobManager =({spawnImpl = spawnActual, killImpl = process.kil
     for (const job of jobs.values()) {
       if (job.status !== 'running') continue;
       job.cancelled = true;
+      // Ctrl+C 之后进程马上就走,没有等它体面退出的余地;而 SIGTERM 单独发
+      // 挡不住 render.mjs 与 chromium(实测)。两刀一起发,SIGKILL 保证不留孤儿。
+      job.descendants = listDescendants(job.child.pid, readProcessTable);
       signalGroup(job, 'SIGTERM');
+      signalGroup(job, 'SIGKILL');
+      killSnapshot(job, 'SIGKILL');
     }
   };
 
