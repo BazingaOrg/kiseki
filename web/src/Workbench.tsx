@@ -16,6 +16,8 @@ import {Make} from './Make';
 import {Materials} from './Materials';
 import {Results} from './Results';
 import type {DoctorState, ProjectResponse} from './types';
+import type {JobOptions} from './useJob';
+import {useJob} from './useJob';
 
 type SectionKey = 'materials' | 'make' | 'results';
 
@@ -34,12 +36,31 @@ interface WorkbenchProps {
   doctor: DoctorState;
   onRecheckDoctor: () => void;
   onSwitchFolder: () => void;
+  /** 任务跑完后重新拉一次素材夹状态,「制作」把它转交给起任务的地方在结束时调用 */
+  onProjectRefresh: () => void;
 }
 
-export const Workbench = ({project, doctor, onRecheckDoctor, onSwitchFolder}: WorkbenchProps) => {
+export const Workbench = ({
+  project,
+  doctor,
+  onRecheckDoctor,
+  onSwitchFolder,
+  onProjectRefresh,
+}: WorkbenchProps) => {
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
   const [doctorOpen, setDoctorOpen] = useState(false);
   const capabilities = deriveCapabilities(project, doctor);
+
+  // 任务状态挂在这一层而不是 Make 里:切区段会卸载 Make,那样 EventSource 被关掉、
+  // jobId 丢失,切回来界面就退回"可以开工",点了拿 409 且再没有入口取消。
+  // 放这里之后,渲染途中可以自由去看素材或成果,回来进度还在。
+  const job = useJob(onProjectRefresh);
+  const [activeKind, setActiveKind] = useState<'render' | 'still' | null>(null);
+
+  const handleStart = (kind: 'render' | 'still', options: JobOptions) => {
+    setActiveKind(kind);
+    job.start({kind, folder: project.path, options});
+  };
 
   const handleRemedy = (target: Remedy['target']) => {
     if (target === 'doctor') setDoctorOpen(true);
@@ -79,7 +100,15 @@ export const Workbench = ({project, doctor, onRecheckDoctor, onSwitchFolder}: Wo
           <Materials project={project} capabilities={capabilities} onRemedy={handleRemedy} />
         )}
         {section === 'make' && (
-          <Make project={project} capabilities={capabilities} onRemedy={handleRemedy} />
+          <Make
+            project={project}
+            capabilities={capabilities}
+            onRemedy={handleRemedy}
+            job={job}
+            activeKind={activeKind}
+            onStart={handleStart}
+            onReset={() => setActiveKind(null)}
+          />
         )}
         {section === 'results' && (
           <Results project={project} capabilities={capabilities} onRemedy={handleRemedy} />

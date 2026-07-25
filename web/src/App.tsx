@@ -33,6 +33,19 @@ const App = () => {
 
   useEffect(loadDoctor, []);
 
+  // 任务跑完（渲染/导出）后重新拉一次素材夹状态,「成果」区段才能看到新产物 ——
+  // 不重新 setProject 整个组件树都不知道多了一份成片
+  const refreshProject = () => {
+    if (project === null) return;
+    fetch(`/api/project?path=${encodeURIComponent(project.path)}`)
+      .then((res) => {
+        if (!res.ok) throw new Error('failed');
+        return res.json();
+      })
+      .then((data: ProjectResponse) => setProject(data))
+      .catch(() => {});
+  };
+
   if (project === null) {
     return (
       <main className="welcome">
@@ -52,6 +65,7 @@ const App = () => {
       doctor={doctor}
       onRecheckDoctor={loadDoctor}
       onSwitchFolder={() => setProject(null)}
+      onProjectRefresh={refreshProject}
     />
   );
 };
