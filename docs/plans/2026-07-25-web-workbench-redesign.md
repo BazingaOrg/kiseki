@@ -342,3 +342,64 @@
 `maybePersistTrimChoice` 与 `offerFetch` 的交互分支自动跳过 —— 否则网页上的任务
 会卡在一个看不见的终端提问上。**同一时刻只允许一个任务在跑**（本地单人工具，
 一次一个足够；第二个请求回 409，不做队列）。
+
+## 实施记录（批 B，2026-07-25）
+
+三个单元并行实现（fd 3 出口 / 任务 API / 制作段 UI），只通过上面的契约耦合，文件不重叠。
+
+### 落地要点
+
+- **fd 3 出口**：`term.mjs` 新增 `jsonProgressEnabled` 与 `defaultJsonWrite`（写 fd 3，吞掉 EBADF），
+  `createTerminal` / `createPercentProgress` 都接受可注入的 `jsonWrite` 以便单测。
+  实测 `tsuzuri doctor` 在"开关关闭"与"开关开启但 fd 3 未接"两种情况下终端输出 `diff` 完全一致。
+- **任务 API**：`buildJobArgv` 是唯一被允许生成 argv 的地方，白名单外字段静默丢弃，
+  非法值抛 `JobValidationError` 转 400 并指出字段名。token 256 bit，注入 `index.html` 的 meta。
+- **制作段 UI**：滤镜预览**直接 import `renderer/src/filters.ts`**，没有产生第三份副本；
+  预览手法与 `FramedPhoto.tsx` 一致（SVG defs / CSS filter / overlay 三种情况分别处理）。
+
+### Review 发现的问题（deep-reasoner，三条高危）
+
+1. **【高】SSE 会崩掉整个 server**。`subscribeEvents` 对历史事件是**同步回放**的，
+   而它在 `res.writeHead()` **之前**被调用 —— 这些 `res.write` 让 Node 隐式发出默认响应头，
+   随后的 `writeHead` 抛 `ERR_HTTP_HEADERS_SENT`，在请求回调里同步抛出、无人捕获，进程退出。
+   刷新页面、开第二个标签页、订阅已结束的任务都能触发。修法：存在性判断 → `writeHead` → 订阅。
+2. **【高】渲染进度根本传不到 fd 3**。链路是 server → `tsuzuri.mjs` → `runCommand` → `render.mjs`，
+   而 `run-command.mjs` 用 `stdio: 'inherit'` 只继承 0/1/2；偏偏渲染的百分比**全部**产生在
+   `render.mjs`（它一次 `term.*` 都不调）。也就是说进度条会永远停在不确定态，这个功能等于没做。
+   只测 `still` 不会暴露（它是同进程调用）。修法：开关开启时 stdio 显式写成
+   `['inherit','inherit','inherit',3]`。
+3. **【高】孤儿进程**。`detached: true` 让子进程 `setsid()` 脱离终端进程组，Ctrl+C 的 SIGINT
+   到不了它 —— 关掉 `tsuzuri web` 后 remotion/chromium 继续吃满 CPU 直到渲染完。
+   修法：`killAll()` + `web.mjs` 注册 SIGINT/SIGTERM。
+4. 【中】取消只发一次 SIGTERM，被吞掉就永远卡在"有任务在跑"，之后全部 409 → 加 8s 后 SIGKILL 兜底。
+5. 【中】`child` 无 `'error'` 监听器，spawn 失败时 EventEmitter 抛出崩 server，且不发 `'exit'`
+   导致并发锁永久泄漏 → 补监听，置 failed 并释放锁。
+6. 【中】切区段会卸载 `Make`，`useJob` 的 cleanup 关掉 EventSource 并丢掉 jobId，切回来退回
+   "可以开工"、点了 409、且**再没有入口取消** → `useJob` 提到 `Workbench` 层。
+7. 【中】`POST /api/jobs` 不校验 folder 是不是目录 → 补 `isDirectory()`。
+8. 【低】`isJobPostRoute` 只看 pathname 不看 method；SSE 结束后不 `res.end()`；
+   进度标签是 remotion 的英文原文被直接拼进中文界面。
+
+第 8 条的标签问题**没有改 `cli/render.mjs`**：那些标签同时印在终端进度条上，而
+`progress.mjs` 用 `padEnd(18)` 对齐，换成全角中文会把终端对齐搞乱（`term.mjs` 里本来就有
+一条规避全角字符的注记）。改为在前端做映射表，认不出的标签原样显示。
+
+已确认无问题（review 逐条验证过，不必重查）：argv 结构不可被前端影响（`folder` 恒以 `/` 开头，
+不可能被 `parseArgs` 当成选项，也无法注入 `-o`）；`Host` 校验覆盖全部新路由；
+`process.kill(-pid)` 写法正确且 pid 为 undefined 时不会误杀；NDJSON 跨 chunk 半行由
+readline 正确缓冲；fd 3 不会造成背压卡死渲染。
+
+### 验证
+
+- `cd cli && node --test` 292/293（唯一失败仍是 `web.test.mjs` 硬编码端口 3000 的既有环境脆弱性）。
+- `cd web && npx tsc --noEmit` 干净、`npm run build` 成功、`npm test` 19/19。
+- **端到端真跑一次渲染**（`TSUZURI_JSON_PROGRESS=1 tsuzuri <demo> --draft 3>/tmp/ev.ndjson`）：
+  退出码 0，143 条事件，其中 131 条 progress 覆盖 `Bundling code` / `Rendering frames` /
+  `Encoding video` 三个阶段，产出 15MB 草稿成片。这一条是问题 2 修复成立的判据 —— 修复前
+  这里会是 0 条 progress。
+
+### 遗留
+
+- `web.test.mjs` 的端口测试硬编码 3000，建议改成先探测空闲端口。
+- `jobs` Map 不做清理（单人本地工具、一次一个任务，影响很小）。
+- 浏览器里点按钮起任务的完整交互尚未实测（本轮验证走的是 CLI 直跑 + API 单测）。
