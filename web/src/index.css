@@ -56,6 +56,17 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/**
+ * 表单控件的选中色跟着文字色走。不设的话浏览器会用系统默认的蓝,
+ * 在这套暖灰配色里显得格外扎眼 —— 而且深浅色主题下都不对。
+ */
+input[type='checkbox'],
+input[type='radio'],
+input[type='range'],
+progress {
+  accent-color: var(--color-text);
+}
+
 button {
   font-family: inherit;
   font-size: inherit;

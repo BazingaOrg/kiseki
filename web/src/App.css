@@ -933,7 +933,6 @@
 .audio-scrub {
   flex: 1;
   min-width: 0;
-  accent-color: var(--color-text);
 }
 
 .audio-time {
