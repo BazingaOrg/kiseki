@@ -24,6 +24,8 @@ export const RENDER_CONFIDENCE_THRESHOLD = 0.6;
 export interface ProjectResponse {
   path: string;
   name: string;
+  /** 沙箱根。等于 path 时说明启动时锁定了素材夹,页面里换不了 */
+  root: string;
   photos: string[];
   audio: string | null;
   audioCount: number;

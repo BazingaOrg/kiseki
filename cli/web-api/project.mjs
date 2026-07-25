@@ -116,6 +116,10 @@ export const getProject = (root, requestedPath) => {
     body: {
       path: safePath,
       name: path.basename(safePath),
+      // 沙箱根。`tsuzuri web <folder>` 会把根锁定成那个素材夹,此时 root === path,
+      // 选择器里除了它自己什么都挑不到 —— 前端据此把"切换素材夹"改成说明,
+      // 而不是留一个点了只能选回原地的按钮。
+      root: path.resolve(root),
       photos: photos.map((name) => path.join(safePath, name)),
       // 多份音频是 scanFolder 会报错的歧义状态,宽松扫描不报错但要让前端能提示
       audio: audios[0] ? path.join(safePath, audios[0]) : null,

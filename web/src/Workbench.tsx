@@ -16,6 +16,7 @@ import {Make} from './Make';
 import {Materials} from './Materials';
 import {Results} from './Results';
 import type {DoctorState, ProjectResponse} from './types';
+import {CommandHint} from './ui';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
 
@@ -50,6 +51,7 @@ export const Workbench = ({
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
   const [doctorOpen, setDoctorOpen] = useState(false);
   const capabilities = deriveCapabilities(project, doctor);
+  const locked = project.root === project.path;
 
   // 任务状态挂在这一层而不是 Make 里:切区段会卸载 Make,那样 EventSource 被关掉、
   // jobId 丢失,切回来界面就退回"可以开工",点了拿 409 且再没有入口取消。
@@ -72,10 +74,22 @@ export const Workbench = ({
     <div className="workbench">
       <header className="topbar">
         <Logo />
-        <button className="folder-switch" onClick={onSwitchFolder} title="换一个素材夹">
-          <FolderOpen size={15} strokeWidth={1.5} />
-          {project.name}
-        </button>
+        {/*
+          启动时锁定了素材夹的话(tsuzuri web <folder>),沙箱根就是这个素材夹,
+          选择器里除了它自己什么都挑不到。那就不该摆一个点了只能选回原地的按钮 ——
+          换成一个说明,并告诉用户换一种启动方式就能挑别的。
+        */}
+        {locked ? (
+          <span className="folder-switch folder-switch-locked" title="启动时已锁定这个素材夹">
+            <FolderOpen size={15} strokeWidth={1.5} />
+            {project.name}
+          </span>
+        ) : (
+          <button className="folder-switch" onClick={onSwitchFolder} title="换一个素材夹">
+            <FolderOpen size={15} strokeWidth={1.5} />
+            {project.name}
+          </button>
+        )}
         <DoctorPanel
           doctor={doctor}
           open={doctorOpen}
@@ -83,6 +97,14 @@ export const Workbench = ({
           onRecheck={onRecheckDoctor}
         />
       </header>
+
+      {/* 光把切换按钮禁掉不够 —— 得说清为什么换不了、以及怎么才能换 */}
+      {locked && (
+        <p className="locked-note">
+          启动时锁定了这个素材夹，页面里换不了。想挑别的，改用不带参数的启动方式：
+          <CommandHint command="tsuzuri web" />
+        </p>
+      )}
 
       <nav className="section-nav">
         {SECTIONS.map((item) => (

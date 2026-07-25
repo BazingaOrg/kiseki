@@ -1240,3 +1240,23 @@
 .fetch-input::placeholder {
   color: var(--color-faint-text);
 }
+
+/* 锁定素材夹时的说明。不是"灰掉不解释",而是讲清楚为什么换不了、怎么才能换 */
+.folder-switch-locked {
+  cursor: default;
+  border-style: dashed;
+}
+
+.locked-note {
+  max-width: 940px;
+  margin: 0 auto;
+  padding: 0.85rem 2rem 0;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  color: var(--color-secondary-text);
+}
+
+.locked-note .command-hint {
+  margin-top: 0.4rem;
+  max-width: 260px;
+}
