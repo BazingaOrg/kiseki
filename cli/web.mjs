@@ -71,7 +71,18 @@ export const runWeb = async (folder = null, {openBrowser = true} = {}) => {
     root = os.homedir();
   }
 
-  const server = createGalleryServer(root);
+  const {server, killAll} = createGalleryServer(root);
+  // 渲染任务的子进程是 detached 的(为了取消时能杀掉整棵进程树),代价是它脱离了
+  // 终端进程组,用户按 Ctrl+C 时收不到 SIGINT。不在这里显式收尾,关掉 tsuzuri web
+  // 之后 remotion/chromium 会变成孤儿,继续吃满 CPU 直到把那一次渲染跑完。
+  const shutdown = (signal) => {
+    killAll();
+    server.close();
+    process.exit(signal === 'SIGINT' ? 130 : 143);
+  };
+  process.once('SIGINT', () => shutdown('SIGINT'));
+  process.once('SIGTERM', () => shutdown('SIGTERM'));
+
   const port = await listenOnFreePort(server);
   const url = `http://localhost:${port}`;
   term.success(`本地画廊已启动: ${url}`);
