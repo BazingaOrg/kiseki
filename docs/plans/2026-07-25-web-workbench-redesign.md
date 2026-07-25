@@ -1,7 +1,7 @@
 # Web 工作台重构：流程梳理 + 交互与 UI 设计
 
 日期：2026-07-25
-状态：批 A 已完成，批 B / C 待做
+状态：批 A / B / C 全部完成
 
 ## 目标
 
@@ -186,15 +186,15 @@
 
 ### 批 B：任务执行
 
-9. [ ] `term.mjs` / `progress.mjs` 的 fd 3 NDJSON 出口（§2.2）。→ 验证：终端输出零变化 + NDJSON 事件单测。
-10. [ ] token 注入与写请求校验（§2.4）。→ 验证：无 token / 错 token → 403 的测试。
-11. [ ] `cli/web-api/jobs.mjs`：起/查/取消，argv 组装复用 `menu.mjs` 的 `buildArgvFromChoices` 思路。→ 验证：argv 组装单测 + 越权 folder 用例。
-12. [ ] 制作段接通：渲染/still 参数表单（EXIF / 签名 / 黑底 / 画幅 / 滤镜 / trim）+ 实时进度 + 取消 + 完成后自动刷新成果段。滤镜选择器直接复用 `renderer/src/filters.ts` 的 CSS 做实时预览（同源，所见即所得）。
+9. [x] `term.mjs` / `progress.mjs` 的 fd 3 NDJSON 出口（§2.2）。→ 验证：终端输出零变化 + NDJSON 事件单测。
+10. [x] token 注入与写请求校验（§2.4）。→ 验证：无 token / 错 token → 403 的测试。
+11. [x] `cli/web-api/jobs.mjs`：起/查/取消，argv 组装复用 `menu.mjs` 的 `buildArgvFromChoices` 思路。→ 验证：argv 组装单测 + 越权 folder 用例。
+12. [x] 制作段接通：渲染/still 参数表单（EXIF / 签名 / 黑底 / 画幅 / 滤镜 / trim）+ 实时进度 + 取消 + 完成后自动刷新成果段。滤镜选择器直接复用 `renderer/src/filters.ts` 的 CSS 做实时预览（同源，所见即所得）。
 
 ### 批 C：素材补齐
 
-13. [ ] `fetch` 的搜索/下载 API 化（§2.3）+ 前端选择界面。
-14. [ ] 歌词本地识别（`lyrics` 命令）接入任务系统，含 whisper 首次下载模型的长进度提示。
+13. [x] `fetch` 的搜索/下载 API 化（§2.3）+ 前端选择界面。
+14. [x] 歌词本地识别（`lyrics` 命令）接入任务系统，含 whisper 首次下载模型的长进度提示。
 
 ---
 

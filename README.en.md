@@ -70,12 +70,24 @@ browsing to your home directory, and pick a media folder from within the page. F
 building the frontend: `npm --prefix web install && npm --prefix web run build`, producing `web/dist`,
 which `tsuzuri web` serves directly; you'll see a placeholder notice until it's built.
 
-The page has three parts — **materials / make / results**. Materials lists the photos, music and lyrics
-it found and names whatever is missing. Make decides what you can start based on the actual state of
-your materials and dependencies, and spells out what's missing and how to fix it when you can't.
-Results is for watching the video, following the lyrics, and browsing photos (full view carries an EXIF
-tag). It is still read-only: Make shows the equivalent terminal command to copy, and starting a render
-from the page itself is not wired up yet.
+The page has three parts — **materials / make / results**:
+
+- **Materials** lists the photos, music and lyrics it found and names whatever is missing. Missing audio
+  can be searched for and downloaded right there (needs yt-dlp); missing lyrics can be fetched as a
+  `.lrc` online, or recognized locally.
+- **Make** decides what you can start from the actual state of your materials and dependencies — when
+  you can't, it says what's missing and how to fix it rather than just greying out a button. Pick your
+  options (EXIF / signature / dark / aspect / filter / draft / trim) and start; you get live progress and
+  can cancel at any time. The equivalent terminal command sits next to it, ready to copy. Filters preview
+  live using the same definitions the renderer uses (browsers and the renderer differ slightly on SVG
+  filters, so the final video is the source of truth).
+- **Results** is for watching the video, following the lyrics (click a line to seek), and browsing photos
+  (full view carries an EXIF tag).
+
+Only one job runs at a time; a second request is rejected. Every write requires the token generated at
+server start, and paths stay inside the sandbox root chosen at launch. Apart from the outputs a job
+produces, only `/api/thumb`'s thumbnail cache writes anything — to the system temp dir, never into your
+media folder.
 
 `still` supports `-o`, `--exif`, `--sign`, `--dark`, `--skip-existing`, and `--scale <1-4>`; video rendering supports the same `--exif`, `--sign`, and `--dark` flags, matching still's behavior (applied at render time, never written to timeline.json), and appends an `-exif`/`-sign`/`-dark` suffix to the default output filename when `-o` is omitted. Run `node cli/tsuzuri.mjs help` for the current full syntax.
 
