@@ -433,6 +433,136 @@
   color: var(--color-secondary-text);
 }
 
+/* ── 素材:在线补齐 ───────────────────────────────────── */
+
+.fetch {
+  margin-top: 0.75rem;
+}
+
+/* 缺歌词有两条路,并排;窄屏自然堆成上下两段 */
+.fetch-paths {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem 1.5rem;
+}
+
+.fetch-path-label {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--color-secondary-text);
+  margin-bottom: 0.45rem;
+}
+
+.fetch-search {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.fetch-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-background);
+  border: 1px solid var(--color-divider);
+  border-radius: 5px;
+  padding: 0.45rem 0.6rem;
+  font-family: inherit;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  transition: border-color 0.2s ease-out;
+}
+
+.fetch-input:focus {
+  border-color: var(--color-secondary-text);
+}
+
+.fetch-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  background: none;
+  border: 1px solid var(--color-divider);
+  border-radius: 5px;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+  color: var(--color-text);
+  transition: border-color 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+.fetch-button:hover:not(:disabled) {
+  border-color: var(--color-text);
+}
+
+.fetch-button:disabled {
+  opacity: 0.45;
+}
+
+.fetch .hint,
+.fetch-path .hint {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.7;
+}
+
+.fetch-failure {
+  margin-top: 0.5rem;
+}
+
+.fetch-candidates {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  border: 1px solid var(--color-divider);
+  border-radius: 5px;
+  overflow: hidden;
+  animation: panel-in 0.2s ease-out;
+}
+
+.fetch-candidates li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.fetch-candidate {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.55rem 0.7rem;
+  transition: background 0.2s ease-out, opacity 0.2s ease-out;
+}
+
+.fetch-candidate:hover:not(:disabled) {
+  background: var(--color-surface);
+}
+
+.fetch-candidate:disabled {
+  opacity: 0.45;
+}
+
+.fetch-candidate-title {
+  display: block;
+  font-size: 0.85rem;
+  line-height: 1.5;
+}
+
+.fetch-candidate-meta {
+  display: block;
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
+  color: var(--color-secondary-text);
+}
+
+/* 时长对不上是"能选，但你该知道",所以是正文色的提醒而不是灰掉 */
+.fetch-warn {
+  color: var(--color-text);
+}
+
+.fetch-warn::before {
+  content: ' · ';
+  color: var(--color-secondary-text);
+}
+
 /* ── 制作 ─────────────────────────────────────────────── */
 
 .action-cards {
@@ -683,6 +813,13 @@
   100% {
     transform: translateX(250%);
   }
+}
+
+/* 慢且没有百分比的阶段(下 whisper 模型)要提前打招呼,否则看着像卡死了 */
+.job-note {
+  margin: 0.5rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.7;
 }
 
 .job-log {
@@ -1073,4 +1210,34 @@
     grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
     gap: 1rem;
   }
+}
+
+/* 歌词搜索:关键词可手动覆盖(自动推断猜错时的补救路径) */
+.fetch-search {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  margin-top: 0.75rem;
+}
+
+.fetch-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--color-divider);
+  padding: 0.35rem 0.15rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--color-text);
+  transition: border-color 0.2s ease-out;
+}
+
+.fetch-input:focus {
+  outline: none;
+  border-bottom-color: var(--color-text);
+}
+
+.fetch-input::placeholder {
+  color: var(--color-faint-text);
 }

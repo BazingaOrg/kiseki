@@ -7,17 +7,18 @@
  * 说明原因 —— 沿用 Blocked 组件"禁用必须带理由"的规矩,这里理由是任务占用而非
  * 素材缺失,所以没有直接套 Blocked,而是单独一行提示。
  */
-import {useEffect, useMemo, useRef, useState} from 'react';
+import {useMemo, useState} from 'react';
 import type {ReactNode} from 'react';
-import {ChevronDown, Clapperboard, ImageDown, Loader2, SlidersHorizontal, X} from 'lucide-react';
+import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
 // 直接复用渲染管线的滤镜定义:预览与成片同源,不再养第三份滤镜副本
 import {FILTERS, getFilter} from '../../renderer/src/filters';
 import type {Capability, Capabilities, Remedy} from './capabilities';
+import {JobPanel} from './JobPanel';
 import {thumbUrl} from './media';
 import type {ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
-import type {JobEvent, JobOptions, JobStatus} from './useJob';
+import type {JobOptions} from './useJob';
 import type {useJob} from './useJob';
 
 type Kind = 'render' | 'still';
@@ -232,94 +233,6 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
   );
 };
 
-/**
- * 渲染阶段的标签由 remotion 的回调名决定,是英文,直接拼进中文界面很突兀。
- * 在这里翻译而不是改 `cli/render.mjs`:那些标签同时印在终端进度条上,
- * 而 `progress.mjs` 用 `padEnd(18)` 对齐,换成全角中文会把终端对齐搞乱。
- * 认不出的标签原样显示,好过显示一个空白。
- */
-const STAGE_LABELS: Record<string, string> = {
-  'Bundling code': '打包渲染器',
-  'Rendering frames': '渲染画面',
-  'Encoding video': '编码视频',
-};
-
-const eventText = (event: JobEvent): string =>
-  event.kind === 'progress'
-    ? `${STAGE_LABELS[event.label] ?? event.label} ${event.percent}%`
-    : event.text;
-
-interface JobPanelProps {
-  kind: Kind;
-  status: JobStatus;
-  events: JobEvent[];
-  error: string | null;
-  onCancel: () => void;
-  onReset: () => void;
-}
-
-const JobPanel = ({kind, status, events, error, onCancel, onReset}: JobPanelProps) => {
-  const logRef = useRef<HTMLDivElement>(null);
-  // 只有收到过带 percent 的 progress 事件才画确定进度条,纯日志(start/info…)期间用不确定态
-  const lastProgress = [...events]
-    .reverse()
-    .find((event): event is Extract<JobEvent, {kind: 'progress'}> => event.kind === 'progress');
-
-  useEffect(() => {
-    const el = logRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [events]);
-
-  const statusLabel =
-    status === 'running'
-      ? `正在${KIND_VERB[kind]}…`
-      : status === 'done'
-        ? '完成了。'
-        : status === 'cancelled'
-          ? '已取消。'
-          : '失败了。';
-
-  return (
-    <div className="job-panel">
-      <div className="job-status">
-        {status === 'running' && <Loader2 size={15} className="job-spinner" aria-hidden="true" />}
-        <span>{statusLabel}</span>
-      </div>
-
-      {status === 'running' &&
-        (lastProgress ? (
-          <progress className="job-progress" value={lastProgress.percent} max={100} />
-        ) : (
-          <div className="job-progress job-progress-indeterminate" />
-        ))}
-
-      {error && <p className="hint hint-error">{error}</p>}
-
-      {events.length > 0 && (
-        <div className="job-log" ref={logRef}>
-          {events.map((event, index) => (
-            <p className="job-log-line" key={index}>
-              {eventText(event)}
-            </p>
-          ))}
-        </div>
-      )}
-
-      <div className="job-actions">
-        {status === 'running' ? (
-          <button className="job-cancel" onClick={onCancel}>
-            <X size={14} /> 取消
-          </button>
-        ) : (
-          <button className="link-button" onClick={onReset}>
-            重新设置参数
-          </button>
-        )}
-      </div>
-    </div>
-  );
-};
-
 interface ActionCardProps {
   kind: Kind;
   icon: ReactNode;
@@ -367,12 +280,13 @@ const ActionCard = ({
       {capability.enabled ? (
         showJobPanel ? (
           <JobPanel
-            kind={kind}
+            verb={KIND_VERB[kind]}
             status={job.status}
             events={job.events}
             error={job.error}
             onCancel={job.cancel}
             onReset={onReset}
+            resetLabel="重新设置参数"
           />
         ) : (
           <>

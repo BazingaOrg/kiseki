@@ -16,7 +16,7 @@ import {Make} from './Make';
 import {Materials} from './Materials';
 import {Results} from './Results';
 import type {DoctorState, ProjectResponse} from './types';
-import type {JobOptions} from './useJob';
+import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
 
 type SectionKey = 'materials' | 'make' | 'results';
@@ -55,11 +55,12 @@ export const Workbench = ({
   // jobId 丢失,切回来界面就退回"可以开工",点了拿 409 且再没有入口取消。
   // 放这里之后,渲染途中可以自由去看素材或成果,回来进度还在。
   const job = useJob(onProjectRefresh);
-  const [activeKind, setActiveKind] = useState<'render' | 'still' | null>(null);
+  const [activeKind, setActiveKind] = useState<JobKind | null>(null);
 
-  const handleStart = (kind: 'render' | 'still', options: JobOptions) => {
-    setActiveKind(kind);
-    job.start({kind, folder: project.path, options});
+  // folder 在这里补上:起任务的组件只说要做什么,不必自己传素材夹路径
+  const handleStart = (request: JobRequest) => {
+    setActiveKind(request.kind);
+    job.start({...request, folder: project.path});
   };
 
   const handleRemedy = (target: Remedy['target']) => {
@@ -97,7 +98,16 @@ export const Workbench = ({
 
       <main className="workbench-main">
         {section === 'materials' && (
-          <Materials project={project} capabilities={capabilities} onRemedy={handleRemedy} />
+          <Materials
+            project={project}
+            capabilities={capabilities}
+            onRemedy={handleRemedy}
+            job={job}
+            activeKind={activeKind === 'fetch-audio' || activeKind === 'lyrics' ? activeKind : null}
+            onStart={handleStart}
+            onReset={() => setActiveKind(null)}
+            onRefresh={onProjectRefresh}
+          />
         )}
         {section === 'make' && (
           <Make
@@ -105,8 +115,8 @@ export const Workbench = ({
             capabilities={capabilities}
             onRemedy={handleRemedy}
             job={job}
-            activeKind={activeKind}
-            onStart={handleStart}
+            activeKind={activeKind === 'render' || activeKind === 'still' ? activeKind : null}
+            onStart={(kind, options) => handleStart({kind, options})}
             onReset={() => setActiveKind(null)}
           />
         )}

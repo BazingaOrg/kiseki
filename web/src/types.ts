@@ -63,6 +63,27 @@ export interface DoctorResponse {
  */
 export type DoctorState = DoctorResponse | 'loading' | 'unavailable';
 
+/**
+ * yt-dlp 搜索结果(GET /api/fetch/audio-search)。
+ * duration 是 yt-dlp 的 `duration_string`(如 "3:45");按秒给也认,见 candidateDuration。
+ */
+export interface AudioCandidate {
+  id: string;
+  title: string;
+  duration: string | number | null;
+  uploader: string;
+}
+
+/** LRCLIB 搜索结果(GET /api/fetch/lyrics-search)。delta 是与本地音频的时长差(秒)。 */
+export interface LyricsCandidate {
+  id: string | number;
+  title: string;
+  artist: string;
+  duration: number | null;
+  delta: number | null;
+  synced: boolean;
+}
+
 export interface ExifData {
   camera?: string;
   lens?: string;

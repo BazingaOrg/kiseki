@@ -6,6 +6,8 @@
  */
 import {useCallback, useEffect, useRef, useState} from 'react';
 
+import {getToken} from './api';
+
 /** 契约一的两种事件形状 */
 export type JobEvent =
   | {kind: 'start' | 'info' | 'success' | 'warn' | 'error' | 'detail'; text: string}
@@ -28,14 +30,26 @@ export interface JobOptions {
   scale?: number;
 }
 
-export interface StartJobArgs {
-  kind: 'render' | 'still';
-  folder: string;
-  options: JobOptions;
+/** 起 fetch-audio 用的选项:后端拿 title/artist 拼落地文件名(buildAudioFilename)。 */
+export interface FetchAudioOptions {
+  id: string;
+  title: string;
+  artist: string;
 }
 
-const getToken = (): string =>
-  document.querySelector('meta[name="tsuzuri-token"]')?.getAttribute('content') ?? '';
+/**
+ * 一次任务请求里除 folder 之外的部分。folder 由持有任务状态的那一层补上,
+ * 起任务的组件不必自己传素材夹路径。
+ */
+export type JobRequest =
+  | {kind: 'render' | 'still'; options: JobOptions}
+  | {kind: 'fetch-audio'; options: FetchAudioOptions}
+  // 本地识别只要素材夹,没有可调的参数
+  | {kind: 'lyrics'};
+
+export type JobKind = JobRequest['kind'];
+
+export type StartJobArgs = JobRequest & {folder: string};
 
 export const useJob = (onEnd?: () => void) => {
   const [status, setStatus] = useState<JobStatus>('idle');
