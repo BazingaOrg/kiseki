@@ -453,3 +453,79 @@ readline 正确缓冲；fd 3 不会造成背压卡死渲染。
    或放进 worker，**不要**在 HTTP handler 里同步调用。
 2. **`runFetch` / `offerFetch` / `lyricsFlow` 是交互流程，一律不要碰**。批 C 只复用它们下面的
    纯函数层。`kind:'lyrics'` 走 CLI 时 `stdin: 'ignore'` 已经能让 `offerFetch` 自动跳过。
+
+## 实施记录（批 C，2026-07-25）
+
+### 落地要点
+
+- **复用而非重写**：`fetch.mjs`/`ytdlp.mjs` 的搜索/下载/安装函数一行没重写。`runProcess`
+  刻意返回**与 `spawnSync` 完全相同的结果形状**，于是 `checkYtDlp`/`probeAudio` 这些接受
+  可注入 spawn 的同步函数能原样复用在异步链路上 —— 这是这批最漂亮的一处复用。
+- **任务系统泛化**：`buildJobSpec({kind,...}) → {command,args,stdio,env,progressSource,finalize}`
+  是唯一的接缝。并发锁、SIGTERM→8s→SIGKILL、`killAll`、`'error'` 监听、SSE end 帧全在它之上，
+  对新 kind 自动生效。`fetch-audio` 的进度来自 stdout（`--newline` 是必需的，否则 yt-dlp 用
+  `\r` 原地刷新，readline 一行都读不到），翻译成契约一的形状后**前端完全看不出差异**。
+
+### 我在契约缺口上的两处决定
+
+1. **`lyrics-search` 加可选 `q`**：文件名/tag 乱七八糟时自动推断必然猜错，CLI 里"重新输
+   关键词"是主要补救路径，没有它用户只能去改文件名。
+2. **删掉候选里的 `label`**：前端已用 `delta` 结构化渲染，这个 CLI 成品文案无人消费 ——
+   批 A 的 review 就因同样理由删过 `cli/filters.mjs` 的推测性 `label`。
+
+### Review 发现（deep-reasoner）
+
+命令注入类**没有**发现问题（逐条验过：`ytsearch5:` 前缀让 `q` 永远不以 `-` 开头；无
+`shell: true`；`id` 白名单排除了 `. / : @ ?` 无法改写域名；LRCLIB 走 `new URL` +
+`searchParams` 编码正确；`sanitizeFilePart` 挡住目录穿越）。真正要改的是：
+
+1. **【高，我自己的 bug】`q` 被静默忽略**：`searchLyricsRecords` 在 `!customized` 且 tag
+   齐全时会先打 `/get` 精确查询并**直接 return**，我加 `q` 时漏传 `customized`。
+   tag 写错（标题是专辑名、翻唱版本）恰恰是用户要手输关键词的主要场景，于是"再找一次"
+   永远返回同一批错结果，而界面还回显着用户输的词，误导性更强。
+2. **【中，我自己的测试】新加的两个 `q` 用例传了 `fakeRun`（工厂）而非 `fakeRun({})`**，
+   导致 probe 返回空、`/get` 分支从未被走到 —— 测试是**碰巧绿的**。补了一个"tag 齐全 +
+   手输关键词必须走 `/search`"的用例，并验证过去掉修复它会红。
+3. 【中】`/api/fetch/*` 两条 GET 会 spawn 外部进程却不校验 token。Host 校验只挡 DNS
+   rebinding，挡不住任意网页直接请求 localhost —— 一个恶意页面循环请求就能无限起 yt-dlp
+   把机器拖垮（响应因 CORS 读不到，但进程和 fd 是实打实被耗掉的）。→ 破例给这两条 GET
+   也加了 token。
+4. 【中】`fetch-audio` 失败时丢掉全部 stderr，只回一句"网络、地区限制或版本过旧"；
+   而 yt-dlp 没装时走的是 `'error'` 分支，报的还是同一句，真实原因完全对不上。
+   → 留 stderr 尾部 5 行带回，`'error'` 分支单独给"起不了 yt-dlp"的文案。
+5. 【低】`'exit'` 缺状态守卫会 double-finalize；placeholder 与注释不符。均已修。
+
+### 【高】浏览器实测才发现的致命 bug：任务入口路径拼错
+
+`cli/web-api/jobs.mjs` 的 `REPO_ROOT` 是从 `cli/web-api/` 往上两级 —— 那只到 `cli/`，
+不是仓库根。再 `join('cli','tsuzuri.mjs')` 得到 **`cli/cli/tsuzuri.mjs`**。子进程起手就
+`Cannot find module` 退出 1，stderr 被丢弃、fd 3 一条事件都没有，前端只看到一句「失败了。」
+
+**这意味着"从网页起任务"这个功能从批 B 起就从来没工作过**（bug 随 `07c7fce` 进了 main）。
+
+为什么全部单测都没抓到：**所有用例都注入 `spawnImpl`，永远碰不到真实路径**。而我批 B 那次
+"端到端验证"跑的是 `TSUZURI_JSON_PROGRESS=1 node cli/tsuzuri.mjs ...` 直调 CLI，验证了
+fd 3 这一段，却恰好绕开了任务管理器拼路径这一段。**只有真的从浏览器点一次按钮才会暴露。**
+
+已补一条专门的测试：`buildJobSpec` 对三种 CLI kind 断言 `fs.existsSync(spec.args[0])`。
+这是唯一能抓到路径拼错的用例，验证过去掉修复它会红。
+
+### 验证
+
+- `cd cli && node --test` 341/342（唯一失败仍是端口 3000 被占的既有环境脆弱性）。
+- `cd web && npx tsc --noEmit` 干净、`npm run build` 成功、`npm test` 19/19。
+- **API 端到端**：`POST /api/jobs {kind:'still', filter:'riso'}` → `done`/exit 0/7 条事件
+  （5 条 progress）→ 3 张 PNG 落地。
+- **浏览器端到端**：欢迎页 → 选素材夹 → 素材段音乐卡搜索「Yellow Coldplay」→ 真实
+  yt-dlp 返回 5 条候选 → 制作段展开参数（滤镜下拉 9 项来自 renderer 注册表）→ 点「开始导出」
+  → 进度日志显示「导出照片 3/3 100%」→「完成了。」→ 切到成果段，照片数自动从 3 变 6。
+- 未做：真的点下载（会抓取受版权音频，验证到搜索这一步管路已经证明）；whisper 本地识别
+  （需要下载几百 MB 模型）。
+
+### 遗留
+
+- `web.test.mjs` 的端口测试硬编码 3000。
+- `killAll` 只发 SIGTERM 就让进程退出，正在下载时 `/tmp/tsuzuri-fetch-*` 会残留（系统临时
+  目录会回收）。
+- fetch-audio 没有超时上限：卡在 0% 的下载会永久持有并发锁，只能手动取消。
+- 画幅单选与清晰度滑块用的是浏览器默认 accent 蓝，与暖灰调色板不搭，未统一。
