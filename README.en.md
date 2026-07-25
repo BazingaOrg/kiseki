@@ -62,14 +62,20 @@ completion or failure, and `q` exits. Commands with arguments remain one-shot. T
 | `fetch <folder>` | Fetch audio/lyrics into the media folder online (interactive) |
 | `still <photo\|folder>` | Export a matching still PNG |
 | `doctor` | Check local dependencies |
-| `web [folder]` | Start a local read-only gallery web page |
+| `web [folder]` | Start a local web workbench |
 
-`tsuzuri web [folder]` starts a local read-only HTTP server and tries to open your default browser.
+`tsuzuri web [folder]` starts a local HTTP server and tries to open your default browser.
 Pass `folder` to lock browsing to that media folder (you can't navigate outside it); omit it to lock
 browsing to your home directory, and pick a media folder from within the page. First-time use requires
 building the frontend: `npm --prefix web install && npm --prefix web run build`, producing `web/dist`,
-which `tsuzuri web` serves directly; you'll see a placeholder notice until it's built. No render or write
-operations are ever triggered.
+which `tsuzuri web` serves directly; you'll see a placeholder notice until it's built.
+
+The page has three parts — **materials / make / results**. Materials lists the photos, music and lyrics
+it found and names whatever is missing. Make decides what you can start based on the actual state of
+your materials and dependencies, and spells out what's missing and how to fix it when you can't.
+Results is for watching the video, following the lyrics, and browsing photos (full view carries an EXIF
+tag). It is still read-only: Make shows the equivalent terminal command to copy, and starting a render
+from the page itself is not wired up yet.
 
 `still` supports `-o`, `--exif`, `--sign`, `--dark`, `--skip-existing`, and `--scale <1-4>`; video rendering supports the same `--exif`, `--sign`, and `--dark` flags, matching still's behavior (applied at render time, never written to timeline.json), and appends an `-exif`/`-sign`/`-dark` suffix to the default output filename when `-o` is omitted. Run `node cli/tsuzuri.mjs help` for the current full syntax.
 

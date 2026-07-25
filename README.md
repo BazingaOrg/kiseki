@@ -62,12 +62,17 @@ node cli/tsuzuri.mjs help
 | `fetch <folder>` | 在线获取音频/歌词到素材夹（交互） |
 | `still <photo\|folder>` | 导出同款静态 PNG |
 | `doctor` | 检查本地依赖 |
-| `web [folder]` | 启动本地只读画廊网页 |
+| `web [folder]` | 启动本地网页工作台 |
 
-`tsuzuri web [folder]` 会在本机起一个只读 HTTP server 并尝试打开默认浏览器：传入
+`tsuzuri web [folder]` 会在本机起一个 HTTP server 并尝试打开默认浏览器：传入
 `folder` 时浏览范围锁定在该素材夹内（不能跳出去看别的目录）；不传时浏览范围锁定在用户
 主目录，可在网页里逐级选择素材夹。首次使用需要先构建前端：`npm --prefix web install && npm --prefix web run build`，
-产物在 `web/dist`，`tsuzuri web` 会直接读取；未构建时会先看到一个提示占位页。不会触发任何渲染或写操作。
+产物在 `web/dist`，`tsuzuri web` 会直接读取；未构建时会先看到一个提示占位页。
+
+网页分**素材 / 制作 / 成果**三段：素材段列出照片、音乐、歌词并指出缺什么，制作段按素材与
+依赖的实际状态决定能不能开工（不能时会写明缺什么、怎么补），成果段用来看成片、跟播歌词、
+翻照片（大图带 EXIF 展签）。目前仍是只读的——制作段给出可复制的等效终端命令，在网页里
+直接起渲染任务尚未接入。
 
 `still` 支持 `-o`、`--exif`、`--sign`、`--dark`、`--skip-existing` 和 `--scale <1-4>`；视频渲染同样支持 `--exif`、`--sign`、`--dark`，效果与 still 对齐（渲染时覆盖，不写入 timeline.json）。`--draft` 会按正式分辨率的 2/3 快速输出预览（默认配置为 720p）并跳过响度归一；不带 `-o` 时，默认文件名会追加相应变体和 `-draft` 后缀。完整用法以 `node cli/tsuzuri.mjs help` 为准。
 
