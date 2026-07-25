@@ -2,10 +2,12 @@ import {useState} from 'react';
 
 import './App.css';
 import {FolderPicker} from './FolderPicker';
+import {Lyrics} from './Lyrics';
+import {Player} from './Player';
 import {PhotoGrid} from './PhotoGrid';
 import type {ProjectResponse} from './types';
 
-type Step = 1 | 2;
+type Step = 1 | 2 | 3 | 4;
 
 const App = () => {
   const [step, setStep] = useState<Step>(1);
@@ -17,7 +19,7 @@ const App = () => {
   };
 
   const goToStep = (target: Step) => {
-    if (target === 2 && !project) return;
+    if (target !== 1 && !project) return;
     setStep(target);
   };
 
@@ -32,12 +34,20 @@ const App = () => {
           <button className={step === 2 ? 'step-active' : ''} onClick={() => goToStep(2)}>
             ② 查看照片
           </button>
+          <button className={step === 3 ? 'step-active' : ''} onClick={() => goToStep(3)}>
+            ③ 播放成片
+          </button>
+          <button className={step === 4 ? 'step-active' : ''} onClick={() => goToStep(4)}>
+            ④ 歌词
+          </button>
         </nav>
       </header>
 
       <main className="app-main">
         {step === 1 && <FolderPicker onProjectLoaded={handleProjectLoaded} />}
         {step === 2 && (project ? <PhotoGrid project={project} /> : <p className="hint">先选择一个素材夹吧。</p>)}
+        {step === 3 && (project ? <Player project={project} /> : <p className="hint">先选择一个素材夹吧。</p>)}
+        {step === 4 && (project ? <Lyrics project={project} /> : <p className="hint">先选择一个素材夹吧。</p>)}
       </main>
     </div>
   );
