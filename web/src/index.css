@@ -1,0 +1,45 @@
+:root {
+  --color-text: #37332d;
+  --color-secondary-text: #b0aea6;
+  --color-divider: #e4e2dc;
+  --color-background: #ffffff;
+  --color-photo-outline: rgba(16, 20, 26, 0.1);
+  --shadow-photo: 0 2px 5px -1px rgba(10, 12, 16, 0.2), 0 8px 18px -6px rgba(10, 12, 16, 0.18),
+    0 18px 36px -10px rgba(10, 12, 16, 0.12);
+  --shadow-photo-large: 0 3px 8px -1px rgba(10, 12, 16, 0.32), 0 16px 36px -8px rgba(10, 12, 16, 0.28),
+    0 36px 72px -16px rgba(10, 12, 16, 0.18);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #e8e5de;
+    --color-secondary-text: #807d76;
+    --color-divider: #2a2925;
+    --color-background: #1a1917;
+    --color-photo-outline: rgba(16, 20, 26, 0.1);
+    --shadow-photo: 0 0 40px -12px rgba(255, 252, 244, 0.06);
+    --shadow-photo-large: 0 0 80px -12px rgba(255, 252, 244, 0.06);
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Mincho ProN', 'Noto Serif SC', serif;
+  color: var(--color-text);
+  background: var(--color-background);
+}
+
+button {
+  font-family: inherit;
+  color: inherit;
+  cursor: pointer;
+}

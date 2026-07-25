@@ -1,0 +1,193 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem 2rem;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.app-title {
+  font-size: 1.25rem;
+  font-weight: 400;
+  letter-spacing: 0.1em;
+  margin: 0;
+}
+
+.step-nav {
+  display: flex;
+  gap: 1.5rem;
+}
+
+.step-nav button {
+  background: none;
+  border: none;
+  font-size: 0.9rem;
+  color: var(--color-secondary-text);
+  padding: 0.25rem 0;
+}
+
+.step-nav button.step-active {
+  color: var(--color-text);
+  border-bottom: 1px solid var(--color-text);
+}
+
+.app-main {
+  flex: 1;
+  padding: 2rem;
+  max-width: 960px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.hint {
+  color: var(--color-secondary-text);
+  font-size: 0.95rem;
+}
+
+.hint-error {
+  color: var(--color-text);
+}
+
+/* FolderPicker */
+
+.breadcrumb {
+  margin-bottom: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--color-secondary-text);
+}
+
+.breadcrumb-item {
+  background: none;
+  border: none;
+  font: inherit;
+  color: inherit;
+  padding: 0;
+}
+
+.breadcrumb-item:hover {
+  color: var(--color-text);
+}
+
+.breadcrumb-sep {
+  margin: 0 0.35rem;
+}
+
+.folder-list {
+  list-style: none;
+  margin: 0 0 1.5rem;
+  padding: 0;
+  border-top: 1px solid var(--color-divider);
+}
+
+.folder-list li {
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.folder-item {
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 0.75rem 0.25rem;
+  font-size: 1rem;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.project-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--color-secondary-text);
+  display: inline-block;
+}
+
+.folder-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.primary-button {
+  background: var(--color-text);
+  color: var(--color-background);
+  border: none;
+  padding: 0.6rem 1.4rem;
+  border-radius: 4px;
+  font-size: 0.95rem;
+}
+
+.primary-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* PhotoGrid */
+
+.project-path {
+  color: var(--color-secondary-text);
+  font-size: 0.85rem;
+  margin-bottom: 1.5rem;
+  word-break: break-all;
+}
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 2rem;
+}
+
+.photo-card {
+  background: none;
+  border: none;
+  padding: 0;
+  border-radius: 2px;
+  overflow: hidden;
+  box-shadow: var(--shadow-photo);
+  border: 1px solid var(--color-photo-outline);
+}
+
+.photo-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  aspect-ratio: 1;
+}
+
+/* Lightbox */
+
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.lightbox-image {
+  max-width: 90vw;
+  max-height: 88vh;
+  box-shadow: var(--shadow-photo-large);
+  border-radius: 2px;
+}
+
+.lightbox-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 2rem;
+  background: none;
+  border: none;
+  color: #fff;
+  font-size: 2rem;
+  line-height: 1;
+}
