@@ -417,8 +417,10 @@ export const Materials = ({
           }
         >
           {lyricLines > 0 ? (
+            /* 原先只列前 3 行,刚下完歌词的人看到的就是"显示不全"。这里是素材段,
+               确认自己拿到的是哪一份歌词正是它的用途,所以列全,超高了自己滚。 */
             <ol className="material-lyric-preview">
-              {project.lyrics!.slice(0, 3).map((line, index) => (
+              {project.lyrics!.map((line, index) => (
                 <li key={`${line.time}-${index}`}>{line.text || '⋯'}</li>
               ))}
             </ol>

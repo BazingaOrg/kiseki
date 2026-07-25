@@ -431,6 +431,15 @@
   font-size: 0.9rem;
   line-height: 1.9;
   color: var(--color-secondary-text);
+  /* 列全但不喧宾夺主:超过这个高度自己滚,上下淡出提示还有内容 */
+  max-height: 11rem;
+  overflow-y: auto;
+  scrollbar-width: none;
+  mask-image: linear-gradient(to bottom, #000 82%, transparent);
+}
+
+.material-lyric-preview::-webkit-scrollbar {
+  display: none;
 }
 
 /* ── 素材:在线补齐 ───────────────────────────────────── */
