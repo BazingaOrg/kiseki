@@ -107,6 +107,104 @@ test('multiline CJK messages repeat their prefix', () => {
   assert.equal(stderr.output, '● 错误甲\n● 错误乙\n');
 });
 
+test('TSUZURI_JSON_PROGRESS 关闭时终端输出与开启前逐字节一致', () => {
+  const run = (env) => {
+    const stdout = stream(true);
+    const stderr = stream(true);
+    const output = createTerminal({stdout, stderr, env});
+    output.info('信息');
+    output.start('开始');
+    output.success('完成');
+    output.warn('提醒');
+    output.error('失败');
+    output.detail('细节一\n细节二');
+    return {stdout: stdout.output, stderr: stderr.output};
+  };
+
+  const withoutFlag = run({TERM: 'xterm-256color'});
+  const flagOff = run({TERM: 'xterm-256color', TSUZURI_JSON_PROGRESS: '0'});
+  const flagUnset = run({TERM: 'xterm-256color', TSUZURI_JSON_PROGRESS: undefined});
+
+  assert.deepEqual(flagOff, withoutFlag);
+  assert.deepEqual(flagUnset, withoutFlag);
+});
+
+test('TSUZURI_JSON_PROGRESS=1 时每次调用向 JSON 出口发一条对应 kind 的事件', () => {
+  const stdout = stream(true);
+  const stderr = stream(true);
+  const events = [];
+  const output = createTerminal({
+    stdout,
+    stderr,
+    env: {TERM: 'xterm-256color', TSUZURI_JSON_PROGRESS: '1'},
+    jsonWrite: (event) => events.push(event),
+  });
+
+  output.info('信息');
+  output.start('开始');
+  output.success('完成');
+  output.warn('提醒');
+  output.error('失败');
+  output.detail('细节');
+
+  assert.deepEqual(events, [
+    {kind: 'info', text: '信息'},
+    {kind: 'start', text: '开始'},
+    {kind: 'success', text: '完成'},
+    {kind: 'warn', text: '提醒'},
+    {kind: 'error', text: '失败'},
+    {kind: 'detail', text: '细节'},
+  ]);
+  // 终端输出不受 JSON 出口影响,与关闭开关时完全一致的写法。
+  assert.equal(
+    stdout.output,
+    '\x1b[39m●\x1b[0m 信息\n' +
+      '\x1b[38;2;217;119;87m●\x1b[0m 开始\n' +
+      '\x1b[32m●\x1b[0m 完成\n' +
+      '\x1b[2m└ 细节\x1b[0m\n',
+  );
+  assert.equal(stderr.output, '\x1b[33m●\x1b[0m 提醒\n\x1b[31m●\x1b[0m 失败\n');
+});
+
+test('多行消息按行拆成多条 JSON 事件,与终端换行行为一致', () => {
+  const stdout = stream(false);
+  const stderr = stream(false);
+  const events = [];
+  const output = createTerminal({
+    stdout,
+    stderr,
+    env: {TSUZURI_JSON_PROGRESS: '1'},
+    jsonWrite: (event) => events.push(event),
+  });
+
+  output.info('第一行\n第二行');
+  output.error('错误甲\n错误乙');
+
+  assert.deepEqual(events, [
+    {kind: 'info', text: '第一行'},
+    {kind: 'info', text: '第二行'},
+    {kind: 'error', text: '错误甲'},
+    {kind: 'error', text: '错误乙'},
+  ]);
+});
+
+test('开关开启但 fd 3 未打开时,默认 JSON 写入器吞掉 EBADF 且不影响终端输出', () => {
+  const stdout = stream(true);
+  const stderr = stream(true);
+  // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...)。
+  // 测试进程通常没有打开 fd 3,预期抛 EBADF 并被内部吞掉。
+  const output = createTerminal({stdout, stderr, env: {TSUZURI_JSON_PROGRESS: '1'}});
+
+  assert.doesNotThrow(() => {
+    output.info('信息');
+    output.warn('提醒');
+    output.detail('细节');
+  });
+
+  assert.equal(stdout.output, '\x1b[39m●\x1b[0m 信息\n\x1b[2m└ 细节\x1b[0m\n');
+  assert.equal(stderr.output, '\x1b[33m●\x1b[0m 提醒\n');
+});
+
 test('output option requires a value', () => {
   assert.throws(() => parseArgs(['album', '-o']), /需要输出文件路径/);
   assert.throws(() => parseArgs(['album', '--output']), /需要输出文件路径/);

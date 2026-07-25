@@ -1,3 +1,5 @@
+import {defaultJsonWrite, jsonProgressEnabled} from './term.mjs';
+
 const clampPercent = (value) =>
   Math.max(0, Math.min(100, Math.round(Number(value) * 100)));
 
@@ -9,11 +11,16 @@ const formatBar = (percent) => {
 };
 
 /** Stable-width progress bar + percentage output for long-running renderer stages. */
-export const createPercentProgress = ({stream = process.stdout} = {}) => {
+export const createPercentProgress = ({
+  stream = process.stdout,
+  env = process.env,
+  jsonWrite = defaultJsonWrite,
+} = {}) => {
   let label = null;
   let percent = -1;
   let lastPrintedBucket = -1;
   const interactive = Boolean(stream.isTTY);
+  const jsonEnabled = jsonProgressEnabled(env);
 
   const finishLine = () => {
     if (interactive && label !== null) stream.write('\n');
@@ -33,6 +40,7 @@ export const createPercentProgress = ({stream = process.stdout} = {}) => {
       }
       if (nextPercent === percent) return;
       percent = nextPercent;
+      if (jsonEnabled) jsonWrite({kind: 'progress', label: nextLabel, percent});
       const line = currentLine();
 
       if (interactive) {
