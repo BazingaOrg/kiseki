@@ -1,13 +1,20 @@
 export const PREVIEW_LINES = 12;
 
 /** 解析 LRC 文本为 [{time, text}](秒),忽略元数据行;用于落盘前 preview。 */
-export const parseLrc = (text) => {
+/**
+ * @param {string} text
+ * @param {{keepGaps?: boolean}} [options]
+ *   `keepGaps` 保留只有时间戳、没有文本的行。这类行在 LRC 里是"上一句到此为止"
+ *   的标记(间奏、留白),对**视频字幕**没有意义(空字幕不该显示,所以默认丢掉),
+ *   但对**跟播**是必需的 —— 没有它,间奏那十几秒里上一句会一直挂着高亮不消失。
+ */
+export const parseLrc = (text, {keepGaps = false} = {}) => {
   const entries = [];
   for (const raw of String(text ?? '').split(/\r?\n/)) {
     const tags = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
     if (tags.length === 0) continue;
     const content = raw.replace(/\[[^\]]*\]/g, '').trim();
-    if (!content) continue;
+    if (!content && !keepGaps) continue;
     for (const tag of tags) {
       entries.push({time: Number(tag[1]) * 60 + Number(tag[2]), text: content});
     }

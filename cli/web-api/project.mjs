@@ -15,6 +15,25 @@ import {resolveSafePath} from './sandbox.mjs';
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
+/**
+ * 把 keepGaps 解析出来的空文本行折叠成上一句的 `until`,自己不出现在结果里。
+ * 前端据此知道"这一句到点该收了",间奏期间不再有行被高亮。
+ * @param {{time: number, text: string}[]} entries
+ * @returns {{time: number, text: string, until: number|null}[]}
+ */
+export const withGapEnds = (entries) => {
+  const out = [];
+  for (const entry of entries) {
+    if (entry.text) {
+      out.push({time: entry.time, text: entry.text, until: null});
+      continue;
+    }
+    // 空行:标记上一句的结束。开头就是空行则无事可做。
+    if (out.length > 0) out[out.length - 1].until = entry.time;
+  }
+  return out;
+};
+
 const listOutputFiles = (outputDir, exts) => {
   if (!fs.existsSync(outputDir)) return [];
   try {
@@ -52,7 +71,9 @@ export const getProject = (root, requestedPath) => {
   let lyricsSource = null;
   if (lyrics.length > 0) {
     try {
-      const parsed = parseLrc(fs.readFileSync(path.join(safePath, lyrics[0]), 'utf8'));
+      // keepGaps:把"只有时间戳没有文本"的行也读进来,转成上一句的 until。
+      // 没有它,间奏那十几秒里上一句会一直挂着高亮不消失。
+      const parsed = withGapEnds(parseLrc(fs.readFileSync(path.join(safePath, lyrics[0]), 'utf8'), {keepGaps: true}));
       // 只在真解析出行时才认作歌词来源。空文件、或只有 [ti:]/[ar:] 标签的 .lrc
       // 会让 parseLrc 返回 [],若把它当成"有 .lrc"就会永久遮蔽已识别的歌词
       if (parsed.length > 0) {

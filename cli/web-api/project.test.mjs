@@ -23,7 +23,11 @@ test('assembles photos, audio, lyrics and output listings', () => {
   assert.deepEqual(result.body.photos.map((p) => path.basename(p)).sort(), ['a.jpg', 'b.png']);
   assert.equal(path.basename(result.body.audio), 'song.mp3');
   assert.equal(path.basename(result.body.lyricsFile), 'song.lrc');
-  assert.deepEqual(result.body.lyrics, [{time: 1, text: 'hello'}, {time: 2, text: 'world'}]);
+  // until 标记「这一句到点该收了」,没有空行标记时为 null
+  assert.deepEqual(result.body.lyrics, [
+    {time: 1, text: 'hello', until: null},
+    {time: 2, text: 'world', until: null},
+  ]);
   assert.deepEqual(result.body.output.stills.map((p) => path.basename(p)), ['a.png']);
   assert.equal(result.body.output.videos.length, 1);
 });
@@ -135,4 +139,29 @@ test('missing confidence becomes null rather than being dropped', () => {
 
   const {body} = getProject(root, root);
   assert.equal(body.lyrics[0].confidence, null);
+});
+
+test('lrc 里只有时间戳的空行转成上一句的 until,不再自己占一行', () => {
+  // 这类行是"上一句到此为止"的标记(间奏、留白)。丢掉它,间奏那十几秒里
+  // 上一句会一直挂着高亮不消失;把它当成一行歌词,列表里又会多出一堆 ⋯。
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  fs.writeFileSync(
+    path.join(root, 'music.lrc'),
+    ['[00:01.00]第一句', '[00:05.00]', '[00:09.00]第二句', '[00:12.00]第三句'].join('\n'),
+  );
+  const {body} = getProject(root, root);
+  assert.deepEqual(body.lyrics, [
+    {time: 1, text: '第一句', until: 5},
+    {time: 9, text: '第二句', until: null},
+    {time: 12, text: '第三句', until: null},
+  ]);
+});
+
+test('开头就是空行时不炸,也不凭空造出一行', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  fs.writeFileSync(path.join(root, 'music.lrc'), ['[00:00.00]', '[00:03.00]开场'].join('\n'));
+  const {body} = getProject(root, root);
+  assert.deepEqual(body.lyrics, [{time: 3, text: '开场', until: null}]);
 });

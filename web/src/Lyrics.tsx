@@ -11,14 +11,20 @@ import {useEffect, useRef, useState} from 'react';
 import type {LyricLine} from './types';
 import {RENDER_CONFIDENCE_THRESHOLD} from './types';
 
-/** 已按时间升序,找最后一条 time <= currentTime 的行。 */
+/**
+ * 已按时间升序,找最后一条 time <= currentTime 的行。
+ * 带 `until` 的行到点就不再算当前行 —— 那是 .lrc 里"这一句到此为止"的标记,
+ * 没有它,间奏那十几秒里上一句会一直挂着高亮不消失。
+ */
 export const findActiveLine = (lyrics: LyricLine[], currentTime: number): number => {
   let index = -1;
   for (let i = 0; i < lyrics.length; i += 1) {
     if (lyrics[i].time <= currentTime) index = i;
     else break;
   }
-  return index;
+  if (index < 0) return -1;
+  const until = lyrics[index].until;
+  return typeof until === 'number' && currentTime >= until ? -1 : index;
 };
 
 const RESUME_FOLLOW_AFTER_MS = 3000;
