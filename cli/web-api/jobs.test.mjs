@@ -788,3 +788,87 @@ test('取消时先快照后代,并立刻逐个 SIGKILL', async () => {
   // 宽限期过后仍对整个进程组补一刀,兜住扛过 SIGTERM 的自家进程
   assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
+
+// --- 遗留项:停滞看门狗、任务表上限、临时目录收尾 --------------------------
+
+/** 停滞阈值与轮询间隔都调到毫秒级,免得单测干等两分钟。 */
+const fastStallDeps = (extra = {}) => ({
+  killImpl: () => {},
+  stallTimeoutMs: 50,
+  stallCheckIntervalMs: 10,
+  ...extra,
+});
+
+test('fetch-audio 长时间无进展会被中止,并说明卡在哪', async () => {
+  // 卡在 0% 的下载(代理挂了但 TCP 不断)会永远占着并发锁,
+  // 用户不点取消就再也起不了任何任务。
+  const child = makeFakeYtDlpChild();
+  const manager = createJobManager(fastStallDeps({
+    spawnImpl: () => child,
+    tempParent: makeTempDir('tsuzuri-stall-'),
+  }));
+  const folder = makeTempDir('tsuzuri-stalldest-');
+  const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  const texts = manager.getJob(id).events.map((event) => event.text ?? '').join(' ');
+  assert.match(texts, /没有进展/, '必须说清是卡住了,而不是无声无息地停在那');
+});
+
+test('lyrics 这类长时间静默的任务不该被停滞看门狗误杀', async () => {
+  // whisper 会先安静好几分钟再一次性吐结果,挂上看门狗必然误杀
+  const child = makeFakeChild();
+  const manager = createJobManager(fastStallDeps({spawnImpl: () => child}));
+  const {id} = manager.createJob({kind: 'lyrics', folder: '/tmp/x'});
+
+  await new Promise((resolve) => setTimeout(resolve, 200));
+  assert.equal(manager.getJob(id).status, 'running', '静默不等于卡死');
+  assert.deepEqual(manager.getJob(id).events, []);
+});
+
+test('收到进度就重新计时,下载中的任务不会被误判为停滞', async () => {
+  const child = makeFakeYtDlpChild();
+  const manager = createJobManager(fastStallDeps({
+    spawnImpl: () => child,
+    stallTimeoutMs: 120,
+    tempParent: makeTempDir('tsuzuri-alive-'),
+  }));
+  const folder = makeTempDir('tsuzuri-alivedest-');
+  const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
+
+  for (let percent = 1; percent <= 6; percent += 1) {
+    child.stdio[1].write(`[download]  ${percent}.0% of 3MiB\n`);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+  }
+  const texts = manager.getJob(id).events.map((event) => event.text ?? '').join(' ');
+  assert.doesNotMatch(texts, /没有进展/, '一直有进度就不该被中止');
+});
+
+test('任务表只保留最近若干条,不无限攒 events', async () => {
+  const manager = createJobManager({spawnImpl: makeFakeChild, killImpl: () => {}});
+  const ids = [];
+  for (let i = 0; i < 25; i += 1) {
+    const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+    ids.push(id);
+    // 立刻结束,好让下一个能起来(makeFakeChild 每次都是新实例,直接发 exit)
+    manager.cancelJob(id);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  const alive = ids.filter((id) => manager.getJob(id) !== null);
+  assert.ok(alive.length <= 21, `期望被剪到 20 条上下,实际还剩 ${alive.length}`);
+  assert.ok(alive.length > 0, '不该把记录全清光');
+});
+
+test('killAll 会删掉 fetch-audio 的下载中转目录', () => {
+  // Ctrl+C 之后进程立刻就走,'exit' 回调没机会跑,finalize 里的 rmSync 也就不执行 ——
+  // 这里是清掉 /tmp/tsuzuri-fetch-* 的唯一机会。
+  const child = makeFakeYtDlpChild();
+  const tempParent = makeTempDir('tsuzuri-killall-');
+  const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}, tempParent});
+  const folder = makeTempDir('tsuzuri-killalldest-');
+  manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
+
+  assert.equal(fs.readdirSync(tempParent).length, 1, '下载中转目录应当已建好');
+  manager.killAll();
+  assert.deepEqual(fs.readdirSync(tempParent), [], 'killAll 之后不该留下中转目录');
+});

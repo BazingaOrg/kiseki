@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import {cacheKey, normalizeWidth, resolveThumb} from './thumb.mjs';
+import {cacheKey, normalizeWidth, pruneCache, resolveThumb} from './thumb.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-thumb-'));
 
@@ -75,4 +75,41 @@ test('falls back to the original file when ffmpeg cannot decode it', async () =>
   // 比对走 realpath:沙箱会展开符号链接(macOS 上 /var 实为 /private/var)
   assert.equal(result.status, 200);
   assert.equal(result.streamPath, fs.realpathSync(broken));
+});
+
+// --- 缓存修剪 --------------------------------------------------------------
+
+test('缓存没超上限时一个都不删', () => {
+  const dir = makeTempRoot();
+  for (let i = 0; i < 5; i += 1) fs.writeFileSync(path.join(dir, `${i}.jpg`), 'x');
+  assert.equal(pruneCache(dir, 10), 0);
+  assert.equal(fs.readdirSync(dir).length, 5);
+});
+
+test('超出上限时砍到 80%,淘汰最久没被读过的', () => {
+  const dir = makeTempRoot();
+  // 造 12 个,访问时间递增:0 最旧,11 最新
+  for (let i = 0; i < 12; i += 1) {
+    const file = path.join(dir, `${i}.jpg`);
+    fs.writeFileSync(file, 'x');
+    const when = new Date(2020, 0, 1 + i);
+    fs.utimesSync(file, when, when);
+  }
+  const removed = pruneCache(dir, 10);
+  const left = fs.readdirSync(dir).map((name) => Number(name.replace('.jpg', ''))).sort((a, b) => a - b);
+  assert.equal(left.length, 8, '10 的 80% = 8');
+  assert.equal(removed, 4);
+  assert.deepEqual(left, [4, 5, 6, 7, 8, 9, 10, 11], '留下的必须是最近读过的那批');
+});
+
+test('修剪不碰写了一半的临时文件', () => {
+  const dir = makeTempRoot();
+  for (let i = 0; i < 12; i += 1) fs.writeFileSync(path.join(dir, `${i}.jpg`), 'x');
+  fs.writeFileSync(path.join(dir, 'half.123.abc.tmp.jpg'), 'x');
+  pruneCache(dir, 4);
+  assert.ok(fs.existsSync(path.join(dir, 'half.123.abc.tmp.jpg')), '正在写的文件不该被顺手删掉');
+});
+
+test('缓存目录不存在时修剪不报错', () => {
+  assert.equal(pruneCache(path.join(makeTempRoot(), 'nope'), 10), 0);
 });

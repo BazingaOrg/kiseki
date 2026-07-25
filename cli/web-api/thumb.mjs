@@ -39,6 +39,48 @@ export const cacheKey = (filePath, stat, width) =>
     .update(`${filePath}\0${stat.mtimeMs}\0${stat.size}\0${width}`)
     .digest('hex');
 
+/**
+ * 缓存文件数上限。缓存键含 mtime,原图改一次就多留一份旧的;浏览多个大素材夹
+ * 也会一路堆积。系统临时目录最终会回收,但那可能是好几天以后的事,期间磁盘上
+ * 就一直躺着几个 GB。
+ *
+ * 按数量而不是按体积:每张缩略图都是几 KB 到几十 KB,数量是更直观也更省事的度量
+ * (不用 stat 每个文件量大小)。
+ */
+export const MAX_CACHE_ENTRIES = 2000;
+
+/** 超出上限时按最后访问时间淘汰最旧的那批,一次砍到 80%,免得每张都触发修剪。 */
+export const pruneCache = (dir = CACHE_DIR, limit = MAX_CACHE_ENTRIES) => {
+  let entries;
+  try {
+    entries = fs.readdirSync(dir).filter((name) => name.endsWith('.jpg') && !name.endsWith('.tmp.jpg'));
+  } catch {
+    return 0;
+  }
+  if (entries.length <= limit) return 0;
+
+  const withTime = [];
+  for (const name of entries) {
+    try {
+      withTime.push({name, atime: fs.statSync(path.join(dir, name)).atimeMs});
+    } catch {
+      // 正被别的请求 rename 掉了,跳过
+    }
+  }
+  withTime.sort((a, b) => a.atime - b.atime);
+  const removeCount = withTime.length - Math.floor(limit * 0.8);
+  let removed = 0;
+  for (const {name} of withTime.slice(0, removeCount)) {
+    try {
+      fs.rmSync(path.join(dir, name), {force: true});
+      removed += 1;
+    } catch {
+      // 删不掉就下次再说
+    }
+  }
+  return removed;
+};
+
 const runFfmpeg = (source, destination, width) =>
   new Promise((resolve) => {
     const child = spawn('ffmpeg', [
@@ -113,5 +155,8 @@ export const resolveThumb = async (root, requestedPath, rawWidth) => {
     fs.rmSync(pending, {force: true});
     return serve(safePath, 'image/jpeg');
   }
+  // 只在真正新生成了一张之后才考虑修剪:命中缓存的请求(绝大多数)一次 readdir
+  // 都不用付。
+  pruneCache();
   return serve(cached, 'image/jpeg');
 };

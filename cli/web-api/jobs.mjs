@@ -180,6 +180,8 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
   const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
   return {
     command: 'yt-dlp',
+    // 暴露出去,好让 killAll 这种来不及等 'exit' 的收尾路径也能把它删掉
+    tempDir,
     // --newline:yt-dlp 默认用 \r 原地刷进度条,不换行的话 readline 一行都读不到,
     // 进度会一直卡在不确定态直到下载结束。
     args: [
@@ -248,6 +250,22 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir
  */
 const FORCE_KILL_AFTER_MS = 3000;
 
+/**
+ * fetch-audio 的停滞阈值。yt-dlp 下载期间每秒都在刷进度,超过这么久一条都没有,
+ * 基本就是卡死了(代理挂了但 TCP 不断是最常见的形态)。不加这个,一个永远到不了
+ * 100% 的下载会一直占着并发锁,用户不点取消就再也起不了任何任务。
+ *
+ * **只对 fetch-audio 生效**:whisper 识别会先安静好几分钟再一次性吐结果,
+ * 对它做停滞检测必然误杀。
+ */
+const STALL_TIMEOUT_MS = 120_000;
+
+/** 停滞检查的轮询间隔。 */
+const STALL_CHECK_INTERVAL_MS = 15_000;
+
+/** 内存里最多保留多少条任务记录。本地单人工具,留最近的够回看就行。 */
+const MAX_JOBS_KEPT = 20;
+
   /**
  * 列出某个 pid 的全部后代(含自身之外的各级子孙)。
  *
@@ -303,6 +321,9 @@ export const createJobManager =({
   killImpl = process.kill,
   tempParent = os.tmpdir(),
   readProcessTable = defaultReadProcessTable,
+  now = () => Date.now(),
+  stallTimeoutMs = STALL_TIMEOUT_MS,
+  stallCheckIntervalMs = STALL_CHECK_INTERVAL_MS,
 } = {}) => {
   /** @type {Map<string, object>} */
   const jobs = new Map();
@@ -310,6 +331,7 @@ export const createJobManager =({
 
   /** 记录一条事件并即时推给所有 SSE 订阅者。两种进度来源共用同一个出口。 */
   const emit = (job, event) => {
+    job.lastActivityAt = now();
     job.events.push(event);
     const chunk = `data: ${JSON.stringify(event)}\n\n`;
     for (const listener of job.listeners) listener(chunk);
@@ -374,9 +396,28 @@ export const createJobManager =({
       env: spec.env,
     });
 
-    const job = {id, kind, status: 'running', exitCode: null, events: [], child, cancelled: false, listeners: new Set(), killTimer: null};
+    const job = {
+      id, kind, status: 'running', exitCode: null, events: [], child,
+      cancelled: false, listeners: new Set(), killTimer: null,
+      tempDir: spec.tempDir ?? null,
+      // 停滞检测用:最后一次收到事件的时间
+      lastActivityAt: Date.now(),
+      stallTimer: null,
+    };
     jobs.set(id, job);
     runningJobId = id;
+
+    // 停滞看门狗:只给 fetch-audio 挂。yt-dlp 下载时每秒都在刷进度,长时间一条
+    // 都没有就是卡死了;而 whisper 识别本来就会安静好几分钟,给它挂必然误杀。
+    if (spec.progressSource === 'ytdlp-stdout') {
+      job.stallTimer = setInterval(() => {
+        if (job.status !== 'running') return;
+        if (now() - job.lastActivityAt < stallTimeoutMs) return;
+        emit(job, {kind: 'error', text: '下载长时间没有进展,已中止(网络或代理可能断了)'});
+        cancelJob(job.id);
+      }, stallCheckIntervalMs);
+      job.stallTimer.unref?.();
+    }
 
     // 没被当作进度来源的那几路输出不暴露给前端(契约没有要求),但必须消费掉,
     // 否则子进程写满 pipe 缓冲区之后会被阻塞挂起。
@@ -446,10 +487,15 @@ export const createJobManager =({
 
   /** 广播 end 帧、清监听器、释放并发锁。exit 与 error 两条收尾路径共用。 */
   const finish = (job) => {
+    if (job.stallTimer !== null) {
+      clearInterval(job.stallTimer);
+      job.stallTimer = null;
+    }
     const endChunk = `event: end\ndata: ${JSON.stringify({status: job.status, exitCode: job.exitCode})}\n\n`;
     for (const listener of job.listeners) listener(endChunk);
     job.listeners.clear();
     if (runningJobId === job.id) runningJobId = null;
+    pruneJobs();
   };
 
   const getJob = (id) => {
@@ -481,6 +527,27 @@ export const createJobManager =({
       killImpl(-job.child.pid, signal);
     } catch {
       // 进程可能已经退出,或权限问题——取消语义上已经"发起"了,不该报 500。
+    }
+  };
+
+  /** 删掉 fetch-audio 的下载中转目录。没有就什么都不做。 */
+  const removeTempDir = (job) => {
+    if (!job.tempDir) return;
+    try {
+      fs.rmSync(job.tempDir, {recursive: true, force: true});
+    } catch {
+      // 删不掉就算了,系统临时目录自己会回收
+    }
+    job.tempDir = null;
+  };
+
+  /** 只保留最近的若干条任务记录,避免长时间开着的 server 无限攒 events。 */
+  const pruneJobs = () => {
+    if (jobs.size <= MAX_JOBS_KEPT) return;
+    for (const [id, job] of jobs) {
+      if (jobs.size <= MAX_JOBS_KEPT) break;
+      // 只清已结束的,正在跑的绝不能动
+      if (job.status !== 'running') jobs.delete(id);
     }
   };
 
@@ -544,6 +611,10 @@ export const createJobManager =({
       signalGroup(job, 'SIGTERM');
       signalGroup(job, 'SIGKILL');
       killSnapshot(job, 'SIGKILL');
+      // Ctrl+C 之后进程立刻就走,'exit' 回调没机会跑,finalize 里的 rmSync 也就
+      // 不会执行 —— 下载中途关掉 server 会把 /tmp/tsuzuri-fetch-* 留在磁盘上。
+      // 这里同步删掉,是这条路径上唯一的机会。
+      removeTempDir(job);
     }
   };
 
