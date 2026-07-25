@@ -244,3 +244,12 @@ test('missing folder in the default command reports usage listing all forms', ()
   assert.throws(() => parseArgs([]), /tsuzuri lyrics <folder>/);
   assert.throws(() => parseArgs([]), /tsuzuri still/);
 });
+
+test('web command accepts an optional folder argument', () => {
+  assert.deepEqual(parseArgs(['web']), {command: 'web', folder: null});
+  assert.deepEqual(parseArgs(['web', 'album']), {command: 'web', folder: 'album'});
+});
+
+test('web command rejects extra flag-like arguments', () => {
+  assert.throws(() => parseArgs(['web', 'album', '--bogus']), /未知参数: --bogus/);
+});

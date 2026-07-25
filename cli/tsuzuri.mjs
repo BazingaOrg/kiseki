@@ -32,6 +32,7 @@ import {runLyrics} from './lyrics.mjs';
 import {MENU_BACK, runMenu, writeBanner, writeFarewell} from './menu.mjs';
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {runStill} from './still.mjs';
+import {runWeb} from './web.mjs';
 import {term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
 import {FIXES} from './dependencies.mjs';
@@ -110,6 +111,11 @@ export const runCommandFromArgv = async (
     return runLyrics(parsed.folder);
   }
   if (parsed.command === 'still') return runStill(parsed);
+  if (parsed.command === 'web') {
+    // server 保持监听,进程靠它挂起,不在这里等待——不返回一个永远不 resolve 的 Promise
+    await runWeb(parsed.folder);
+    return 0;
+  }
 
   const {folder: folderArg, output, exif, sign, dark, portrait, square, draft, trim, filter} = parsed;
   const folder = path.resolve(folderArg);

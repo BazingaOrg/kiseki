@@ -48,6 +48,7 @@ node cli/tsuzuri.mjs fetch ./osaka-trip
 node cli/tsuzuri.mjs still ./photo.jpg
 node cli/tsuzuri.mjs still ./photos --exif --sign --dark
 node cli/tsuzuri.mjs doctor
+node cli/tsuzuri.mjs web ./osaka-trip
 node cli/tsuzuri.mjs help
 ```
 
@@ -61,6 +62,14 @@ completion or failure, and `q` exits. Commands with arguments remain one-shot. T
 | `fetch <folder>` | Fetch audio/lyrics into the media folder online (interactive) |
 | `still <photo\|folder>` | Export a matching still PNG |
 | `doctor` | Check local dependencies |
+| `web [folder]` | Start a local read-only gallery web page |
+
+`tsuzuri web [folder]` starts a local read-only HTTP server and tries to open your default browser.
+Pass `folder` to lock browsing to that media folder (you can't navigate outside it); omit it to lock
+browsing to your home directory, and pick a media folder from within the page. First-time use requires
+building the frontend: `npm --prefix web install && npm --prefix web run build`, producing `web/dist`,
+which `tsuzuri web` serves directly; you'll see a placeholder notice until it's built. No render or write
+operations are ever triggered.
 
 `still` supports `-o`, `--exif`, `--sign`, `--dark`, `--skip-existing`, and `--scale <1-4>`; video rendering supports the same `--exif`, `--sign`, and `--dark` flags, matching still's behavior (applied at render time, never written to timeline.json), and appends an `-exif`/`-sign`/`-dark` suffix to the default output filename when `-o` is omitted. Run `node cli/tsuzuri.mjs help` for the current full syntax.
 

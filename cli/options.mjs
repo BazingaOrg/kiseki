@@ -28,10 +28,11 @@ export const USAGE =
   '  tsuzuri doctor                             检查依赖是否就绪\n' +
   '  tsuzuri lyrics <folder>                    只识别歌词并预览(不渲染)\n' +
   '  tsuzuri fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
+  '  tsuzuri web [folder]                       启动本地只读画廊网页(不传 folder 则从主目录选)\n' +
   '  tsuzuri help                               显示本说明(同 -h / --help)\n' +
   `still 选项: ${STILL_OPTIONS}\n` +
   '目录约定:文件夹内放照片(jpg/png/webp)+ 唯一的音频文件(mp3 等)\n' +
-  '若文件夹名恰好叫 doctor / lyrics / still / fetch / help,用路径前缀转义,如 tsuzuri ./still';
+  '若文件夹名恰好叫 doctor / lyrics / still / fetch / web / help,用路径前缀转义,如 tsuzuri ./still';
 
 const parseRenderArgs = (argv) => {
   const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null};
@@ -136,6 +137,18 @@ const parseFetchArgs = (rest) => {
   return args;
 };
 
+const parseWebArgs = (rest) => {
+  const args = {command: 'web', folder: null};
+  for (const token of rest) {
+    if (!args.folder && !token.startsWith('-')) {
+      args.folder = token;
+    } else {
+      throw new CliError(`未知参数: ${token}(用法: tsuzuri web [folder])`);
+    }
+  }
+  return args;
+};
+
 const parseStillArgs = (rest) => {
   const args = {
     command: 'still',
@@ -221,6 +234,7 @@ export const parseArgs = (argv) => {
   if (first === 'lyrics') return parseLyricsArgs(rest);
   if (first === 'fetch') return parseFetchArgs(rest);
   if (first === 'still') return parseStillArgs(rest);
+  if (first === 'web') return parseWebArgs(rest);
   if (first === 'help' || first === '-h' || first === '--help') return {command: 'help'};
   return parseRenderArgs(argv);
 };

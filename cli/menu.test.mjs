@@ -92,7 +92,7 @@ test('buildArgvFromChoices maps each menu entry onto CLI argv', () => {
 test('runMenu reports invalid choices and q exits cleanly', async () => {
   const {result, output} = await interact({lines: ['9', 'q']});
   assert.equal(result, null);
-  assert.match(output, /无效选择,请输入 1-5/);
+  assert.match(output, /无效选择,请输入 1-6/);
   assert.doesNotMatch(output, /回车 选默认 · 0 返回/);
   assert.match(output, /晚安。素材都在原文件夹,随时再来。/);
 });

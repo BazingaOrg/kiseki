@@ -18,6 +18,7 @@ export const MENU_ITEMS = [
   {key: '3', label: '预览歌词识别(lyrics)', pathPrompt: '素材文件夹'},
   {key: '4', label: '检查依赖(doctor)', pathPrompt: null},
   {key: '5', label: '获取音频/歌词到素材夹(fetch)', pathPrompt: '素材文件夹'},
+  {key: '6', label: '打开本地画廊(web)', pathPrompt: null},
 ];
 export const MENU_BACK = Symbol('menu-back');
 
@@ -86,6 +87,7 @@ export const buildArgvFromChoices = ({choice, target, exif = false, sign = false
   if (choice === '3') return ['lyrics', target];
   if (choice === '4') return ['doctor'];
   if (choice === '5') return ['fetch', target];
+  if (choice === '6') return ['web'];
   return null;
 };
 
@@ -161,7 +163,7 @@ export const runMenu = async (
 
     const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, dark, portrait, square, filter});
     term.detail(`等效命令: ${formatEquivalentCommand(argv)}`);
-    if (!['4', '5'].includes(item.key)) {
+    if (!['4', '5', '6'].includes(item.key)) {
       term.detail('进阶配置(分辨率/过渡/字幕/背景…)见素材夹 tsuzuri.toml,参考 docs/config.md');
     }
     return argv;
