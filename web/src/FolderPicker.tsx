@@ -1,4 +1,5 @@
 import {useEffect, useState} from 'react';
+import {ChevronRight, Folder} from 'lucide-react';
 
 import type {DirsResponse, ProjectResponse} from './types';
 
@@ -63,45 +64,47 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
       .finally(() => setSelecting(false));
   };
 
+  const crumbs = dirsResponse ? splitBreadcrumb(dirsResponse.path, dirsResponse.root) : [];
+
   return (
     <div className="folder-picker">
       {dirsResponse && (
-        <div className="breadcrumb">
-          {splitBreadcrumb(dirsResponse.path, dirsResponse.root).map((crumb, index, arr) => (
-            <span key={crumb.path}>
+        <nav className="breadcrumb" aria-label="当前位置">
+          {crumbs.map((crumb, index) => (
+            <span className="breadcrumb-crumb" key={crumb.path}>
+              {index > 0 && <ChevronRight className="breadcrumb-sep" size={13} />}
               <button className="breadcrumb-item" onClick={() => loadDirs(crumb.path)}>
                 {crumb.label}
               </button>
-              {index < arr.length - 1 && <span className="breadcrumb-sep">/</span>}
             </span>
           ))}
-        </div>
+        </nav>
       )}
 
-      {loading && <p className="hint">正在浏览文件夹…</p>}
       {error && <p className="hint hint-error">{error}</p>}
 
-      {!loading && dirsResponse && (
-        <>
-          <ul className="folder-list">
-            {dirsResponse.dirs.length === 0 && <li className="hint">这里没有更多文件夹了。</li>}
-            {dirsResponse.dirs.map((dir) => (
-              <li key={dir.path}>
-                <button className="folder-item" onClick={() => loadDirs(dir.path)}>
-                  {dir.isProject && <span className="project-dot" />}
-                  {dir.name}
-                </button>
-              </li>
-            ))}
-          </ul>
-
-          <div className="folder-actions">
-            <button className="primary-button" onClick={handleSelectFolder} disabled={selecting}>
-              {selecting ? '正在读取…' : '选择这个文件夹'}
-            </button>
-          </div>
-        </>
+      {dirsResponse && (
+        <ul className="folder-list" aria-busy={loading}>
+          {dirsResponse.dirs.length === 0 && !loading && (
+            <li className="folder-empty">这里没有下一层文件夹了。就选它，或者往回退。</li>
+          )}
+          {dirsResponse.dirs.map((dir) => (
+            <li key={dir.path}>
+              <button className="folder-item" onClick={() => loadDirs(dir.path)}>
+                <Folder size={15} strokeWidth={1.5} className="folder-item-icon" />
+                <span className="folder-item-name">{dir.name}</span>
+                {dir.isProject && <span className="folder-badge">像是素材夹</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
       )}
+
+      <div className="folder-actions">
+        <button className="primary-button" onClick={handleSelectFolder} disabled={selecting || !dirsResponse}>
+          {selecting ? '正在读取…' : '就用这个文件夹'}
+        </button>
+      </div>
     </div>
   );
 };

@@ -4,6 +4,14 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>綴り｜tsuzuri</title>
+    <!--
+      与 Logo.tsx 的 Mark 同一份图形。favicon 不能用 currentColor / CSS 变量,
+      浏览器不会给它主题上下文,所以这里把颜色写死成浅色主题的墨色与纸白。
+    -->
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32' fill='%23FFFFFF' stroke='%2337332D' stroke-width='1.6'%3E%3Crect x='17' y='3.5' width='11.5' height='11.5' rx='1.5'/%3E%3Crect x='10.25' y='10.25' width='11.5' height='11.5' rx='1.5'/%3E%3Crect x='3.5' y='17' width='11.5' height='11.5' rx='1.5'/%3E%3C/svg%3E"
+    />
   </head>
   <body>
     <div id="root"></div>

@@ -1,22 +1,39 @@
 :root {
+  /* 取自 renderer/src/theme.ts 的 PALETTES,与成片视觉同源 */
   --color-text: #37332d;
-  --color-secondary-text: #b0aea6;
+  /**
+   * 刻意偏离 theme.ts 的 secondaryText(#B0AEA6)。那个值是给成片用的 ——
+   * 压在照片上的小字展签,浅一点才不抢画面;搬到网页正文上对比度只有 2:1,
+   * 屏幕上根本读不清。这里取到 4.7:1(WCAG AA),媒介不同,取值就该不同。
+   */
+  --color-secondary-text: #6f6a60;
+  /** 真正次要、不承载信息的文字(占位、分隔)才用原来的浅调 */
+  --color-faint-text: #b0aea6;
   --color-divider: #e4e2dc;
   --color-background: #ffffff;
+  --color-surface: #faf9f6;
   --color-photo-outline: rgba(16, 20, 26, 0.1);
   --shadow-photo: 0 2px 5px -1px rgba(10, 12, 16, 0.2), 0 8px 18px -6px rgba(10, 12, 16, 0.18),
     0 18px 36px -10px rgba(10, 12, 16, 0.12);
   --shadow-photo-large: 0 3px 8px -1px rgba(10, 12, 16, 0.32), 0 16px 36px -8px rgba(10, 12, 16, 0.28),
     0 36px 72px -16px rgba(10, 12, 16, 0.18);
+
+  /* 控件用无衬线、内容用衬线。旧版全局一律衬线,连按钮都是,读起来像文档不像工具 */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --font-serif: 'Hiragino Mincho ProN', 'Songti SC', 'Noto Serif SC', Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
     --color-text: #e8e5de;
-    --color-secondary-text: #807d76;
+    --color-secondary-text: #a6a29a;
+    --color-faint-text: #807d76;
     --color-divider: #2a2925;
     --color-background: #1a1917;
-    --color-photo-outline: rgba(16, 20, 26, 0.1);
+    --color-surface: #201f1c;
+    --color-photo-outline: rgba(232, 229, 222, 0.16);
     --shadow-photo: 0 0 40px -12px rgba(255, 252, 244, 0.06);
     --shadow-photo-large: 0 0 80px -12px rgba(255, 252, 244, 0.06);
   }
@@ -33,13 +50,37 @@ body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Mincho ProN', 'Noto Serif SC', serif;
+  font-family: var(--font-sans);
   color: var(--color-text);
   background: var(--color-background);
+  -webkit-font-smoothing: antialiased;
 }
 
 button {
   font-family: inherit;
+  font-size: inherit;
   color: inherit;
   cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
+/* 键盘可达性:统一的焦点环,不用 outline: none 抹掉 */
+:focus-visible {
+  outline: 2px solid var(--color-text);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
