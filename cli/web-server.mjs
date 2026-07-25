@@ -14,6 +14,7 @@ import {fileURLToPath} from 'node:url';
 import {listDirs} from './web-api/dirs.mjs';
 import {getDoctor} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
+import {searchAudioCandidates, searchLyricsCandidates, saveLyrics} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
 import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
@@ -135,19 +136,24 @@ const JOB_ID_RE = /^\/api\/jobs\/([^/]+)$/;
 const JOB_EVENTS_RE = /^\/api\/jobs\/([^/]+)\/events$/;
 const JOB_CANCEL_RE = /^\/api\/jobs\/([^/]+)\/cancel$/;
 
-// 这两个是仅有的两条非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合。
+// 这几条是仅有的非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合。
 // 必须同时校验 method,否则"路径对但方法错"(比如 PUT /api/jobs)会被当成合法的
-// job-post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback。
-const isJobPostRoute = (method, pathname) =>
-  method === 'POST' && (pathname === '/api/jobs' || JOB_CANCEL_RE.test(pathname));
+// post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback。
+const isAllowedPostRoute = (method, pathname) =>
+  method === 'POST'
+  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || JOB_CANCEL_RE.test(pathname));
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
- * @param {{spawnImpl?: Function}} [deps] spawnImpl 供测试注入假的子进程实现,
- *   避免单测真的起渲染进程;生产环境不传即用真实 child_process.spawn。
+ * @param {{spawnImpl?: Function, runImpl?: Function}} [deps]
+ *   spawnImpl 供测试注入假的子进程实现,避免单测真的起渲染进程;
+ *   runImpl 同理注入 /api/fetch/* 用的异步进程执行器,避免单测真的联网。
+ *   生产环境两个都不传。
  * @returns {{server: import('node:http').Server, token: string}}
  */
-export const createGalleryServer = (root, {spawnImpl} = {}) => {
+export const createGalleryServer = (root, {spawnImpl, runImpl} = {}) => {
+  // 只在测试注入时才传下去,生产环境走 fetch.mjs 的默认实现。
+  const fetchDeps = runImpl ? {run: runImpl} : {};
   // 所有非 GET 请求(创建/取消任务)必须带上这个 token(契约二安全前提 3),
   // 与既有的 Host 头校验彼此独立、互不替代,构成双控制。
   const token = crypto.randomBytes(32).toString('hex');
@@ -180,7 +186,7 @@ export const createGalleryServer = (root, {spawnImpl} = {}) => {
       return;
     }
     const url = new URL(req.url, 'http://localhost');
-    if (req.method !== 'GET' && !isJobPostRoute(req.method, url.pathname)) {
+    if (req.method !== 'GET' && !isAllowedPostRoute(req.method, url.pathname)) {
       res.writeHead(405);
       res.end();
       return;
@@ -230,6 +236,23 @@ export const createGalleryServer = (root, {spawnImpl} = {}) => {
           }
         })
         .catch(() => sendJson(res, {status: 500, body: {error: '创建任务失败'}}));
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === '/api/fetch/lyrics') {
+      if (!checkToken(req, res)) return;
+      readBody(req)
+        .then((raw) => {
+          let body;
+          try {
+            body = JSON.parse(raw);
+          } catch {
+            sendJson(res, {status: 400, body: {error: '请求体不是合法 JSON'}});
+            return null;
+          }
+          // folder 的沙箱校验在 saveLyrics 内部统一做(与 GET 端点同一条路径)。
+          return saveLyrics(root, body, fetchDeps).then((result) => sendJson(res, result));
+        })
+        .catch(() => sendJson(res, {status: 500, body: {error: '保存歌词失败'}}));
       return;
     }
     if (req.method === 'POST' && JOB_CANCEL_RE.test(url.pathname)) {
@@ -298,6 +321,26 @@ export const createGalleryServer = (root, {spawnImpl} = {}) => {
         .catch(() => sendJson(res, {status: 500, body: {error: '读取 EXIF 失败'}}));
       return;
     }
+    // 这两条 GET 会 spawn 外部进程(yt-dlp / ffprobe / curl),所以**破例也要校验
+    // token**。Host 校验只挡 DNS rebinding,挡不住任意网页直接请求 localhost ——
+    // 那样一个页面就能无限起进程把机器拖垮。其余只读 GET 不需要这道闸。
+    if (url.pathname === '/api/fetch/lyrics-search' || url.pathname === '/api/fetch/audio-search') {
+      if (!checkToken(req, res)) return;
+    }
+    if (url.pathname === '/api/fetch/lyrics-search') {
+      // 这几个 handler 都是异步的(外部进程走异步 spawn,不能阻塞单线程 server),
+      // 与 /api/exif 一样必须自己接住 rejection,否则会连整个 server 一起带走。
+      searchLyricsCandidates(root, url.searchParams.get('folder'), {...fetchDeps, query: url.searchParams.get('q')})
+        .then((result) => sendJson(res, result))
+        .catch(() => sendJson(res, {status: 500, body: {error: '搜索歌词失败'}}));
+      return;
+    }
+    if (url.pathname === '/api/fetch/audio-search') {
+      searchAudioCandidates(url.searchParams.get('q'), fetchDeps)
+        .then((result) => sendJson(res, result))
+        .catch(() => sendJson(res, {status: 500, body: {error: '搜索音频失败'}}));
+      return;
+    }
     if (url.pathname === '/media') {
       sendMedia(res, resolveMedia(root, url.searchParams.get('path'), req.headers.range));
       return;
@@ -308,9 +351,9 @@ export const createGalleryServer = (root, {spawnImpl} = {}) => {
         .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}));
       return;
     }
-    if (JOB_CANCEL_RE.test(url.pathname)) {
-      // 走到这里说明路径形状是"取消任务"但方法不是 POST(POST 请求在上面已经被
-      // 具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面。
+    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics') {
+      // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
+      // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面。
       res.writeHead(405);
       res.end();
       return;

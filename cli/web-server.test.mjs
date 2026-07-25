@@ -207,3 +207,138 @@ test('SSE:客户端断开后 unsubscribe 被调用,server 保持健康(job 仍 r
     server.close();
   }
 });
+
+
+// ---- /api/fetch/* (批 C) ---------------------------------------------------
+
+const getJson = (port, pathname, token = null) =>
+  new Promise((resolve, reject) => {
+    const headers = token === null ? {} : {'X-Tsuzuri-Token': token};
+    const req = http.request({host: '127.0.0.1', port, path: pathname, method: 'GET', headers}, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () =>
+        resolve({status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8') || '{}')}));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+
+/** 假的异步进程执行器:单测一律不联网、不起 yt-dlp/curl/ffprobe。 */
+const missingYtDlpRun = async () => ({status: null, stdout: '', stderr: ''});
+
+test('GET /api/fetch/lyrics-search:folder 越界 → 403', async () => {
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    const outside = encodeURIComponent(path.join(root, '..', '..'));
+    const res = await getJson(port, `/api/fetch/lyrics-search?folder=${outside}`);
+    assert.equal(res.status, 403);
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/fetch/audio-search:缺 yt-dlp → 503 并带安装提示', async () => {
+  const root = makeTempRoot();
+  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    const res = await getJson(port, '/api/fetch/audio-search?q=song', token);
+    assert.equal(res.status, 503);
+    assert.match(res.body.fix, /yt-dlp/);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /api/fetch/lyrics:缺 token / 错 token → 403(在碰文件系统之前)', async () => {
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    const missing = await postJson(port, '/api/fetch/lyrics', {folder: root, id: 1});
+    assert.equal(missing.status, 403);
+    const wrong = await postJson(port, '/api/fetch/lyrics', {folder: root, id: 1}, {'X-Tsuzuri-Token': 'wrong'});
+    assert.equal(wrong.status, 403);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /api/fetch/lyrics:带正确 token 但 folder 越界 → 403', async () => {
+  const root = makeTempRoot();
+  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    const res = await postJson(
+      port,
+      '/api/fetch/lyrics',
+      {folder: path.join(root, '..', '..'), id: 1},
+      {'X-Tsuzuri-Token': token},
+    );
+    assert.equal(res.status, 403);
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/fetch/lyrics 不是 SPA 路由,回 405 而不是页面', async () => {
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    const status = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {host: '127.0.0.1', port, path: '/api/fetch/lyrics', method: 'GET'},
+        (res) => {
+          res.resume();
+          res.on('end', () => resolve(res.statusCode));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(status, 405);
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /api/jobs 接受 fetch-audio 与 lyrics 两个新 kind,非法字段仍走 400', async () => {
+  const root = makeTempRoot();
+  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    const bad = await postJson(
+      port,
+      '/api/jobs',
+      {kind: 'fetch-audio', folder: root, options: {id: '../etc/passwd', title: 'x'}},
+      {'X-Tsuzuri-Token': token},
+    );
+    assert.equal(bad.status, 400);
+    assert.equal(bad.body.field, 'id');
+
+    const ok = await postJson(port, '/api/jobs', {kind: 'lyrics', folder: root}, {'X-Tsuzuri-Token': token});
+    assert.equal(ok.status, 201);
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/fetch/* 也要 token:这两条会 spawn 外部进程', async () => {
+  // Host 校验只挡 DNS rebinding,挡不住任意网页直接请求 localhost —— 不加这道闸,
+  // 一个恶意页面循环请求就能无限起 yt-dlp 把机器拖垮(响应因 CORS 读不到,
+  // 但进程和文件描述符是实打实被耗掉的)。
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const port = await listen(server);
+  try {
+    assert.equal((await getJson(port, '/api/fetch/audio-search?q=song')).status, 403);
+    assert.equal((await getJson(port, '/api/fetch/audio-search?q=song', 'wrong')).status, 403);
+    assert.equal((await getJson(port, `/api/fetch/lyrics-search?folder=${encodeURIComponent(root)}`)).status, 403);
+  } finally {
+    server.close();
+  }
+});
