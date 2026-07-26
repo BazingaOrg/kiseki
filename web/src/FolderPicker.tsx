@@ -93,7 +93,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
               <button className="folder-item" onClick={() => loadDirs(dir.path)}>
                 <Folder size={15} strokeWidth={1.5} className="folder-item-icon" />
                 <span className="folder-item-name">{dir.name}</span>
-                {dir.isProject && <span className="folder-badge">像是素材夹</span>}
+                {dir.isProject && <span className="folder-badge" title="包含 tsuzuri 配置或 output 目录">检测到 tsuzuri 文件</span>}
               </button>
             </li>
           ))}

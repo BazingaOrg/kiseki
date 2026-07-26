@@ -16,8 +16,10 @@ import type {ApiResult} from './api';
 import {installLyrics, searchAudio, searchLyrics} from './api';
 import type {Capabilities, Remedy} from './capabilities';
 import {JobPanel} from './JobPanel';
-import {basename, thumbUrl} from './media';
-import type {AudioCandidate, LyricsCandidate, ProjectResponse} from './types';
+import {basename} from './media';
+import {PhotoGrid} from './PhotoGrid';
+import {AssetCollection, fallbackAssetCollection} from './AssetCollection';
+import type {AssetItem, AudioCandidate, LyricsCandidate, ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import type {JobRequest} from './useJob';
 import type {useJob} from './useJob';
@@ -32,6 +34,13 @@ const DURATION_WARN_SECONDS = 3;
 /** yt-dlp 给的是 "3:45" 这样的字符串;万一按秒给,也按秒格式化。 */
 const candidateDuration = (value: string | number | null): string =>
   typeof value === 'number' ? formatTime(value) : (value ?? '?:??');
+
+/** 与 cli/fetch.mjs 的 sanitizeFilePart 保持相同的窄规则，确认框展示实际落盘名。 */
+const sanitizeFilePart = (value: string): string => value
+  .replace(/[\x00-\x1f<>:"/\\|?*]+/g, ' ')
+  .replace(/\s+/g, ' ')
+  .replace(/[. ]+$/g, '')
+  .trim();
 
 /** 搜索失败的展示:yt-dlp 没装时后端把安装提示放在 fix 里,原样给出去,可复制。 */
 const Failure = ({message, fix}: {message: string; fix: string | null}) => (
@@ -78,6 +87,9 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<ApiResult<{candidates: AudioCandidate[]}> | null>(null);
+  const [selected, setSelected] = useState<AudioCandidate | null>(null);
+  const [title, setTitle] = useState('');
+  const [artist, setArtist] = useState('');
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -106,6 +118,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
   }
 
   const candidates = result?.ok ? result.data.candidates : null;
+  const fileStem = [sanitizeFilePart(title), sanitizeFilePart(artist)].filter(Boolean).join(' - ');
 
   return (
     <div className="fetch">
@@ -133,14 +146,12 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
               <button
                 className="fetch-candidate"
                 disabled={busy}
-                onClick={() =>
-                  onStart({
-                    kind: 'fetch-audio',
-                    // artist 取上传者:yt-dlp 的搜索结果里没有独立的歌手字段,
-                    // 而后端拿 title/artist 拼落地文件名,给个来源比留空强
-                    options: {id: candidate.id, title: candidate.title, artist: candidate.uploader},
-                  })
-                }
+                onClick={() => {
+                  setSelected(candidate);
+                  setTitle(candidate.title);
+                  // uploader/channel 只是来源信息，不会被当作歌手写入文件名。
+                  setArtist('');
+                }}
               >
                 <span className="fetch-candidate-title">{candidate.title}</span>
                 <span className="fetch-candidate-meta">
@@ -152,10 +163,37 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
         </ul>
       )}
 
+      {selected && (
+        <div className="audio-confirm" role="dialog" aria-label="确认下载歌曲">
+          <p className="audio-confirm-title">确认歌曲信息</p>
+          <label className="audio-confirm-field">
+            歌名
+            <input value={title} onChange={(event) => setTitle(event.target.value)} />
+          </label>
+          <label className="audio-confirm-field">
+            歌手
+            <input value={artist} onChange={(event) => setArtist(event.target.value)} placeholder="请确认或填写" />
+          </label>
+          <p className="hint">将保存为：{fileStem || '请填写歌名和歌手'}.m4a</p>
+          <div className="audio-confirm-actions">
+            <button className="link-button" onClick={() => setSelected(null)}>取消</button>
+            <button
+              className="fetch-button"
+              disabled={busy || !sanitizeFilePart(title) || !sanitizeFilePart(artist)}
+              onClick={() => {
+                onStart({kind: 'fetch-audio', options: {id: selected.id, title: sanitizeFilePart(title), artist: sanitizeFilePart(artist)}});
+                setSelected(null);
+              }}
+            >
+              确认下载
+            </button>
+          </div>
+        </div>
+      )}
+
       {busy && <p className="hint">另一项任务正在跑，等它结束再下载。</p>}
       <p className="hint">
-        {candidates && candidates.length > 0 ? '选中一条就开始下载，' : '搜到的音频下载后'}
-        会落进 {basename(project.path)}/audio。
+        {candidates && candidates.length > 0 ? '选中后先确认歌名和歌手，再下载；' : '搜到的音频确认后'}会落进 {basename(project.path)}/audio。
       </p>
     </div>
   );
@@ -282,7 +320,7 @@ const LyricsFetch = ({
         status={job.status}
         events={job.events}
         error={job.error}
-        note="第一次识别要先下载 whisper 模型（几百 MB，没有百分比，这段时间看着像不动，是正常的）。"
+        note="第一次识别要先下载 whisper 模型（几百 MB）。模型下载期间不会显示百分比，完成后会自动继续。"
         onCancel={job.cancel}
         onReset={onReset}
         resetLabel="收起"
@@ -297,7 +335,7 @@ const LyricsFetch = ({
         {capabilities.fetchLyrics.enabled ? (
           <LyricsSearch project={project} onDone={onRefresh} />
         ) : (
-          <Blocked capability={capabilities.fetchLyrics} onRemedy={onRemedy} />
+          <Blocked capability={capabilities.fetchLyrics} onRemedy={onRemedy} currentSection="materials" />
         )}
       </div>
 
@@ -319,7 +357,7 @@ const LyricsFetch = ({
             {busy && <p className="hint">另一项任务正在跑，等它结束再识别。</p>}
           </>
         ) : (
-          <Blocked capability={capabilities.recognizeLyrics} onRemedy={onRemedy} />
+          <Blocked capability={capabilities.recognizeLyrics} onRemedy={onRemedy} currentSection="materials" />
         )}
       </div>
     </div>
@@ -340,6 +378,8 @@ interface MaterialsProps {
   onReset: () => void;
   /** 歌词落地走的是普通端点,没有任务结束事件,得自己触发一次刷新 */
   onRefresh: () => void;
+  assetBusy: boolean;
+  onAsset: (item: AssetItem, action: 'rename' | 'delete', stem?: string) => void;
 }
 
 export const Materials = ({
@@ -351,13 +391,19 @@ export const Materials = ({
   onStart,
   onReset,
   onRefresh,
+  assetBusy,
+  onAsset,
 }: MaterialsProps) => {
   const photos = project.photos;
+  const audios = project.audios ?? (project.audio ? [project.audio] : []);
+  const lyricsFiles = project.lyricsFiles ?? (project.lyricsFile ? [project.lyricsFile] : []);
+  const audioAssets = project.assets?.audios ?? fallbackAssetCollection('audio', audios);
+  const lyricsAssets = project.assets?.lyrics ?? fallbackAssetCollection('lyrics', lyricsFiles);
   const lyricLines = project.lyrics?.length ?? 0;
   const running = job.status === 'running';
 
   return (
-    <Section title="素材" meta={project.path}>
+    <Section title="素材" meta={project.path} titleHidden>
       <div className="material-cards">
         <MaterialCard
           icon={<Image size={20} strokeWidth={1.5} />}
@@ -370,28 +416,36 @@ export const Materials = ({
           }
         >
           {photos.length > 0 && (
-            <div className="material-thumbs">
-              {photos.slice(0, 12).map((photoPath) => (
-                <img key={photoPath} src={thumbUrl(photoPath, 128)} alt="" loading="lazy" decoding="async" />
-              ))}
-              {photos.length > 12 && <span className="material-more">+{photos.length - 12}</span>}
-            </div>
+            <>
+              <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '点击查看原图', paths: photos}]} />
+              <AssetCollection collection={project.assets?.photos ?? fallbackAssetCollection('photo', photos)} empty="" ambiguous={() => ''} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
+            </>
           )}
         </MaterialCard>
 
         <MaterialCard
           icon={<Music size={20} strokeWidth={1.5} />}
           title="音乐"
-          present={project.audio !== null}
+          present={audioAssets.state !== 'empty'}
           detail={
-            project.audioCount > 1
-              ? `文件夹里有 ${project.audioCount} 份音频，只能留一份。`
-              : project.audio
-                ? basename(project.audio)
+            audioAssets.state === 'ambiguous'
+              ? '需要处理'
+              : audioAssets.state === 'ready'
+                ? '1 份音频'
                 : '还差一首歌。可以拖一份进文件夹，也可以在线找。'
           }
         >
-          {!project.audio &&
+          {audioAssets.state !== 'empty' && (
+            <AssetCollection
+              collection={audioAssets}
+              empty=""
+              ambiguous={(count) => `检测到 ${count} 份音频；渲染和歌词识别不会猜测第一份，请保留唯一文件后继续。`}
+              busy={assetBusy}
+              onRename={(item, stem) => onAsset(item, 'rename', stem)}
+              onDelete={(item) => onAsset(item, 'delete')}
+            />
+          )}
+          {audioAssets.state === 'empty' &&
             (capabilities.fetchAudio.enabled ? (
               <AudioFetch
                 project={project}
@@ -402,21 +456,33 @@ export const Materials = ({
                 onReset={onReset}
               />
             ) : (
-              <Blocked capability={capabilities.fetchAudio} onRemedy={onRemedy} />
+              <Blocked capability={capabilities.fetchAudio} onRemedy={onRemedy} currentSection="materials" />
             ))}
         </MaterialCard>
 
         <MaterialCard
           icon={<Type size={20} strokeWidth={1.5} />}
           title="歌词"
-          present={lyricLines > 0}
+          present={lyricsAssets.state !== 'empty' || lyricLines > 0}
           detail={
-            lyricLines > 0
+            lyricsAssets.state === 'ambiguous'
+              ? `文件夹里有 ${lyricsFiles.length} 份歌词；渲染前需保留唯一的一份。`
+              : lyricLines > 0
               ? `${lyricLines} 行 · ${project.lyricsSource === 'lrc' ? '来自 .lrc' : '本地识别'}`
               : '没有歌词也能渲染，成片只是不带字幕。'
           }
         >
-          {lyricLines > 0 ? (
+          {lyricsAssets.state !== 'empty' && (
+            <AssetCollection
+              collection={lyricsAssets}
+              empty=""
+              ambiguous={(count) => `检测到 ${count} 份歌词；当前只读展示全部文件，渲染前请保留唯一的一份。`}
+              busy={assetBusy}
+              onRename={(item, stem) => onAsset(item, 'rename', stem)}
+              onDelete={(item) => onAsset(item, 'delete')}
+            />
+          )}
+          {lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
             /* 原先只列前 3 行,刚下完歌词的人看到的就是"显示不全"。这里是素材段,
                确认自己拿到的是哪一份歌词正是它的用途,所以列全,超高了自己滚。 */
             <ol className="material-lyric-preview">

@@ -152,7 +152,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
               checked={options.draft ?? false}
               onChange={(e) => set('draft', e.target.checked)}
             />
-            草稿模式（更快，画质降级，先看个大概）
+            草稿模式（渲染更快，预览画质较低）
           </label>
         )}
       </div>
@@ -310,41 +310,44 @@ const ActionCard = ({
 
       {capability.enabled ? (
         showJobPanel ? (
-          <JobPanel
-            verb={KIND_VERB[kind]}
-            status={job.status}
-            events={job.events}
-            error={job.error}
-            onCancel={job.cancel}
-            onReset={onReset}
-            resetLabel="重新设置参数"
-          />
+          <div className="action-card-content">
+            <JobPanel
+              verb={KIND_VERB[kind]}
+              status={job.status}
+              events={job.events}
+              error={job.error}
+              onCancel={job.cancel}
+              onReset={onReset}
+              resetLabel="重新设置参数"
+            />
+          </div>
         ) : (
           <>
-            <p className="action-ready">素材齐了，可以开工。</p>
-
-            <button className="make-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
-              <SlidersHorizontal size={13} />
-              参数
-              <ChevronDown
-                size={13}
-                className={expanded ? 'make-toggle-icon make-toggle-icon-open' : 'make-toggle-icon'}
-              />
-            </button>
-
-            {expanded && <OptionsForm kind={kind} photos={photos} options={options} onChange={setOptions} />}
-
-            <div className="make-start-row">
+            <div className="action-card-content">
+              <p className="action-ready">素材齐了，可以开工。</p>
+              <button className="make-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
+                <SlidersHorizontal size={13} />
+                参数
+                <ChevronDown
+                  size={13}
+                  className={expanded ? 'make-toggle-icon make-toggle-icon-open' : 'make-toggle-icon'}
+                />
+              </button>
+              {expanded && <OptionsForm kind={kind} photos={photos} options={options} onChange={setOptions} />}
+              {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
+            </div>
+            <div className="action-card-footer">
               <button className="primary-button" disabled={otherRunning} onClick={() => onStart(options)}>
                 开始{KIND_VERB[kind]}
               </button>
               <CommandHint command={command} />
             </div>
-            {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
           </>
         )
       ) : (
-        <Blocked capability={capability} onRemedy={onRemedy} />
+        <div className="action-card-content">
+          <Blocked capability={capability} onRemedy={onRemedy} currentSection="make" />
+        </div>
       )}
     </div>
   );
@@ -372,7 +375,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart,
   const otherRunning = (kind: Kind) => job.status === 'running' && activeKind !== kind;
 
   return (
-    <Section title="制作">
+    <Section title="制作" titleHidden>
       <div className="action-cards">
         <ActionCard
           kind="render"

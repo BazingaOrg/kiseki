@@ -23,6 +23,32 @@ export interface LyricLine {
 /** 与 renderer/src/theme.ts 的 SUBTITLE.confidenceThreshold 保持一致 */
 export const RENDER_CONFIDENCE_THRESHOLD = 0.6;
 
+export type AssetKind = 'photo' | 'audio' | 'lyrics' | 'still' | 'video';
+export type AssetOrigin = 'source' | 'output';
+export type AssetState = 'empty' | 'ready' | 'ambiguous';
+
+/** /api/project 的只读资产项。id 由当前路径派生，改名后会变化。 */
+export interface AssetItem {
+  id: string;
+  kind: AssetKind;
+  origin: AssetOrigin;
+  name: string;
+  path: string;
+  preview: {type: 'image'; path: string} | null;
+  /** 独立 LRC 仅展示，不能单独改变其与音频的配对关系。 */
+  manageable?: boolean;
+  actionHint?: string | null;
+}
+
+export interface AssetCollection {
+  kind: AssetKind;
+  origin: AssetOrigin;
+  items: AssetItem[];
+  /** 只有唯一候选才有主资产；多份文件必须由后续选择流程处理。 */
+  primaryId: string | null;
+  state: AssetState;
+}
+
 export interface ProjectResponse {
   path: string;
   name: string;
@@ -31,8 +57,19 @@ export interface ProjectResponse {
   photos: string[];
   audio: string | null;
   audioCount: number;
+  /** 新版 /api/project 的全量音频；可选仅用于兼容旧的测试夹具与旧服务端。 */
+  audios?: string[];
   lyricsFile: string | null;
   lyricsCount: number;
+  /** 新版 /api/project 的全量歌词文件；可选仅用于兼容旧的测试夹具与旧服务端。 */
+  lyricsFiles?: string[];
+  assets?: {
+    photos: AssetCollection;
+    audios: AssetCollection;
+    lyrics: AssetCollection;
+    stills: AssetCollection;
+    videos: AssetCollection;
+  };
   lyrics: LyricLine[] | null;
   /** 歌词来自用户自备的 .lrc,还是本地识别的产物 */
   lyricsSource: 'lrc' | 'recognized' | null;

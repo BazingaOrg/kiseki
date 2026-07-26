@@ -7,6 +7,7 @@
  * 3. 大图底部挂 EXIF 展签,按需请求 /api/exif —— 与成片上印的是同一份格式化结果。
  */
 import {useEffect, useState} from 'react';
+import {ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn, ZoomOut} from 'lucide-react';
 import Lightbox from 'yet-another-react-lightbox';
 import Counter from 'yet-another-react-lightbox/plugins/counter';
 import Zoom from 'yet-another-react-lightbox/plugins/zoom';
@@ -26,7 +27,7 @@ declare module 'yet-another-react-lightbox' {
   }
 }
 
-interface Group {
+export interface PhotoGroup {
   key: string;
   title: string;
   hint: string;
@@ -38,20 +39,58 @@ interface OpenState {
   index: number;
 }
 
+interface LightboxZoomRef {
+  zoom: number;
+  minZoom: number;
+  maxZoom: number;
+  disabled: boolean;
+  zoomIn: () => void;
+  zoomOut: () => void;
+  changeZoom: (targetZoom: number, rapid?: boolean) => void;
+}
+
+const LightboxZoomControls = ({zoomRef}: {zoomRef: LightboxZoomRef}) => {
+  const canZoomOut = !zoomRef.disabled && zoomRef.zoom > zoomRef.minZoom;
+  const canZoomIn = !zoomRef.disabled && zoomRef.zoom < zoomRef.maxZoom;
+
+  return (
+    <div className="tsuzuri-lightbox-zoom-controls" aria-label="图片缩放工具">
+      <button type="button" className="tsuzuri-lightbox-tool" title="缩小" aria-label="缩小" onClick={zoomRef.zoomOut} disabled={!canZoomOut}>
+        <ZoomOut aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        className="tsuzuri-lightbox-tool"
+        title="复位缩放"
+        aria-label="复位缩放"
+        onClick={() => zoomRef.changeZoom(zoomRef.minZoom)}
+        disabled={!canZoomOut}
+      >
+        <RotateCcw aria-hidden="true" />
+      </button>
+      <button type="button" className="tsuzuri-lightbox-tool" title="放大" aria-label="放大" onClick={zoomRef.zoomIn} disabled={!canZoomIn}>
+        <ZoomIn aria-hidden="true" />
+      </button>
+    </div>
+  );
+};
+
 const ExifTag = ({path}: {path: string}) => {
   const [exif, setExif] = useState<ExifResponse | null>(null);
 
   useEffect(() => {
-    let cancelled = false;
+    const controller = new AbortController();
     setExif(null);
-    fetch(`/api/exif?path=${encodeURIComponent(path)}`)
+    fetch(`/api/exif?path=${encodeURIComponent(path)}`, {signal: controller.signal})
       .then((res) => (res.ok ? res.json() : null))
       .then((data: ExifResponse | null) => {
-        if (!cancelled) setExif(data);
+        if (!controller.signal.aborted) setExif(data);
       })
-      .catch(() => undefined);
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === 'AbortError')) return undefined;
+      });
     return () => {
-      cancelled = true;
+      controller.abort();
     };
   }, [path]);
 
@@ -69,10 +108,10 @@ const ExifTag = ({path}: {path: string}) => {
   );
 };
 
-export const PhotoGrid = ({project}: {project: ProjectResponse}) => {
+export const PhotoGrid = ({project, groups: suppliedGroups}: {project: ProjectResponse; groups?: PhotoGroup[]}) => {
   const [open, setOpen] = useState<OpenState | null>(null);
 
-  const groups: Group[] = [
+  const groups: PhotoGroup[] = suppliedGroups ?? [
     {
       key: 'stills',
       title: '导出作品',
@@ -117,15 +156,36 @@ export const PhotoGrid = ({project}: {project: ProjectResponse}) => {
 
       {activeGroup && open && (
         <Lightbox
+          className="tsuzuri-lightbox"
           open
           index={open.index}
           close={() => setOpen(null)}
           slides={activeGroup.paths.map((photoPath) => ({src: mediaUrl(photoPath), photoPath}))}
           plugins={[Counter, Zoom]}
+          labels={{Previous: '上一张', Next: '下一张', Close: '关闭', 'Zoom in': '放大', 'Zoom out': '缩小'}}
           // 单张时不渲染左右翻页,避免出现点了没反应的箭头
-          carousel={{finite: activeGroup.paths.length <= 1}}
+          carousel={{finite: activeGroup.paths.length <= 1, imageFit: 'contain', padding: 0}}
+          controller={{closeOnBackdropClick: false}}
+          zoom={{zoomInMultiplier: 1.5, maxZoomPixelRatio: 1, scrollToZoom: false}}
+          animation={{
+            fade: 180,
+            swipe: 230,
+            navigation: 0,
+            zoom: 160,
+            easing: {
+              fade: 'cubic-bezier(0.23, 1, 0.32, 1)',
+              swipe: 'cubic-bezier(0.22, 1, 0.36, 1)',
+              navigation: 'linear',
+            },
+          }}
           on={{view: ({index}) => setOpen({groupKey: activeGroup.key, index})}}
           render={{
+            iconPrev: () => <ChevronLeft aria-hidden="true" />,
+            iconNext: () => <ChevronRight aria-hidden="true" />,
+            iconClose: () => <X aria-hidden="true" />,
+            buttonPrev: activeGroup.paths.length <= 1 ? () => null : undefined,
+            buttonNext: activeGroup.paths.length <= 1 ? () => null : undefined,
+            buttonZoom: (zoomRef) => <LightboxZoomControls zoomRef={zoomRef} />,
             slideFooter: ({slide}) =>
               slide.photoPath ? <ExifTag path={slide.photoPath} /> : null,
           }}

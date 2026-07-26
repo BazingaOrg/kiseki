@@ -118,6 +118,10 @@ export const deriveCapabilities = (
     project.audioCount > 1
       ? {reason: `文件夹里有 ${project.audioCount} 份音频，只能留一份。`, remedy: MATERIALS}
       : null;
+  const ambiguousLyrics: Blocker | null =
+    project.lyricsCount > 1
+      ? {reason: `文件夹里有 ${project.lyricsCount} 份歌词，只能留一份。`, remedy: MATERIALS}
+      : null;
 
   return {
     browsePhotos: make([
@@ -128,6 +132,7 @@ export const deriveCapabilities = (
 
     followLyrics: make([
       noAudio,
+      ambiguousLyrics,
       hasLyricLines
         ? null
         : {reason: '还没有歌词。可以放一份 .lrc，也可以让 tsuzuri 本地识别。', remedy: MATERIALS},
@@ -141,6 +146,7 @@ export const deriveCapabilities = (
       noPhotos,
       noAudio,
       ambiguousAudio,
+      ambiguousLyrics,
       depBlocker(doctor, 'uv', '音频分析'),
       depBlocker(doctor, 'ffmpeg', '成片封装'),
       depBlocker(doctor, 'renderer', '视频渲染'),
@@ -154,6 +160,7 @@ export const deriveCapabilities = (
     recognizeLyrics: make([
       noAudio,
       ambiguousAudio,
+      ambiguousLyrics,
       depBlocker(doctor, 'uv', '歌词识别'),
       depBlocker(doctor, 'ffmpeg', '音频解码'),
     ]),

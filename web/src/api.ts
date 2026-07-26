@@ -73,3 +73,17 @@ export const installLyrics = async (
     return {ok: false, message: '连不上 tsuzuri 服务，确认它还在跑。', fix: null};
   }
 };
+
+const postAsset = async <T>(url: string, body: object): Promise<ApiResult<T>> => {
+  try {
+    const res = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()}, body: JSON.stringify(body)});
+    if (!res.ok) return await readFailure(res);
+    return {ok: true, data: (await res.json()) as T};
+  } catch { return {ok: false, message: '连不上 tsuzuri 服务，确认它还在跑。', fix: null}; }
+};
+
+export const mutateAsset = (folder: string, assetId: string, action: 'rename' | 'delete', stem?: string) =>
+  postAsset<{assetId?: string; name?: string; undoId?: string}>('/api/assets/mutate', {folder, assetId, action, stem});
+
+export const undoAssetDelete = (folder: string, undoId: string) =>
+  postAsset<{restored: number}>('/api/assets/undo', {folder, undoId});
