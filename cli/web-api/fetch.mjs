@@ -27,6 +27,7 @@ import {preferSimplifiedChineseLrc} from '../lrc.mjs';
 import {scanFolderLoose} from '../project.mjs';
 import {checkYtDlp, parseSearchLine, SEARCH_LIMIT} from '../ytdlp.mjs';
 import {resolveSafePath} from './sandbox.mjs';
+import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
@@ -149,7 +150,28 @@ const resolveAudioFolder = (root, folderParam) => {
   if (audios.length !== 1) {
     return {error: {status: 400, body: {error: '需要文件夹里恰好有一个音频文件'}}};
   }
-  return {folder, audio: audios[0], existingLrc: lyrics[0] ?? null};
+  if (lyrics.length > 1) return {error: {status: 409, body: {error: '文件夹里有多份歌词，请先保留唯一的一份'}}};
+  const audioPath = path.join(folder, audios[0]);
+  let audioIdentity;
+  try {
+    const stat = fs.lstatSync(audioPath);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe');
+    audioIdentity = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return {error: {status: 409, body: {error: '音频文件已变化，请重新搜索'}}};
+  }
+  const existingLrc = lyrics[0] ?? null;
+  let lrcIdentity = null;
+  if (existingLrc) {
+    try {
+      const stat = fs.lstatSync(path.join(folder, existingLrc));
+      if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('unsafe');
+      lrcIdentity = `${stat.dev}:${stat.ino}:${stat.size}:${stat.mtimeMs}`;
+    } catch {
+      return {error: {status: 409, body: {error: '歌词文件已变化，请重新搜索'}}};
+    }
+  }
+  return {folder, audio: audios[0], audioIdentity, existingLrc, lrcIdentity};
 };
 
 /**
@@ -206,7 +228,7 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
  * id 是 LRCLIB 记录 id,按 id 重新取一次歌词正文(不在服务端缓存搜索结果),
  * 与 CLI 一样做繁转简,最后复用 installDownloadedLyrics 落到 audio/。
  */
-export const saveLyrics = async (root, body, {run = runProcess, fetcher} = {}) => {
+export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRunning} = {}) => {
   const id = body?.id;
   if (typeof id !== 'number' && typeof id !== 'string') {
     return {status: 400, body: {error: 'id 必须是 LRCLIB 记录 id', field: 'id'}};
@@ -216,7 +238,7 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher} = {}) =
   }
   const resolved = resolveAudioFolder(root, body?.folder);
   if (resolved.error) return resolved.error;
-  const {folder, audio, existingLrc} = resolved;
+  const {folder, audio, audioIdentity, existingLrc, lrcIdentity} = resolved;
 
   let record;
   try {
@@ -231,15 +253,23 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher} = {}) =
   const preferred = await preferSimplifiedChineseLrc(record.syncedLyrics);
   const filename = `${path.basename(audio, path.extname(audio))}.lrc`;
   try {
-    const file = installDownloadedLyrics({
-      lyrics: preferred.lyrics,
-      folder,
-      filename,
-      // 已有 .lrc 直接替换:用户点了"用这个",没有第二次确认的地方
-      existing: existingLrc,
+    return withProjectMutationLock(folder, () => {
+      assertNoRunningJob(isJobRunning);
+      const current = resolveAudioFolder(root, folder);
+      if (current.error) return current.error;
+      if (
+        current.audio !== audio || current.audioIdentity !== audioIdentity ||
+        current.existingLrc !== existingLrc || current.lrcIdentity !== lrcIdentity
+      ) {
+        return {status: 409, body: {error: '音频或歌词在下载期间已变化，请重新搜索'}};
+      }
+      const file = installDownloadedLyrics({
+        lyrics: preferred.lyrics, folder, filename, existing: existingLrc,
+      });
+      return {status: 200, body: {ok: true, file, converted: preferred.converted}};
     });
-    return {status: 200, body: {ok: true, file, converted: preferred.converted}};
   } catch (error) {
+    if (error?.status === 409) return {status: 409, body: {error: error.message}};
     return {status: 500, body: {error: `保存歌词失败: ${error.message}`}};
   }
 };

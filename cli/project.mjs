@@ -214,6 +214,28 @@ export const readFilterConfig = (folder) => {
 };
 
 /**
+ * 照片文件名变更时同步 tsuzuri.json 的 perPhoto 键。先完整校验旧配置，再用同目录
+ * 临时文件替换；调用方若随后文件移动失败，可以把 returned raw 写回去回滚。
+ */
+export const renamePerPhotoConfig = (folder, fromName, toName) => {
+  const jsonPath = path.join(folder, 'tsuzuri.json');
+  if (!fs.existsSync(jsonPath) || fromName === toName) return null;
+  const rawText = fs.readFileSync(jsonPath, 'utf8');
+  const config = readFilterConfig(folder);
+  if (!config?.perPhoto || !Object.prototype.hasOwnProperty.call(config.perPhoto, fromName)) return null;
+  if (Object.prototype.hasOwnProperty.call(config.perPhoto, toName)) {
+    throw new CliError(`tsuzuri.json 的 perPhoto 已有目标照片配置: ${toName}`);
+  }
+  const raw = JSON.parse(rawText);
+  raw.perPhoto[toName] = raw.perPhoto[fromName];
+  delete raw.perPhoto[fromName];
+  const temporary = `${jsonPath}.${process.pid}.tmp`;
+  fs.writeFileSync(temporary, `${JSON.stringify(raw, null, 2)}\n`, 'utf8');
+  fs.renameSync(temporary, jsonPath);
+  return {jsonPath, rawText};
+};
+
+/**
  * 优先级:CLI flag > perPhoto > 配置全局 > 无。
  * cliFilter 非空时对所有照片一视同仁(渲染/still 全局 --filter 语义不变)。
  */

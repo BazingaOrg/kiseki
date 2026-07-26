@@ -15,6 +15,37 @@ import {resolveSafePath} from './sandbox.mjs';
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
+const assetItem = ({kind, origin, folder, relativePath, manageable = true, actionHint = null}) => {
+  const assetPath = path.join(folder, relativePath);
+  return {
+    // id 由 kind + 当前项目内路径组成；改名后会变化。写操作仍必须重新扫描验证。
+    id: `${kind}:${relativePath}`,
+    kind,
+    origin,
+    name: path.basename(relativePath),
+    path: assetPath,
+    preview: kind === 'photo' || kind === 'still' ? {type: 'image', path: assetPath} : null,
+    manageable,
+    actionHint,
+  };
+};
+
+const assetCollection = ({kind, origin, folder, relativePaths}) => {
+  const items = relativePaths.map((relativePath) => {
+    return assetItem({
+      kind, origin, folder, relativePath, manageable: kind !== 'lyrics',
+      actionHint: kind === 'lyrics' ? '歌词文件此批只读；音频操作仅联动同 stem 歌词' : null,
+    });
+  });
+  return {
+    kind,
+    origin,
+    items,
+    primaryId: items.length === 1 ? items[0].id : null,
+    state: items.length === 0 ? 'empty' : items.length === 1 ? 'ready' : 'ambiguous',
+  };
+};
+
 /**
  * 把 keepGaps 解析出来的空文本行折叠成上一句的 `until`,自己不出现在结果里。
  * 前端据此知道"这一句到点该收了",间奏期间不再有行被高亮。
@@ -69,7 +100,7 @@ export const getProject = (root, requestedPath) => {
   // 两者归一成同一个 {time, text}[],前端不必关心来源差异。
   let lyricsEntries = null;
   let lyricsSource = null;
-  if (lyrics.length > 0) {
+  if (lyrics.length === 1) {
     try {
       // keepGaps:把"只有时间戳没有文本"的行也读进来,转成上一句的 until。
       // 没有它,间奏那十几秒里上一句会一直挂着高亮不消失。
@@ -84,7 +115,7 @@ export const getProject = (root, requestedPath) => {
       lyricsEntries = null;
     }
   }
-  if (lyricsEntries === null) {
+  if (lyricsEntries === null && lyrics.length <= 1) {
     try {
       const recognized = JSON.parse(fs.readFileSync(lyricsPath, 'utf8'));
       const segments = Array.isArray(recognized?.segments) ? recognized.segments : [];
@@ -121,6 +152,21 @@ export const getProject = (root, requestedPath) => {
   const outputDir = path.join(safePath, 'output');
   const stills = listOutputFiles(path.join(outputDir, 'stills'), IMAGE_EXTS);
   const exportedVideos = listOutputFiles(outputDir, VIDEO_EXTS);
+  const photoAssets = assetCollection({kind: 'photo', origin: 'source', folder: safePath, relativePaths: photos});
+  const audioAssets = assetCollection({kind: 'audio', origin: 'source', folder: safePath, relativePaths: audios});
+  const lyricsAssets = assetCollection({kind: 'lyrics', origin: 'source', folder: safePath, relativePaths: lyrics});
+  const stillAssets = assetCollection({
+    kind: 'still',
+    origin: 'output',
+    folder: safePath,
+    relativePaths: stills.map((file) => path.relative(safePath, file)),
+  });
+  const videoAssets = assetCollection({
+    kind: 'video',
+    origin: 'output',
+    folder: safePath,
+    relativePaths: exportedVideos.map((file) => path.relative(safePath, file)),
+  });
 
   // 中间产物的存在性:前端据此判断"歌词已识别过""时间线已规划过",
   // 从而知道再次渲染会走缓存
@@ -145,8 +191,19 @@ export const getProject = (root, requestedPath) => {
       // 多份音频是 scanFolder 会报错的歧义状态,宽松扫描不报错但要让前端能提示
       audio: audios[0] ? path.join(safePath, audios[0]) : null,
       audioCount: audios.length,
-      lyricsFile: lyrics[0] ? path.join(safePath, lyrics[0]) : null,
+      // 新字段保留全量列表；旧的 audio/lyricsFile/count 字段继续返回，避免旧 Web
+      // 客户端在升级期间失效。主资产只会在唯一候选时由 assets.*.primaryId 表示。
+      audios: audioAssets.items.map((item) => item.path),
+      lyricsFile: lyrics.length === 1 ? path.join(safePath, lyrics[0]) : null,
       lyricsCount: lyrics.length,
+      lyricsFiles: lyricsAssets.items.map((item) => item.path),
+      assets: {
+        photos: photoAssets,
+        audios: audioAssets,
+        lyrics: lyricsAssets,
+        stills: stillAssets,
+        videos: videoAssets,
+      },
       lyrics: lyricsEntries,
       lyricsSource,
       recognizedLyricsPath: existsFile(lyricsPath) ? lyricsPath : null,

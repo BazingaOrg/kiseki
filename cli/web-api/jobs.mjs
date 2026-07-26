@@ -162,6 +162,17 @@ const readOptionalString = (value, field) => {
 };
 
 /**
+ * Web 下载与 CLI 使用同一个 filename builder。这里在创建任务前规范化字段；最终
+ * 安装时仍由 installDownloadedAudio 再次拒绝同名文件，覆盖下载期间的竞态。
+ */
+const normalizeFetchAudioMetadata = (options) => {
+  const title = sanitizeFilePart(readOptionalString(options?.title, 'title'));
+  if (!title) throw new JobValidationError('title', 'title 不能为空');
+  const artist = sanitizeFilePart(readOptionalString(options?.artist, 'artist'));
+  return {title, artist};
+};
+
+/**
  * fetch-audio:直接跑 yt-dlp 下载到素材夹外的临时目录,退出后再安装进 audio/。
  * 下载参数与 cli/ytdlp.mjs 的 downloadWithYtDlp 保持一致(那边是 spawnSync,
  * 拿不到流式进度,所以这里只能自己拼参数);**安装逻辑仍然复用 fetch.mjs**,
@@ -172,9 +183,7 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
   if (typeof id !== 'string' || !YTDLP_ID_RE.test(id)) {
     throw new JobValidationError('id', 'id 必须是 yt-dlp 视频 id(字母、数字、- 和 _)');
   }
-  const title = sanitizeFilePart(readOptionalString(options?.title, 'title'));
-  if (!title) throw new JobValidationError('title', 'title 不能为空');
-  const artist = sanitizeFilePart(readOptionalString(options?.artist, 'artist'));
+  const {title, artist} = normalizeFetchAudioMetadata(options);
 
   // 先校验完再建临时目录,非法请求不该在 /tmp 里留垃圾。
   const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
@@ -647,5 +656,8 @@ export const createJobManager =({
   /** 仅供测试观测 SSE 监听者是否被正确清理,生产代码不要用。 */
   const _debugListenerCount = (id) => jobs.get(id)?.listeners.size ?? 0;
 
-  return {createJob, getJob, subscribeEvents, cancelJob, killAll, _debugListenerCount};
+  // 写文件操作必须以服务端的真实任务状态为准，不能信任浏览器传来的 busy。
+  const hasRunningJob = () => runningJobId !== null;
+
+  return {createJob, getJob, subscribeEvents, cancelJob, killAll, hasRunningJob, _debugListenerCount};
 };

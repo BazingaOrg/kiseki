@@ -16,6 +16,7 @@ import {getDoctor} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
 import {searchAudioCandidates, searchLyricsCandidates, saveLyrics} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
+import {AssetMutationError, mutateAsset, undoAssetDelete} from './web-api/assets.mjs';
 import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
 import {resolveSafePath} from './web-api/sandbox.mjs';
@@ -135,13 +136,14 @@ const isAllowedHost = (hostHeader, port) =>
 const JOB_ID_RE = /^\/api\/jobs\/([^/]+)$/;
 const JOB_EVENTS_RE = /^\/api\/jobs\/([^/]+)\/events$/;
 const JOB_CANCEL_RE = /^\/api\/jobs\/([^/]+)\/cancel$/;
+const ASSET_UNDO_RE = /^\/api\/assets\/undo$/;
 
 // 这几条是仅有的非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合。
 // 必须同时校验 method,否则"路径对但方法错"(比如 PUT /api/jobs)会被当成合法的
 // post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback。
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
-  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || JOB_CANCEL_RE.test(pathname));
+  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
@@ -250,9 +252,45 @@ export const createGalleryServer = (root, {spawnImpl, runImpl} = {}) => {
             return null;
           }
           // folder 的沙箱校验在 saveLyrics 内部统一做(与 GET 端点同一条路径)。
-          return saveLyrics(root, body, fetchDeps).then((result) => sendJson(res, result));
+          return saveLyrics(root, body, {...fetchDeps, isJobRunning: jobManager.hasRunningJob}).then((result) => sendJson(res, result));
         })
         .catch(() => sendJson(res, {status: 500, body: {error: '保存歌词失败'}}));
+      return;
+    }
+    if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname))) {
+      if (!checkToken(req, res)) return;
+      readBody(req)
+        .then((raw) => {
+          let body;
+          try { body = JSON.parse(raw); } catch {
+            sendJson(res, {status: 400, body: {error: '请求体不是合法 JSON'}});
+            return;
+          }
+          const folder = resolveSafePath(root, body?.folder);
+          if (!folder) {
+            sendJson(res, {status: 403, body: {error: '路径越界或无效'}});
+            return;
+          }
+          try {
+            if (!fs.statSync(folder).isDirectory()) throw new Error('not directory');
+          } catch {
+            sendJson(res, {status: 400, body: {error: 'folder 不是一个存在的目录'}});
+            return;
+          }
+          try {
+            const data = url.pathname === '/api/assets/mutate'
+              ? mutateAsset({folder, assetId: body?.assetId, action: body?.action, stem: body?.stem, isJobRunning: jobManager.hasRunningJob})
+              : undoAssetDelete({folder, undoId: body?.undoId, isJobRunning: jobManager.hasRunningJob});
+            sendJson(res, {status: 200, body: data});
+          } catch (error) {
+            if (error instanceof AssetMutationError) {
+              sendJson(res, {status: error.status, body: {error: error.message}});
+              return;
+            }
+            sendJson(res, {status: 500, body: {error: '文件操作失败'}});
+          }
+        })
+        .catch(() => sendJson(res, {status: 500, body: {error: '文件操作失败'}}));
       return;
     }
     if (req.method === 'POST' && JOB_CANCEL_RE.test(url.pathname)) {
@@ -351,7 +389,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl} = {}) => {
         .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}));
       return;
     }
-    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics') {
+    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname)) {
       // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
       // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面。
       res.writeHead(405);
