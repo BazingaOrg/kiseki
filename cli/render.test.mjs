@@ -135,13 +135,14 @@ test('Diary clears a photo fade-out before a chapter and layers chapters over su
 
 test('normal and draft render settings preserve fps while changing transfer and encode quality', () => {
   assert.deepEqual(resolveRenderSettings({parallelism: 10}), {
-    concurrency: 9,
+    // 默认一半核心:这是本地工具,渲染时用户多半还在用这台机器
+    concurrency: 5,
     scale: 1,
     crf: 16,
     jpegQuality: 90,
   });
   assert.deepEqual(resolveRenderSettings({draft: true, parallelism: 10}), {
-    concurrency: 9,
+    concurrency: 5,
     scale: 2 / 3,
     crf: 23,
     jpegQuality: 80,
@@ -150,6 +151,8 @@ test('normal and draft render settings preserve fps while changing transfer and 
 
 test('render concurrency supports explicit integer and percentage escape hatches', () => {
   assert.equal(resolveRenderSettings({parallelism: 1}).concurrency, 1);
+  assert.equal(resolveRenderSettings({parallelism: 2}).concurrency, 1);
+  assert.equal(resolveRenderSettings({parallelism: 16}).concurrency, 8);
   assert.equal(resolveRenderSettings({parallelism: 10, envConcurrency: '3'}).concurrency, 3);
   assert.equal(resolveRenderSettings({parallelism: 10, envConcurrency: '50%'}).concurrency, 5);
   assert.equal(resolveRenderSettings({parallelism: 10, envConcurrency: '1%'}).concurrency, 1);

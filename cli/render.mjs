@@ -18,7 +18,10 @@ export const detectParallelism = (osModule = os) =>
 export const resolveRenderSettings = (
   {draft = false, envConcurrency = process.env.TSUZURI_CONCURRENCY, parallelism = detectParallelism()} = {},
 ) => {
-  let concurrency = Math.max(1, parallelism - 1);
+  // 默认用一半核心,不是"核数减一"。后者在 10 核机器上会拉起 9 个 chromium 把
+  // 机器占满,风扇狂转、其它事都别想干了 —— 这是本地工具,渲染时用户多半还在用
+  // 这台机器。想要满速的人可以用 TSUZURI_CONCURRENCY 自己拉上去。
+  let concurrency = Math.max(1, Math.round(parallelism / 2));
   if (envConcurrency !== undefined && envConcurrency !== '') {
     if (/^\d+$/.test(envConcurrency) && Number(envConcurrency) > 0) {
       concurrency = Number(envConcurrency);

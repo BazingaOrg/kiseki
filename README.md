@@ -101,8 +101,10 @@ node cli/tsuzuri.mjs help
 
 `filter`/`intensity` 是全局默认，`perPhoto` 按照片文件名覆盖单张。优先级：命令行 `--filter` > `perPhoto` > 全局默认 > 无滤镜。`perPhoto` 条目内 `filter`、`intensity` 均可省略，省略时分别继承全局的 `filter`/`intensity`（例如只写 `intensity` 则沿用全局滤镜、仅调整强度）。`perPhoto` 的键是照片文件名，需精确匹配且大小写敏感。
 
-视频默认使用可用逻辑 CPU 数减一并发渲染；内存紧张时可用 `TSUZURI_CONCURRENCY=4`
-或 `TSUZURI_CONCURRENCY=50%` 临时降低并发，不写入项目配置。
+视频默认用**一半**逻辑 CPU 并发渲染——渲染时你多半还在用这台机器，占满核心会让
+其它事都干不了。想快可以 `TSUZURI_CONCURRENCY=8` 或 `TSUZURI_CONCURRENCY=90%` 拉上去，
+内存紧张时同样可以调低，不写入项目配置。网页的制作段有「渲染速度」三档可选，
+对应的就是这个开关。
 
 `--sign` 的签名 SVG 可以用 [animated-signature](https://github.com/BazingaOrg/animated-signature)
 在浏览器里可视化制作：输入名字、挑选手写字体后，导出**静态 SVG（tight bounds，固定色
