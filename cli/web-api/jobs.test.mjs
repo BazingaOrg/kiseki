@@ -872,3 +872,30 @@ test('killAll 会删掉 fetch-audio 的下载中转目录', () => {
   manager.killAll();
   assert.deepEqual(fs.readdirSync(tempParent), [], 'killAll 之后不该留下中转目录');
 });
+
+// --- 渲染速度档位 ----------------------------------------------------------
+
+test('speed 档位映射成 TSUZURI_CONCURRENCY,balanced 不设值', () => {
+  // balanced 不设值是刻意的:直接用 CLI 的默认(一半核心),少一个会跑偏的来源
+  const of = (speed) => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed}}).env.TSUZURI_CONCURRENCY;
+  assert.equal(of('saver'), '25%');
+  assert.equal(of('full'), '90%');
+  assert.equal(of('balanced'), undefined);
+  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.TSUZURI_CONCURRENCY, undefined);
+});
+
+test('非法 speed 抛 JobValidationError,前端碰不到任意字符串', () => {
+  assert.throws(
+    () => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed: '999%'}}),
+    (error) => {
+      assert.ok(error instanceof JobValidationError);
+      assert.equal(error.field, 'speed');
+      return true;
+    },
+  );
+});
+
+test('speed 不会漏进 argv —— 它只影响环境变量', () => {
+  const spec = buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed: 'full'}});
+  assert.ok(!spec.args.some((arg) => /speed|concurrency|90/.test(arg)), `argv 被污染了: ${spec.args.join(' ')}`);
+});

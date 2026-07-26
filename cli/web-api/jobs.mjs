@@ -230,15 +230,41 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
  * 新增任务形态只需要在这里加一支,并发锁/取消/SSE 收尾全部自动生效。
  * @param {{kind: string, folder: string, options?: object, tempParent?: string}} params
  */
+/**
+ * 渲染速度档位 → TSUZURI_CONCURRENCY。
+ *
+ * 走环境变量而不是新增一个 CLI flag:这个旋钮本来就存在、已文档化,渲染那侧
+ * (`resolveRenderSettings`)读的就是它,加个 flag 等于让同一件事有两个入口。
+ * 值仍然是从白名单枚举映射出来的常量,前端碰不到任意字符串(契约二安全前提 1)。
+ *
+ * `balanced` 不设值,直接用 CLI 的默认(一半核心)——少一个可能跑偏的来源。
+ */
+const SPEED_ENV = {
+  saver: '25%',
+  balanced: null,
+  full: '90%',
+};
+
 export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir()}) => {
   if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent});
+
+  const speed = options?.speed === undefined || options?.speed === null ? 'balanced' : options.speed;
+  if (!Object.prototype.hasOwnProperty.call(SPEED_ENV, speed)) {
+    throw new JobValidationError('speed', 'speed 必须是 saver、balanced 或 full');
+  }
+  const concurrencyEnv = SPEED_ENV[speed];
+
   return {
     command: process.execPath,
     args: [TSUZURI_ENTRY, ...buildJobArgv({kind, folder, options})],
     // stdin 'ignore' 让子进程的 process.stdin.isTTY 为 false,
     // maybePersistTrimChoice / offerFetch 的交互分支会自动跳过(契约二)。
     stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
-    env: {...process.env, TSUZURI_JSON_PROGRESS: '1'},
+    env: {
+      ...process.env,
+      TSUZURI_JSON_PROGRESS: '1',
+      ...(concurrencyEnv === null ? {} : {TSUZURI_CONCURRENCY: concurrencyEnv}),
+    },
     progressSource: 'fd3',
     finalize: null,
   };

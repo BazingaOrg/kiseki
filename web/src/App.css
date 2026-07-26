@@ -1269,3 +1269,10 @@
   margin-top: 0.4rem;
   max-width: 260px;
 }
+
+/* 速度档位下面那行解释:选了什么就说什么,不用把三条 hint 全堆出来 */
+.make-field-hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.78rem;
+  color: var(--color-secondary-text);
+}

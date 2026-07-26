@@ -38,6 +38,13 @@ const TRIM_LABELS: {value: JobOptions['trim']; label: string}[] = [
   {value: 'full', label: '播完整首歌'},
 ];
 
+// 并发档位。默认 balanced = CLI 的默认(一半核心) —— 渲染时你多半还在用这台机器
+const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string; hint: string}[] = [
+  {value: 'saver', label: '省着点', hint: '约四分之一核心，边渲染边干别的'},
+  {value: 'balanced', label: '均衡', hint: '约一半核心'},
+  {value: 'full', label: '快', hint: '几乎占满，风扇会转起来'},
+];
+
 const RENDER_DEFAULTS: JobOptions = {
   exif: false,
   sign: false,
@@ -47,6 +54,7 @@ const RENDER_DEFAULTS: JobOptions = {
   filterIntensity: null,
   draft: false,
   trim: null,
+  speed: 'balanced',
 };
 
 const STILL_DEFAULTS: JobOptions = {
@@ -182,6 +190,29 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
               </label>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* 只给渲染:still 不走 resolveRenderSettings,并发对它无效,摆在那只会误导 */}
+      {kind === 'render' && (
+        <div className="make-field">
+          <span className="make-field-label">渲染速度</span>
+          <div className="make-radio-group">
+            {SPEED_LABELS.map((item) => (
+              <label className="make-radio" key={item.value} title={item.hint}>
+                <input
+                  type="radio"
+                  name="render-speed"
+                  checked={(options.speed ?? 'balanced') === item.value}
+                  onChange={() => set('speed', item.value)}
+                />
+                {item.label}
+              </label>
+            ))}
+          </div>
+          <p className="make-field-hint">
+            {SPEED_LABELS.find((item) => item.value === (options.speed ?? 'balanced'))?.hint}
+          </p>
         </div>
       )}
 
