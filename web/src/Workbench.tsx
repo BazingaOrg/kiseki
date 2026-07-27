@@ -46,6 +46,8 @@ interface WorkbenchProps {
   onSwitchFolder: () => void;
   /** 任务跑完后重新拉一次素材夹状态,「制作」把它转交给起任务的地方在结束时调用 */
   onProjectRefresh: () => void;
+  /** 最近一次 onProjectRefresh 失败了,当前看到的可能不是最新数据 */
+  projectStale: boolean;
 }
 
 export const Workbench = ({
@@ -54,6 +56,7 @@ export const Workbench = ({
   onRecheckDoctor,
   onSwitchFolder,
   onProjectRefresh,
+  projectStale,
 }: WorkbenchProps) => {
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
   const [doctorOpen, setDoctorOpen] = useState(false);
@@ -75,8 +78,35 @@ export const Workbench = ({
   // 任务状态挂在这一层而不是 Make 里:切区段会卸载 Make,那样 EventSource 被关掉、
   // jobId 丢失,切回来界面就退回"可以开工",点了拿 409 且再没有入口取消。
   // 放这里之后,渲染途中可以自由去看素材或成果,回来进度还在。
+  // 把 useJob 上移到 App 能让任务跨素材夹存活,但那恰好是本批次要禁止的语义
+  // (任务期间禁止切素材夹),且会让 onProjectRefresh 刷到错的项目 —— 不要上移。
   const job = useJob(onProjectRefresh);
+  const jobBusy = job.status === 'running';
   const [activeKind, setActiveKind] = useState<JobKind | null>(null);
+
+  // 页面刷新/关标签页会丢掉 job 状态和 EventSource,但服务端任务(runningJobId)
+  // 可能还在跑——不探测的话,用户新起任务一律 409,取消按钮又只在本地
+  // status === 'running' 时才渲染,彻底没有入口停掉它。mount 时探测一次,
+  // 如果那个任务确实属于当前素材夹,就重新接管它的 SSE。
+  //
+  // 依赖数组用 []:本组件本来就是"素材夹已锁定/每个素材夹一个 Workbench 实例"
+  // (见上面「任务状态挂在这一层」的注释)——切素材夹在 App 里是先把 project 置
+  // null 回到欢迎页,再重新挑选,Workbench 会整个卸载重挂,不存在"同一个
+  // Workbench 实例、project.path 变了"的情况,所以只在真正首次挂载时探测一次
+  // 就够了,不需要跟着 project.path 重跑。
+  useEffect(() => {
+    fetch('/api/jobs/current')
+      .then((res) => (res.ok ? res.json() : {job: null}))
+      .then(({job: runningJob}: {job: {id: string; kind: string; folder: string} | null}) => {
+        if (!runningJob || runningJob.folder !== project.path) return;
+        // 服务端的 kind 就是建任务时传入的原始字符串,来源可信(不是用户可篡改
+        // 的输入),这里按 JobKind 的枚举收窄一下,避免整段用 any。
+        const kind = runningJob.kind as JobKind;
+        setActiveKind(kind);
+        job.reconnect(runningJob.id);
+      })
+      .catch(() => {}); // 探测失败静默——不影响正常起新任务,用户最坏只是看不到重连
+  }, []);
   const [undoIds, setUndoIds] = useState<string[]>([]);
   const [assetBusy, setAssetBusy] = useState(false);
   const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean} | null>(null);
@@ -159,7 +189,13 @@ export const Workbench = ({
               <span className="folder-switch-name">{middleTruncate(project.path)}</span>
             </span>
           ) : (
-            <button className="folder-switch" onClick={onSwitchFolder} title={project.path}>
+            <button
+              className="folder-switch"
+              onClick={onSwitchFolder}
+              title={project.path}
+              disabled={jobBusy}
+              aria-describedby={jobBusy ? 'folder-switch-busy' : undefined}
+            >
               <FolderOpen size={15} strokeWidth={1.5} />
               <span className="folder-switch-name">{middleTruncate(project.path)}</span>
             </button>
@@ -179,6 +215,18 @@ export const Workbench = ({
           <p className="locked-note">
             启动时锁定了这个素材夹，页面里换不了。想挑别的，改用不带参数的启动方式：
             <CommandHint command="tsuzuri web" />
+          </p>
+        )}
+        {!locked && jobBusy && (
+          <p className="locked-note" id="folder-switch-busy">
+            任务还在跑，这期间换不了素材夹 —— 换了进度和取消入口都会消失，任务却还在后台继续。
+            <button className="link-button" onClick={() => setSection(activeKind ? 'make' : 'materials')}>回到任务</button>
+          </p>
+        )}
+        {projectStale && (
+          <p className="locked-note hint-error" role="status">
+            素材夹状态没刷新成功，现在看到的可能不是最新的。
+            <button className="link-button" onClick={onProjectRefresh}>重试</button>
           </p>
         )}
 
