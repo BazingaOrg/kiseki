@@ -29,9 +29,9 @@ const SECTIONS: {key: SectionKey; label: string}[] = [
   {key: 'results', label: '成果'},
 ];
 
-/** 旧项目优先回到已有成片；静态图不单独解锁成果步骤。 */
+/** 旧项目优先回到已有成片或静态作品，没有成果时才停在素材步骤。 */
 const initialSection = (project: ProjectResponse): SectionKey =>
-  project.output.videos.length > 0 ? 'results' : 'materials';
+  project.output.videos.length > 0 || project.output.stills.length > 0 ? 'results' : 'materials';
 
 const middleTruncate = (value: string, maxLength = 36) => {
   if (value.length <= maxLength) return value;
@@ -59,8 +59,9 @@ export const Workbench = ({
   const [doctorOpen, setDoctorOpen] = useState(false);
   const capabilities = deriveCapabilities(project, doctor);
   const locked = project.root === project.path;
-  const makeUnlocked = capabilities.renderVideo.enabled;
-  const resultsUnlocked = project.output.videos.length > 0;
+  // 导出静态图不需要音频，只要 renderVideo 或 exportStill 任一可用就该放行「制作」
+  const makeUnlocked = capabilities.renderVideo.enabled || capabilities.exportStill.enabled;
+  const resultsUnlocked = project.output.videos.length > 0 || project.output.stills.length > 0;
   const sectionUnlocked = (key: SectionKey) =>
     key === 'materials' || (key === 'make' ? makeUnlocked : resultsUnlocked);
 
