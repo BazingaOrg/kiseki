@@ -37,7 +37,7 @@ test('missing audio error points to the fetch recovery command', () => {
   try {
     assert.throws(
       () => scanFolder(dir),
-      (error) => error.message.includes(`node cli/tsuzuri.mjs fetch "${dir}"`),
+      (error) => error.message.includes(`node cli/tsuzuri.mjs fetch '${dir}'`),
     );
   } finally {
     fs.rmSync(root, {recursive: true, force: true});

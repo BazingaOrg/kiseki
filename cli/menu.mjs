@@ -18,7 +18,7 @@ export const MENU_ITEMS = [
   {key: '3', label: '预览歌词识别(lyrics)', pathPrompt: '素材文件夹'},
   {key: '4', label: '检查依赖(doctor)', pathPrompt: null},
   {key: '5', label: '获取音频/歌词到素材夹(fetch)', pathPrompt: '素材文件夹'},
-  {key: '6', label: '打开本地画廊(web)', pathPrompt: null},
+  {key: '6', label: '打开本地工作台(web)', pathPrompt: null},
 ];
 export const MENU_BACK = Symbol('menu-back');
 

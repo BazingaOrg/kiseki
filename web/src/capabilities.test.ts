@@ -137,6 +137,21 @@ test('two audio files are caught before the CLI would error out', () => {
   assert.match(caps.renderVideo.blockers.map((b) => b.reason).join(' '), /只能留一份/);
 });
 
+test('fetching lyrics is blocked when audio is ambiguous', () => {
+  // 后端 resolveAudioFolder 遇到多份音频会 409,这里提前拦下来
+  const project = {...fullProject, audioCount: 2};
+  const caps = deriveCapabilities(project, ALL_DEPS_OK);
+  assert.equal(caps.fetchLyrics.enabled, false);
+  assert.match(caps.fetchLyrics.blockers.map((b) => b.reason).join(' '), /只能留一份/);
+});
+
+test('fetching lyrics is blocked when lyrics are already ambiguous', () => {
+  const project = {...fullProject, lyricsCount: 2};
+  const caps = deriveCapabilities(project, ALL_DEPS_OK);
+  assert.equal(caps.fetchLyrics.enabled, false);
+  assert.match(caps.fetchLyrics.blockers.map((b) => b.reason).join(' '), /只能留一份/);
+});
+
 test('missing ffmpeg blocks rendering but not still export', () => {
   const caps = deriveCapabilities(fullProject, withMissingDep('ffmpeg'));
   assert.equal(caps.renderVideo.enabled, false);

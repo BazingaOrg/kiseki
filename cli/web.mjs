@@ -1,5 +1,5 @@
 /**
- * `tsuzuri web [folder]` —— 起本地只读画廊 server 并尝试打开默认浏览器。
+ * `tsuzuri web [folder]` —— 起本地工作台 server 并尝试打开默认浏览器。
  * 传入 folder 时,server 的路径沙箱根目录锁定为该 folder(浏览不出这个素材夹);
  * 不传时根目录锁定为用户主目录(os.homedir()),作为选择素材夹的起点,
  * 仍然沙箱化,不能访问主目录之外的任意路径。
@@ -85,7 +85,7 @@ export const runWeb = async (folder = null, {openBrowser = true} = {}) => {
 
   const port = await listenOnFreePort(server);
   const url = `http://localhost:${port}`;
-  term.success(`本地画廊已启动: ${url}`);
+  term.success(`本地工作台已启动: ${url}`);
   term.detail(folder ? `已锁定素材夹: ${root}` : `浏览起点: ${root}(用户主目录)`);
   term.detail('按 Ctrl+C 结束');
   if (openBrowser) tryOpenBrowser(url);

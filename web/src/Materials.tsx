@@ -185,6 +185,7 @@ const LyricsSearch = ({project, onDone}: {project: ProjectResponse; onDone: () =
   const [result, setResult] = useState<ApiResult<{candidates: LyricsCandidate[]; query: string}> | null>(null);
   const [installing, setInstalling] = useState<LyricsCandidate['id'] | null>(null);
   const [failure, setFailure] = useState<{message: string; fix: string | null} | null>(null);
+  const [selected, setSelected] = useState<LyricsCandidate | null>(null);
   // 空串 = 让后端从音频 tag / 文件名自己推;搜过一次之后把它推出来的词填回来,
   // 用户就知道刚才是拿什么在搜、改哪里能搜得更准
   const [query, setQuery] = useState('');
@@ -244,9 +245,9 @@ const LyricsSearch = ({project, onDone}: {project: ProjectResponse; onDone: () =
             return (
               <li key={candidate.id}>
                 <button
-                  className="fetch-candidate"
+                  className={candidate.id === selected?.id ? 'fetch-candidate fetch-candidate-selected' : 'fetch-candidate'}
                   disabled={installing !== null}
-                  onClick={() => install(candidate)}
+                  onClick={() => setSelected(candidate)}
                 >
                   <span className="fetch-candidate-title">{candidate.title}</span>
                   <span className="fetch-candidate-meta">
@@ -266,6 +267,34 @@ const LyricsSearch = ({project, onDone}: {project: ProjectResponse; onDone: () =
             );
           })}
         </ul>
+      )}
+
+      {selected && (
+        <div className="audio-confirm" role="dialog" aria-label="确认歌词">
+          <p className="audio-confirm-title">{selected.title}</p>
+          <p className="hint">
+            {selected.artist} · {candidateDuration(selected.duration)}
+            {selected.delta !== null &&
+              (selected.delta > DURATION_WARN_SECONDS ? (
+                <span className="fetch-warn">与音频差 {Math.round(selected.delta)}s，时间轴可能错位</span>
+              ) : (
+                <span> · 时长吻合</span>
+              ))}
+          </p>
+          <div className="audio-confirm-actions">
+            <button className="link-button" onClick={() => setSelected(null)}>取消</button>
+            <button
+              className="fetch-button"
+              disabled={installing !== null}
+              onClick={() => {
+                install(selected);
+                setSelected(null);
+              }}
+            >
+              {installing !== null ? '正在写入…' : '保存这份歌词'}
+            </button>
+          </div>
+        </div>
       )}
     </>
   );

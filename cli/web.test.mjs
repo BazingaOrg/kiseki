@@ -23,7 +23,7 @@ test('starts a server on a free port and serves the frontend (or placeholder if 
     assert.equal(response.status, 200);
     const text = await response.text();
     // web/dist 存在时 serve 真实构建产物,否则回退占位页——两者皆为合法状态
-    assert.match(text, /(tsuzuri 本地画廊|綴り｜tsuzuri)/);
+    assert.match(text, /(tsuzuri 本地工作台|綴り｜tsuzuri)/);
   } finally {
     server.close();
   }

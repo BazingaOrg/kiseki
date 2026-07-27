@@ -265,7 +265,7 @@ test('planOffers only proposes what the folder is missing', () => {
 test('next-step guidance follows the final material state', () => {
   assert.equal(
     buildNextStepMessage('/my trip', {photos: ['a.jpg'], audios: ['song.m4a']}),
-    '下一步:可运行 node cli/tsuzuri.mjs "/my trip" 渲染',
+    "下一步:可运行 node cli/tsuzuri.mjs '/my trip' 渲染",
   );
   assert.equal(
     buildNextStepMessage('/trip', {photos: [], audios: ['song.m4a']}),

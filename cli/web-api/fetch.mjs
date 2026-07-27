@@ -255,7 +255,7 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
   try {
     return withProjectMutationLock(folder, () => {
       assertNoRunningJob(isJobRunning);
-      const current = resolveAudioFolder(root, folder);
+      const current = resolveAudioFolder(root, body?.folder);
       if (current.error) return current.error;
       if (
         current.audio !== audio || current.audioIdentity !== audioIdentity ||

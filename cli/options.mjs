@@ -28,7 +28,7 @@ export const USAGE =
   '  tsuzuri doctor                             检查依赖是否就绪\n' +
   '  tsuzuri lyrics <folder>                    只识别歌词并预览(不渲染)\n' +
   '  tsuzuri fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
-  '  tsuzuri web [folder]                       启动本地只读画廊网页(不传 folder 则从主目录选)\n' +
+  '  tsuzuri web [folder]                       启动本地工作台网页(支持改名/删除,可撤销,不传 folder 则从主目录选)\n' +
   '  tsuzuri help                               显示本说明(同 -h / --help)\n' +
   `still 选项: ${STILL_OPTIONS}\n` +
   '目录约定:文件夹内放照片(jpg/png/webp)+ 唯一的音频文件(mp3 等)\n' +

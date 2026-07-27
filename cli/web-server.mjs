@@ -42,9 +42,9 @@ const STATIC_MIME_TYPES = {
 };
 
 const PLACEHOLDER_HTML =
-  '<!doctype html><html><head><meta charset="utf-8"><title>tsuzuri 画廊</title></head>' +
+  '<!doctype html><html><head><meta charset="utf-8"><title>tsuzuri 工作台</title></head>' +
   '<body style="font-family: sans-serif; padding: 2rem;">' +
-  '<h1>tsuzuri 本地画廊</h1>' +
+  '<h1>tsuzuri 本地工作台</h1>' +
   '<p>前端页面尚未构建。API 已就绪:/api/dirs、/api/project、/media。</p>' +
   '</body></html>';
 

@@ -167,9 +167,12 @@ export const deriveCapabilities = (
 
     fetchAudio: make([depBlocker(doctor, 'yt-dlp', '在线获取音频')]),
 
-    // 在线找歌词靠音频的标题与时长去匹配,没有音频就无从找起
+    // 在线找歌词靠音频的标题与时长去匹配,没有音频/音频不唯一就无从找起;
+    // 多份歌词时后端 resolveAudioFolder 会 409,这里提前把歧义说清楚
     fetchLyrics: make([
       hasAudio ? null : {reason: '在线找歌词要先有音频，靠它的标题和时长匹配。', remedy: MATERIALS},
+      ambiguousAudio,
+      ambiguousLyrics,
     ]),
   };
 };

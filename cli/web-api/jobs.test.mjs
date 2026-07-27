@@ -8,6 +8,8 @@ import test from 'node:test';
 
 import {
   buildJobArgv,
+  buildJobEnv,
+  buildJobInvocation,
   buildJobSpec,
   createJobManager,
   JobValidationError,
@@ -53,9 +55,9 @@ test('render: scale 被忽略(仅 still 生效)', () => {
   assert.deepEqual(argv, ['/f']);
 });
 
-test('still: 默认 scale=2', () => {
+test('still: 默认 scale=2,不出现在 argv 里', () => {
   const argv = buildJobArgv({kind: 'still', folder: '/f'});
-  assert.deepEqual(argv, ['still', '/f', '--scale', '2']);
+  assert.deepEqual(argv, ['still', '/f']);
 });
 
 test('still: 各选项组合 + 自定义 scale', () => {
@@ -82,7 +84,15 @@ test('still: 各选项组合 + 自定义 scale', () => {
 
 test('still: draft/trim 被忽略(仅 render 生效)', () => {
   const argv = buildJobArgv({kind: 'still', folder: '/f', options: {draft: true, trim: 'auto'}});
-  assert.deepEqual(argv, ['still', '/f', '--scale', '2']);
+  assert.deepEqual(argv, ['still', '/f']);
+});
+
+test('still: scale 非默认值才出现在 argv 里', () => {
+  for (const scale of [1, 3, 4]) {
+    const argv = buildJobArgv({kind: 'still', folder: '/f', options: {scale}});
+    assert.deepEqual(argv, ['still', '/f', '--scale', String(scale)]);
+  }
+  assert.deepEqual(buildJobArgv({kind: 'still', folder: '/f', options: {scale: 2}}), ['still', '/f']);
 });
 
 test('未知 kind 抛 JobValidationError', () => {
@@ -509,7 +519,7 @@ test('buildJobSpec:render/still 的命令组装不回归', () => {
   assert.deepEqual(render.stdio, ['ignore', 'pipe', 'pipe', 'pipe']);
   assert.equal(render.progressSource, 'fd3');
   const still = buildJobSpec({kind: 'still', folder: '/f'});
-  assert.deepEqual(still.args.slice(-4), ['still', '/f', '--scale', '2']);
+  assert.deepEqual(still.args.slice(-2), ['still', '/f']);
 });
 
 test('buildJobSpec:fetch-audio 直接跑 yt-dlp,下载到素材夹外的临时目录', () => {
@@ -898,4 +908,32 @@ test('非法 speed 抛 JobValidationError,前端碰不到任意字符串', () =>
 test('speed 不会漏进 argv —— 它只影响环境变量', () => {
   const spec = buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed: 'full'}});
   assert.ok(!spec.args.some((arg) => /speed|concurrency|90/.test(arg)), `argv 被污染了: ${spec.args.join(' ')}`);
+});
+
+test('buildJobEnv: saver→25%、full→90%、balanced/未设→{}', () => {
+  assert.deepEqual(buildJobEnv({speed: 'saver'}), {TSUZURI_CONCURRENCY: '25%'});
+  assert.deepEqual(buildJobEnv({speed: 'full'}), {TSUZURI_CONCURRENCY: '90%'});
+  assert.deepEqual(buildJobEnv({speed: 'balanced'}), {});
+  assert.deepEqual(buildJobEnv({}), {});
+});
+
+test('buildJobEnv: 非法 speed 抛 JobValidationError,field 为 speed', () => {
+  assert.throws(() => buildJobEnv({speed: 'turbo'}), (error) => {
+    assert.ok(error instanceof JobValidationError);
+    assert.equal(error.field, 'speed');
+    return true;
+  });
+});
+
+test('buildJobInvocation 的 argv 与 buildJobSpec 实际 args 尾部逐项相等(防止两边分叉)', () => {
+  const cases = [
+    {kind: 'render', folder: '/f', options: {draft: true, format: 'square', speed: 'full'}},
+    {kind: 'still', folder: '/f', options: {scale: 4, exif: true}},
+    {kind: 'lyrics', folder: '/f', options: {}},
+  ];
+  for (const {kind, folder, options} of cases) {
+    const {argv} = buildJobInvocation({kind, folder, options});
+    const spec = buildJobSpec({kind, folder, options});
+    assert.deepEqual(spec.args.slice(-argv.length), argv, JSON.stringify({kind, folder, options}));
+  }
 });

@@ -632,6 +632,11 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   opacity: 0.45;
 }
 
+.fetch-candidate-selected {
+  background: var(--color-surface);
+  box-shadow: inset 2px 0 0 var(--color-text);
+}
+
 .fetch-candidate-title {
   display: block;
   font-size: 0.85rem;
@@ -719,6 +724,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .action-card-footer .command-hint {
   margin-top: 0;
   flex: 1;
+  min-width: 0;
 }
 
 .action-ready {

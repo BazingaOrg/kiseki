@@ -173,6 +173,23 @@ test('lyrics:落盘到 audio/,文件名跟随音频名', async () => {
   assert.ok(fs.existsSync(path.join(folder, AUDIO_DIR, 'Song - Artist.lrc')));
 });
 
+test('lyrics:root 路径含符号链接时仍能保存(回归:TOCTOU 复查曾把外层已展开符号链接的 folder 再喂回 resolveAudioFolder,导致它与未展开的 root 做前缀比对时误判越界,错误返回 403)', async () => {
+  const base = makeTempRoot();
+  const realRoot = path.join(base, 'real');
+  fs.mkdirSync(realRoot);
+  const linkRoot = path.join(base, 'link');
+  fs.symlinkSync(realRoot, linkRoot);
+  const folder = makeFolderWithAudio(linkRoot);
+  const fetcher = async (pathname) => {
+    assert.equal(pathname, '/get/42');
+    return SYNCED_RECORD;
+  };
+  const result = await saveLyrics(linkRoot, {folder, id: 42}, {run: fakeRun({}), fetcher});
+  assert.equal(result.status, 200);
+  assert.equal(result.body.file, path.posix.join(AUDIO_DIR, 'Song - Artist.lrc'));
+  assert.ok(fs.existsSync(path.join(folder, AUDIO_DIR, 'Song - Artist.lrc')));
+});
+
 test('lyrics:记录没有同步歌词 → 404', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);

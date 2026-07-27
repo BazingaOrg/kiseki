@@ -14,6 +14,7 @@ import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-re
 // 直接复用渲染管线的滤镜定义:预览与成片同源,不再养第三份滤镜副本
 import {FILTERS, getFilter} from '../../renderer/src/filters';
 import type {Capability, Capabilities, Remedy} from './capabilities';
+import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
 import {thumbUrl} from './media';
 import type {ProjectResponse} from './types';
@@ -66,14 +67,6 @@ const STILL_DEFAULTS: JobOptions = {
   filterIntensity: null,
   scale: 2,
 };
-
-/**
- * 给命令里的路径加引号,复制出去要能直接跑。
- * 用单引号而不是双引号:双引号里 `$`、反引号、`\` 仍会被 shell 解释,
- * 路径里带这些字符时复制出去的命令会静默变成另一个路径。
- */
-const quote = (value: string): string =>
-  /^[A-Za-z0-9_./-]+$/.test(value) ? value : `'${value.replace(/'/g, `'\\''`)}'`;
 
 /**
  * 滤镜实时预览:取素材夹第一张照片的缩略图,套上与成片同一份 getFilter 输出的
@@ -271,7 +264,7 @@ interface ActionCardProps {
   title: string;
   description: string;
   capability: Capability;
-  command: string;
+  folder: string;
   photos: string[];
   onRemedy: (target: Remedy['target']) => void;
   job: ReturnType<typeof useJob>;
@@ -287,7 +280,7 @@ const ActionCard = ({
   title,
   description,
   capability,
-  command,
+  folder,
   photos,
   onRemedy,
   job,
@@ -300,6 +293,10 @@ const ActionCard = ({
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
 
   const showJobPanel = isActive && job.status !== 'idle';
+  const command = useMemo(
+    () => equivalentCommand(kind, folder, options),
+    [kind, folder, options],
+  );
 
   return (
     <div className={capability.enabled ? 'action-card' : 'action-card action-card-blocked'}>
@@ -371,8 +368,6 @@ interface MakeProps {
 }
 
 export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart, onReset}: MakeProps) => {
-  const folder = quote(project.path);
-
   const otherRunning = (kind: Kind) => job.status === 'running' && activeKind !== kind;
 
   return (
@@ -384,7 +379,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart,
           title="渲染相册视频"
           description="分析音乐的节拍，把照片排进时间线，渲染成一支踩点影像日记。"
           capability={capabilities.renderVideo}
-          command={`tsuzuri ${folder}`}
+          folder={project.path}
           photos={project.photos}
           onRemedy={onRemedy}
           job={job}
@@ -399,7 +394,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart,
           title="导出静态作品图"
           description="按成片同款视觉导出单张照片，可带 EXIF 展签与签名落款。"
           capability={capabilities.exportStill}
-          command={`tsuzuri still ${folder}`}
+          folder={project.path}
           photos={project.photos}
           onRemedy={onRemedy}
           job={job}
