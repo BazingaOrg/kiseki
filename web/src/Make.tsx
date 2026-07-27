@@ -218,7 +218,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
 
       {kind === 'still' && (
         <div className="make-field">
-          <span className="make-field-label">清晰度 ×{options.scale ?? 2}</span>
+          <span className="make-field-label">输出倍率 ×{options.scale ?? 2}</span>
           <input
             type="range"
             min={1}
@@ -227,6 +227,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
             value={options.scale ?? 2}
             onChange={(e) => set('scale', Number(e.target.value))}
           />
+          <p className="make-field-hint">仅影响单张导出；实际像素为项目画布 × 当前倍率。</p>
         </div>
       )}
 
