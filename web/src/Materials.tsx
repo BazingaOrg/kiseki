@@ -9,8 +9,7 @@
  */
 import {useState} from 'react';
 import type {FormEvent} from 'react';
-import {Image, Music, Search, Type} from 'lucide-react';
-import type {ReactNode} from 'react';
+import {Search} from 'lucide-react';
 
 import type {ApiResult} from './api';
 import {installLyrics, searchAudio, searchLyrics} from './api';
@@ -47,25 +46,6 @@ const Failure = ({message, fix}: {message: string; fix: string | null}) => (
   <div className="fetch-failure">
     <p className="hint hint-error">{message}</p>
     {fix && <CommandHint command={fix} />}
-  </div>
-);
-
-interface CardProps {
-  icon: ReactNode;
-  title: string;
-  present: boolean;
-  detail: ReactNode;
-  children?: ReactNode;
-}
-
-const MaterialCard = ({icon, title, present, detail, children}: CardProps) => (
-  <div className={present ? 'material-card' : 'material-card material-card-missing'}>
-    <div className="material-icon">{icon}</div>
-    <div className="material-body">
-      <h3 className="material-title">{title}</h3>
-      <div className="material-detail">{detail}</div>
-      {children}
-    </div>
   </div>
 );
 
@@ -401,39 +381,52 @@ export const Materials = ({
   const lyricsAssets = project.assets?.lyrics ?? fallbackAssetCollection('lyrics', lyricsFiles);
   const lyricLines = project.lyrics?.length ?? 0;
   const running = job.status === 'running';
+  const initialTab = running && activeKind === 'fetch-audio'
+    ? 'music'
+    : running && activeKind === 'lyrics'
+      ? 'lyrics'
+      : audioAssets.state !== 'ready'
+        ? 'music'
+        : lyricsAssets.state === 'ambiguous'
+          ? 'lyrics'
+          : 'photos';
+  const [tab, setTab] = useState<'photos' | 'music' | 'lyrics'>(initialTab);
+  const tabs = [
+    {key: 'photos' as const, label: '照片', meta: photos.length > 0 ? `${photos.length} 张` : '暂无', description: photos.length > 0 ? `${photos.length} 张照片` : '暂无照片'},
+    {
+      key: 'music' as const,
+      label: '音乐',
+      meta: activeKind === 'fetch-audio' && running ? '进行中' : audioAssets.state === 'ready' ? '已就绪' : audioAssets.state === 'ambiguous' ? '需处理' : '暂无',
+      description: activeKind === 'fetch-audio' && running ? '音乐下载进行中' : audioAssets.state === 'ready' ? '音乐已就绪' : audioAssets.state === 'ambiguous' ? '音乐需处理' : '暂无音乐',
+    },
+    {
+      key: 'lyrics' as const,
+      label: '歌词',
+      meta: activeKind === 'lyrics' && running ? '进行中' : lyricsAssets.state === 'ambiguous' ? '需处理' : lyricLines > 0 ? `${lyricLines} 行` : '暂无',
+      description: activeKind === 'lyrics' && running ? '歌词识别进行中' : lyricsAssets.state === 'ambiguous' ? '歌词需处理' : lyricLines > 0 ? `${lyricLines} 行歌词` : '暂无歌词',
+    },
+  ];
 
   return (
     <Section title="素材" titleHidden>
-      <div className="material-cards">
-        <MaterialCard
-          icon={<Image size={20} strokeWidth={1.5} />}
-          title="照片"
-          present={photos.length > 0}
-          detail={
-            photos.length > 0
-              ? `${photos.length} 张`
-              : '把照片放进这个文件夹就行，jpg / png / webp 都可以。'
-          }
-        >
-          {photos.length > 0 && (
-            <>
-              <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '点击查看原图', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showCount: false}]} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
-            </>
-          )}
-        </MaterialCard>
+      <div className="material-tabs" role="tablist" aria-label="素材分类">
+        {tabs.map(({key, label, meta, description}) => (
+          <button key={key} className={tab === key ? 'material-tab material-tab-active' : 'material-tab'} onClick={() => setTab(key)} role="tab" aria-selected={tab === key} id={`material-tab-${key}`} aria-controls={`material-panel-${key}`} aria-label={`${label}，${description}`}>
+            <span>{label}</span>
+            <span className="material-tab-meta" aria-hidden="true">{meta}</span>
+          </button>
+        ))}
+      </div>
 
-        <MaterialCard
-          icon={<Music size={20} strokeWidth={1.5} />}
-          title="音乐"
-          present={audioAssets.state !== 'empty'}
-          detail={
-            audioAssets.state === 'ambiguous'
-              ? '需要处理'
-              : audioAssets.state === 'ready'
-                ? '1 份音频'
-                : '还差一首歌。可以拖一份进文件夹，也可以在线找。'
-          }
-        >
+      <div role="tabpanel" id="material-panel-photos" aria-labelledby="material-tab-photos" hidden={tab !== 'photos'}>
+        {photos.length > 0 ? (
+          <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showHeader: false}]} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
+        ) : (
+          <p className="material-empty">把照片放进这个文件夹就行，jpg / png / webp 都可以。</p>
+        )}
+      </div>
+
+      <div role="tabpanel" id="material-panel-music" aria-labelledby="material-tab-music" hidden={tab !== 'music'}>
           {audioAssets.state !== 'empty' && (
             <AssetCollection
               collection={audioAssets}
@@ -457,20 +450,10 @@ export const Materials = ({
             ) : (
               <Blocked capability={capabilities.fetchAudio} onRemedy={onRemedy} currentSection="materials" />
             ))}
-        </MaterialCard>
+      </div>
 
-        <MaterialCard
-          icon={<Type size={20} strokeWidth={1.5} />}
-          title="歌词"
-          present={lyricsAssets.state !== 'empty' || lyricLines > 0}
-          detail={
-            lyricsAssets.state === 'ambiguous'
-              ? `文件夹里有 ${lyricsFiles.length} 份歌词；渲染前需保留唯一的一份。`
-              : lyricLines > 0
-              ? `${lyricLines} 行 · ${project.lyricsSource === 'lrc' ? '来自 .lrc' : '本地识别'}`
-              : '没有歌词也能渲染，成片只是不带字幕。'
-          }
-        >
+      <div role="tabpanel" id="material-panel-lyrics" aria-labelledby="material-tab-lyrics" hidden={tab !== 'lyrics'}>
+          {lyricLines > 0 && <p className="section-meta">{project.lyricsSource === 'lrc' ? '来自 .lrc' : '本地识别'}</p>}
           {lyricsAssets.state !== 'empty' && (
             <AssetCollection
               collection={lyricsAssets}
@@ -502,7 +485,6 @@ export const Materials = ({
               onRefresh={onRefresh}
             />
           )}
-        </MaterialCard>
       </div>
 
       {project.unsupportedVideos.length > 0 && (

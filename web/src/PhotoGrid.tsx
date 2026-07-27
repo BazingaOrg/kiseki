@@ -34,6 +34,7 @@ export interface PhotoGroup {
   paths: string[];
   assets?: AssetItem[];
   showCount?: boolean;
+  showHeader?: boolean;
 }
 
 interface OpenState {
@@ -174,12 +175,12 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRena
       {groups.map((group) => {
         const assetsByPath = new Map(group.assets?.map((item) => [item.path, item]));
         return <div className="photo-group" key={group.key}>
-          <div className="photo-group-head">
+          {group.showHeader !== false && <div className="photo-group-head">
             <h3>{group.title}</h3>
             <span className="section-meta">
               {group.showCount !== false && `${group.paths.length} 张 · `}{group.hint}
             </span>
-          </div>
+          </div>}
           <div className="photo-grid">
             {group.paths.map((photoPath, index) => <PhotoItem
               key={photoPath}

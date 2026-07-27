@@ -433,72 +433,46 @@
 
 /* ── 素材 ─────────────────────────────────────────────── */
 
-.material-cards {
-  display: grid;
-  gap: 1px;
-  background: var(--color-divider);
-  border: 1px solid var(--color-divider);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.material-card {
+.material-tabs {
   display: flex;
-  gap: 0.9rem;
-  padding: 1.15rem 1.25rem;
-  background: var(--color-background);
+  gap: 1rem;
+  justify-content: center;
+  margin-bottom: 1.25rem;
+  border-bottom: 1px solid var(--color-divider);
 }
 
-.material-card-missing {
-  background: var(--color-surface);
-}
-
-.material-icon {
+.material-tab {
+  flex: 0 0 auto;
+  padding: 0.45rem 0.35rem 0.5rem;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  margin-bottom: -1px;
+  background: none;
   color: var(--color-secondary-text);
-  padding-top: 0.15rem;
-}
-
-.material-card-missing .material-icon {
-  opacity: 0.5;
-}
-
-.material-body {
-  flex: 1;
-  min-width: 0;
-}
-
-.material-title {
-  font-size: 0.9rem;
-  font-weight: 500;
-  margin: 0 0 0.3rem;
-}
-
-.material-detail {
   font-size: 0.85rem;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.12rem;
+  transition: transform 120ms ease-out, color 0.16s ease-out;
+}
+
+.material-tab-meta {
   color: var(--color-secondary-text);
-  line-height: 1.7;
-  word-break: break-all;
+  font-size: 0.7rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.35;
 }
 
-.material-thumbs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-top: 0.75rem;
+.material-tab-active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-text);
 }
 
-.material-thumbs img {
-  width: 44px;
-  height: 44px;
-  object-fit: cover;
-  border-radius: 3px;
-  border: 1px solid var(--color-photo-outline);
-}
-
-.material-more {
-  align-self: center;
-  font-size: 0.8rem;
+.material-empty {
+  margin: 0;
   color: var(--color-secondary-text);
+  font-size: 0.85rem;
 }
 
 .material-lyric-preview {
