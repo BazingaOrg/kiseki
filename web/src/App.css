@@ -533,6 +533,18 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .asset-rename-input { flex: 1; min-width: 0; min-height: var(--control-height); padding: 0.3rem 0.45rem; background: var(--color-background); border: 1px solid var(--color-divider); border-radius: var(--radius-control); color: var(--color-text); font: inherit; }
 .asset-undo { display: flex; align-items: center; gap: var(--space-row); margin-bottom: 1rem; padding: 0.65rem 0.8rem; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-panel); font-size: 0.85rem; }
 
+/* ── 项目内弹窗 ───────────────────────────────────────── */
+
+.dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1.25rem; background: rgba(26, 24, 21, 0.42); animation: dialog-fade-in 160ms ease-out; }
+.dialog { width: min(100%, 25rem); padding: 1.25rem; border: 1px solid var(--color-divider); border-radius: var(--radius-panel); background: var(--color-background); box-shadow: 0 18px 48px rgba(24, 22, 18, 0.2); animation: dialog-in 180ms cubic-bezier(0.23, 1, 0.32, 1); }
+.dialog h2 { margin: 0; font-size: 1rem; font-weight: 500; }
+.dialog p { margin: 0.65rem 0 0; color: var(--color-secondary-text); font-size: 0.88rem; line-height: 1.65; overflow-wrap: anywhere; }
+.dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin-top: 1.25rem; }
+.dialog-delete { background: #8a3b31; border-color: #8a3b31; }
+.dialog-delete:hover:not(:disabled) { background: #743129; border-color: #743129; }
+@keyframes dialog-fade-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes dialog-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
 /* ── 素材:在线补齐 ───────────────────────────────────── */
 
 .fetch {

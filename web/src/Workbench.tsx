@@ -15,6 +15,7 @@ import {Materials} from './Materials';
 import {Results} from './Results';
 import type {DoctorState, ProjectResponse} from './types';
 import {CommandHint} from './ui';
+import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
 import {mutateAsset, undoAssetDelete} from './api';
@@ -77,6 +78,7 @@ export const Workbench = ({
   const [activeKind, setActiveKind] = useState<JobKind | null>(null);
   const [undoIds, setUndoIds] = useState<string[]>([]);
   const [assetBusy, setAssetBusy] = useState(false);
+  const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean} | null>(null);
 
   // folder 在这里补上:起任务的组件只说要做什么,不必自己传素材夹路径
   const handleStart = (request: JobRequest) => {
@@ -88,21 +90,36 @@ export const Workbench = ({
     if (target === 'doctor') setDoctorOpen(true);
     else if (sectionUnlocked(target)) setSection(target);
   };
-  const handleAsset = async (item: AssetItem, action: 'rename' | 'delete', stem?: string) => {
-    if (assetBusy || job.status === 'running') return;
+  const performAsset = async (item: AssetItem, action: 'rename' | 'delete', stem?: string): Promise<boolean> => {
+    if (assetBusy || job.status === 'running') return false;
     setAssetBusy(true);
     const result = await mutateAsset(project.path, item.id, action, stem);
     setAssetBusy(false);
-    if (!result.ok) { window.alert(result.message); return; }
+    if (!result.ok) { setDialog({title: '操作未完成', message: result.message}); return false; }
     if (result.data.undoId) setUndoIds((ids) => [...ids, result.data.undoId!]);
     onProjectRefresh();
+    return true;
+  };
+  const handleAsset = (item: AssetItem, action: 'rename' | 'delete', stem?: string) => {
+    if (action === 'delete') {
+      setDialog({
+        title: '删除这个文件？',
+        message: `“${item.name}”会移入项目回收区，当前服务运行期间可以撤销。`,
+        destructive: true,
+        confirm: async () => {
+          if (await performAsset(item, action, stem)) setDialog(null);
+        },
+      });
+      return;
+    }
+    void performAsset(item, action, stem);
   };
   const handleUndo = async (undoId: string) => {
     if (assetBusy || job.status === 'running') return;
     setAssetBusy(true);
     const result = await undoAssetDelete(project.path, undoId);
     setAssetBusy(false);
-    if (!result.ok) { window.alert(result.message); return; }
+    if (!result.ok) { setDialog({title: '撤销未完成', message: result.message}); return; }
     setUndoIds((ids) => ids.filter((id) => id !== undoId));
     onProjectRefresh();
   };
@@ -196,6 +213,7 @@ export const Workbench = ({
           )}
         </main>
       </div>
+      {dialog && <Dialog key={`${dialog.title}:${dialog.message}`} title={dialog.title} message={dialog.message} destructive={dialog.destructive} confirmLabel={dialog.confirm ? '删除' : '知道了'} onConfirm={dialog.confirm} onClose={() => setDialog(null)} />}
     </div>
   );
 };
