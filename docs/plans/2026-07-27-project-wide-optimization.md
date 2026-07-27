@@ -250,6 +250,32 @@
 
 留待批次 8 复审：`sandbox.mjs` 第一层比对是否也应使用 `realpathSync(root)`，使 `resolveSafePath` 对「传入已解析路径」幂等。该改动会影响不存在路径的行为，属安全核心，不并入功能批次。
 
+### 批次 2（2026-07-27，完成）
+
+**核心判据（写进了代码注释，防止后人改错）**：「看」不改变任务归属，段切换随便切；「换素材夹」改变任务归属，任务期间禁止。任务状态挂在 Workbench 层正是为了让段切换不卸载 `useJob`，本批次一行未动，并列为回归验收项。同时在注释里显式挡住「把 `useJob` 上移到 App」——那能让任务跨素材夹存活，恰好是本批次要禁止的语义，且会让 `onProjectRefresh` 刷到错的项目。
+
+计划外发现的真缺陷：`cli/web.mjs:83` 用 `process.once('SIGINT')`，第二次启动注册的 handler 排在第一个之后，而第一个 handler 里直接 `process.exit()`，于是**第二个 server 的 `killAll()` 永不执行，Ctrl+C 后其 remotion/chromium 进程树成为孤儿继续占用 CPU**。菜单可重复启动因此不只是 UX 问题，是正确性问题。
+
+`useJob.ts` 实际堵上的五个竞态窗口（原先只有一个 `mountedRef`，且判断位置在赋值之前）：
+
+- POST 在途时卸载 → `jobIdRef.current = id` 永不执行，服务端 job 跑完整程而前端从未持有其 id，`runningJobId` 被占死且无取消入口。修法是赋值提到判断之前。
+- 并发 start → 无 in-flight 守卫，两发 POST 的错误状态互相覆盖。加 `startingRef`。
+- 旧响应覆盖新响应 → 加代次 `runRef`。
+- `jobIdRef` 从不清空 → cancel 可能打到上一轮任务。
+- 慢创建期间点取消是**空操作且无反馈**（取消按钮在 `status==='running'` 即渲染，而 `cancel()` 遇空 id 直接 return）。改为挂起并在拿到 id 后补发，仍照常挂 EventSource，由服务端 end 帧定成 cancelled。
+
+竞态修法选序号而非 AbortController：需要的是「状态的最后写入者获胜」，序号对成功/失败/finally 三条路径统一生效；AbortController 只省一点本地服务开销，却引入 `AbortError` 落进 catch 画出假错误的第二种失败模式。有意不取消在途请求。`createLatestGate` 的 `isCurrent` 实现为 `ticket !== 0 && ticket === current` —— 新 gate 的 `current` 初值就是 0，naive 写法会让从未 `begin()` 过的 ticket 意外通过，是测试先失败逼出来的。
+
+重连（独立提交，可整块回退）：前端守卫堵不住「刷新页面 / 关标签页」，而刷新恰是用户困惑时的第一反应，一旦发生就回到 409 死局。新增 `GET /api/jobs/current`，页面 mount 时拉一次，**仅当 folder 与当前素材夹匹配才 attach**。job 上存 `folder` 的用途是让客户端校验归属，不是让服务端拒绝 —— 服务端进程级 `runningJobId` 409 已足够严格。事件重放是现成的（`subscribeEvents` 逐条补发 `job.events`），所以重连后进度日志完整，这是该补丁便宜的原因。
+
+编排者自查补的一处：`attach()` 开头补 `closeSource()`。`start()` 本来就先关一次（幂等无害），但 `reconnect()` 没有；虽然 reconnect 目前只在 mount 时调用、彼时 `sourceRef` 必为空，漏掉这行仍是留给后人的陷阱 —— 一旦 reconnect 被第二次调用就会留下一条没人读也没人关的连接。
+
+**明确的非目标**：不加素材夹级 lockfile。`createJob` 的进程级 `runningJobId` 409 比按 folder 去重更严格；往素材夹写锁文件与既有写入边界姿态冲突；崩溃后的陈旧锁会让用户再也起不来；两个终端各跑一个 `tsuzuri web` 是合法的高级用法。残留风险（两个进程渲染到同一输出路径）在基线上同样存在，非本批次引入。
+
+验证：web typecheck / 33 测试 / build，cli 380 测试，renderer 9 测试，analyzer 128 测试，全部通过。qa-runner 另行逐条确认 `menu-loop.test.mjs` 原有四条用例一字未改，且全部测试改动均为新增、无削弱。
+
+待人工验收：慢创建期间立刻点取消是否真的取消；渲染中换素材夹按钮禁用与「回到任务」链接；**回归项 —— 渲染中在三段间来回切进度与日志不丢**；任务跑到一半硬刷新页面，进度与取消入口是否都回来；面包屑一深一浅快速连点是否停在最后点的那层；菜单选 web 后菜单不再出现且 Ctrl+C 后无 chromium 残留。
+
 ## 复审记录
 
 待实施后复审。复审应记录发现项、根因、修复批次、回归验证与仍保留的已知限制。

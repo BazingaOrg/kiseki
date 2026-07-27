@@ -937,3 +937,27 @@ test('buildJobInvocation 的 argv 与 buildJobSpec 实际 args 尾部逐项相�
     assert.deepEqual(spec.args.slice(-argv.length), argv, JSON.stringify({kind, folder, options}));
   }
 });
+
+test('getRunningJob: 无任务时返回 null', () => {
+  const manager = createJobManager({spawnImpl: makeFakeChild});
+  assert.equal(manager.getRunningJob(), null);
+});
+
+test('getRunningJob: 创建任务后返回 {id, kind, folder}', () => {
+  const manager = createJobManager({spawnImpl: makeFakeChild});
+  const {id} = manager.createJob({kind: 'render', folder: '/f'});
+  assert.deepEqual(manager.getRunningJob(), {id, kind: 'render', folder: '/f'});
+});
+
+test('getRunningJob: 任务结束后回到 null', async () => {
+  let child;
+  const spawnImpl = () => {
+    child = makeFakeChild();
+    return child;
+  };
+  const manager = createJobManager({spawnImpl});
+  manager.createJob({kind: 'render', folder: '/f'});
+  child.emit('exit', 0);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(manager.getRunningJob(), null);
+});

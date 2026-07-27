@@ -209,6 +209,72 @@ test('SSE:客户端断开后 unsubscribe 被调用,server 保持健康(job 仍 r
 });
 
 
+test('空闲时 GET /api/jobs/current → 200 且 job 为 null', async () => {
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const port = await listen(server);
+  try {
+    const res = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {host: '127.0.0.1', port, path: '/api/jobs/current', method: 'GET'},
+        (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve({status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8'))}));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(res.status, 200);
+    assert.deepEqual(res.body, {job: null});
+  } finally {
+    server.close();
+  }
+});
+
+test('创建任务后 GET /api/jobs/current → 返回该任务的 id/kind/folder', async () => {
+  const root = makeTempRoot();
+  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const port = await listen(server);
+  try {
+    const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
+    assert.equal(created.status, 201);
+
+    const res = await new Promise((resolve, reject) => {
+      const req = http.request(
+        {host: '127.0.0.1', port, path: '/api/jobs/current', method: 'GET'},
+        (res) => {
+          const chunks = [];
+          res.on('data', (chunk) => chunks.push(chunk));
+          res.on('end', () => resolve({status: res.statusCode, body: JSON.parse(Buffer.concat(chunks).toString('utf8'))}));
+        },
+      );
+      req.on('error', reject);
+      req.end();
+    });
+    assert.equal(res.status, 200);
+    // resolveSafePath 会把 folder 解析成真实路径,macOS 上 /tmp 是指向 /private/tmp
+    // 的符号链接,所以这里跟 root 比较前也要走一遍 realpath,否则本地必过、CI 也过,
+    // 但字面量比较会因为符号链接被展开而误报。
+    assert.deepEqual(res.body, {job: {id: created.body.id, kind: 'render', folder: fs.realpathSync(root)}});
+  } finally {
+    server.close();
+  }
+});
+
+test('POST /api/jobs/current → 405(不在 isAllowedPostRoute 白名单,落入全局 405 拦截)', async () => {
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const port = await listen(server);
+  try {
+    const res = await postJson(port, '/api/jobs/current', {});
+    assert.equal(res.status, 405);
+  } finally {
+    server.close();
+  }
+});
+
 // ---- /api/fetch/* (批 C) ---------------------------------------------------
 
 const getJson = (port, pathname, token = null) =>

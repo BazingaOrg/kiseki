@@ -325,7 +325,7 @@ export const createJobManager =({
     });
 
     const job = {
-      id, kind, status: 'running', exitCode: null, events: [], child,
+      id, kind, folder, status: 'running', exitCode: null, events: [], child,
       cancelled: false, listeners: new Set(), killTimer: null,
       tempDir: spec.tempDir ?? null,
       // 停滞检测用:最后一次收到事件的时间
@@ -552,5 +552,13 @@ export const createJobManager =({
   // 写文件操作必须以服务端的真实任务状态为准，不能信任浏览器传来的 busy。
   const hasRunningJob = () => runningJobId !== null;
 
-  return {createJob, getJob, subscribeEvents, cancelJob, killAll, hasRunningJob, _debugListenerCount};
+  // 页面刷新/关标签页会丢掉前端内存里的 jobId,但服务端任务还在跑——前端需要
+  // 一个"当前有没有任务、是谁的"的探测入口,才能重新 attach 上 SSE。
+  const getRunningJob = () => {
+    if (runningJobId === null) return null;
+    const job = jobs.get(runningJobId);
+    return {id: job.id, kind: job.kind, folder: job.folder};
+  };
+
+  return {createJob, getJob, subscribeEvents, cancelJob, killAll, hasRunningJob, getRunningJob, _debugListenerCount};
 };

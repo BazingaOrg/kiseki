@@ -333,6 +333,13 @@ export const createGalleryServer = (root, {spawnImpl, runImpl} = {}) => {
       req.on('close', unsubscribe);
       return;
     }
+    // 必须放在 JOB_ID_RE 判断之前:JOB_ID_RE 是 `/^\/api\/jobs\/([^/]+)$/`,
+    // 会把 'current' 当成任意 job id 吃掉,这条更具体的路由排在后面就永远走不到。
+    // 与 GET /api/jobs/:id/events 同为 GET,按既有约定不需要 token。
+    if (req.method === 'GET' && url.pathname === '/api/jobs/current') {
+      sendJson(res, {status: 200, body: {job: jobManager.getRunningJob()}});
+      return;
+    }
     if (req.method === 'GET' && JOB_ID_RE.test(url.pathname)) {
       const [, id] = url.pathname.match(JOB_ID_RE);
       const job = jobManager.getJob(id);
