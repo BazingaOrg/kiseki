@@ -22,6 +22,9 @@ export const MENU_ITEMS = [
 ];
 export const MENU_BACK = Symbol('menu-back');
 
+/** 常驻命令:起来之后进程就归它了,菜单不能再回到提示符 —— 否则同一项目会被多个服务实例操作。 */
+export const isResidentCommand = (argv) => Array.isArray(argv) && argv[0] === 'web';
+
 // 极简 ASCII(不用方框):规避全角字符在窄/等宽异常终端的对齐错位
 const BANNER = [
   '  /\\_/\\   tsuzuri 綴',

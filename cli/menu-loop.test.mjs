@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {MENU_BACK} from './menu.mjs';
+import {CliError} from './options.mjs';
 import {runInteractiveMenu} from './tsuzuri.mjs';
 
 test('interactive menu runs consecutive commands until the user exits', async () => {
@@ -66,4 +67,57 @@ test('q exits the whole interactive menu while Ctrl+C remains an interruption', 
     menuRunner: async () => { throw new PromptAbortError(); },
     output: {write: () => {}},
   }), PromptAbortError);
+});
+
+test('choosing web hands the terminal over and stops questioning', async () => {
+  const choices = [['web'], ['doctor']];
+  const commands = [];
+  let menuCalls = 0;
+  let output = '';
+
+  const code = await runInteractiveMenu({
+    menuRunner: async () => { menuCalls += 1; return choices.shift(); },
+    commandRunner: async (argv) => { commands.push(argv); return 0; },
+    output: {write: (text) => { output += text; }},
+  });
+
+  assert.equal(code, 0);
+  assert.deepEqual(commands, [['web']]);
+  assert.equal(menuCalls, 1);
+  assert.doesNotMatch(output, /返回主菜单/);
+  assert.match(output, /本地工作台已接管这个终端/);
+});
+
+test('a failed web launch still returns to the menu', async () => {
+  const choices = [['web'], null];
+  const errors = [];
+  let output = '';
+
+  const code = await runInteractiveMenu({
+    menuRunner: async () => choices.shift(),
+    commandRunner: async (argv) => {
+      if (argv[0] === 'web') throw new CliError('端口被占用');
+      return 0;
+    },
+    onError: (error) => errors.push(error.message),
+    output: {write: (text) => { output += text; }},
+  });
+
+  assert.equal(code, 0);
+  assert.deepEqual(errors, ['端口被占用']);
+  assert.match(output, /返回主菜单/);
+});
+
+test('web returning a non-zero exit code is not treated as resident', async () => {
+  const choices = [['web'], null];
+  let menuCalls = 0;
+
+  const code = await runInteractiveMenu({
+    menuRunner: async () => { menuCalls += 1; return choices.shift(); },
+    commandRunner: async () => 1,
+    output: {write: () => {}},
+  });
+
+  assert.equal(code, 0);
+  assert.equal(menuCalls, 2);
 });

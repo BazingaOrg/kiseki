@@ -29,7 +29,7 @@ import {
 import {runDoctor} from './doctor.mjs';
 import {offerFetch, runFetch} from './fetch.mjs';
 import {runLyrics} from './lyrics.mjs';
-import {MENU_BACK, runMenu, writeBanner, writeFarewell} from './menu.mjs';
+import {MENU_BACK, isResidentCommand, runMenu, writeBanner, writeFarewell} from './menu.mjs';
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {runStill} from './still.mjs';
 import {runWeb} from './web.mjs';
@@ -298,6 +298,13 @@ export const runInteractiveMenu = async (
       }
       const code = await commandRunner(argv);
       if (code !== 0) term.warn(`流程以退出码 ${code} 结束`);
+      else if (isResidentCommand(argv)) {
+        // 返回并不等于退出进程:server 的 listening handle 挂住事件循环,
+        // 进程活到用户 Ctrl+C(收尾在 web.mjs 的 SIGINT handler 里)。
+        // 依赖:菜单退出后进程存活靠这个 handle;若 runWeb 改成不 listen 就返回,菜单会直接退出。
+        output.write('\n本地工作台已接管这个终端。要回到菜单,先按 Ctrl+C 结束它,再运行 tsuzuri。\n');
+        return 0;
+      }
     } catch (error) {
       if (error instanceof PromptQuitError) {
         writeFarewell(output);

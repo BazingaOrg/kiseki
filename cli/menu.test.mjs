@@ -6,6 +6,7 @@ import test from 'node:test';
 
 import {
   buildArgvFromChoices,
+  isResidentCommand,
   MENU_BACK,
   normalizeDroppedPath,
   runMenu,
@@ -205,4 +206,13 @@ test('runMenu wires a chosen filter id into the equivalent argv', async () => {
   } finally {
     fs.rmSync(root, {recursive: true, force: true});
   }
+});
+
+test('isResidentCommand only recognizes the web command', () => {
+  assert.equal(isResidentCommand(['web']), true);
+  assert.equal(isResidentCommand(['web', '/folder']), true);
+  assert.equal(isResidentCommand(['doctor']), false);
+  assert.equal(isResidentCommand([]), false);
+  assert.equal(isResidentCommand(null), false);
+  assert.equal(isResidentCommand(MENU_BACK), false);
 });
