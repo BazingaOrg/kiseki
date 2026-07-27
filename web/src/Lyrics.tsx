@@ -69,7 +69,14 @@ export const Lyrics = ({lyrics, currentTime, onSeek}: LyricsProps) => {
     const line = lineRefs.current[activeIndex];
     if (!list || !line || !following || activeIndex < 0) return undefined;
 
-    const target = line.offsetTop - list.clientHeight / 2 + line.clientHeight / 2;
+    // offsetTop 会受 offsetParent、margin 与滚动容器嵌套影响。以同一坐标系的视口
+    // 矩形求两者中心差，再叠加现有 scrollTop，当前行才会真正落在歌词视窗正中。
+    const listRect = list.getBoundingClientRect();
+    const lineRect = line.getBoundingClientRect();
+    const centeredTarget = list.scrollTop
+      + (lineRect.top + lineRect.height / 2)
+      - (listRect.top + listRect.height / 2);
+    const target = Math.max(0, Math.min(centeredTarget, list.scrollHeight - list.clientHeight));
     const from = list.scrollTop;
     const distance = target - from;
     if (Math.abs(distance) < 1) return undefined;
