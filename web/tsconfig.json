@@ -19,6 +19,6 @@
   "include": ["src"],
   // 测试用 node --experimental-strip-types 直接跑,带 .ts 后缀的 import 不合 bundler 解析,
   // 与 renderer/tsconfig.json 排除 filters.test.ts 是同一处理
-  "exclude": ["src/capabilities.test.ts", "src/command.test.ts"],
+  "exclude": ["src/capabilities.test.ts", "src/command.test.ts", "src/latest.test.ts"],
   "references": [{"path": "./tsconfig.node.json"}]
 }

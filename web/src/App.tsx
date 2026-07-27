@@ -5,10 +5,11 @@
  *
  * 门禁做成"无处可点"而不是"一排灰按钮":没什么要解释的,也就不必解释。
  */
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 
 import './App.css';
 import {FolderPicker} from './FolderPicker';
+import {createLatestGate} from './latest';
 import {Logo} from './Logo';
 import type {DoctorResponse, DoctorState, ProjectResponse} from './types';
 import {Workbench} from './Workbench';
@@ -16,6 +17,8 @@ import {Workbench} from './Workbench';
 const App = () => {
   const [project, setProject] = useState<ProjectResponse | null>(null);
   const [doctor, setDoctor] = useState<DoctorState>('loading');
+  const [projectStale, setProjectStale] = useState(false);
+  const refreshGate = useRef(createLatestGate()).current;
 
   // 环境检查与素材夹无关,进页面就查一次。查失败要落到 'unavailable' 而不是
   // 留在 'loading' —— 后者会让 deriveCapabilities 一直挂起依赖判断,
@@ -37,13 +40,20 @@ const App = () => {
   // 不重新 setProject 整个组件树都不知道多了一份成片
   const refreshProject = () => {
     if (project === null) return;
+    const ticket = refreshGate.begin();
     fetch(`/api/project?path=${encodeURIComponent(project.path)}`)
       .then((res) => {
         if (!res.ok) throw new Error('failed');
         return res.json();
       })
-      .then((data: ProjectResponse) => setProject(data))
-      .catch(() => {});
+      .then((data: ProjectResponse) => {
+        if (!refreshGate.isCurrent(ticket)) return;
+        setProject(data);
+        setProjectStale(false);
+      })
+      .catch(() => {
+        if (refreshGate.isCurrent(ticket)) setProjectStale(true);
+      });
   };
 
   if (project === null) {
@@ -66,6 +76,7 @@ const App = () => {
       onRecheckDoctor={loadDoctor}
       onSwitchFolder={() => setProject(null)}
       onProjectRefresh={refreshProject}
+      projectStale={projectStale}
     />
   );
 };

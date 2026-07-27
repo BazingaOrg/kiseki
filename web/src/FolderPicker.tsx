@@ -1,6 +1,7 @@
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {ChevronRight, Folder} from 'lucide-react';
 
+import {createLatestGate} from './latest';
 import type {DirsResponse, ProjectResponse} from './types';
 
 const pathSeparator = (p: string): string => (p.includes('\\') && !p.includes('/') ? '\\' : '/');
@@ -32,8 +33,12 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
+  // loadDirs 和 handleSelectFolder 共用同一个 gate ——
+  // 两者操作重叠的界面状态(面包屑、列表、error),各用一个等于没修。
+  const gate = useRef(createLatestGate()).current;
 
   const loadDirs = (targetPath: string) => {
+    const ticket = gate.begin();
     setLoading(true);
     setError(null);
     fetch(`/api/dirs?path=${encodeURIComponent(targetPath)}`)
@@ -41,9 +46,15 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         if (!res.ok) throw new Error('failed');
         return res.json();
       })
-      .then((data: DirsResponse) => setDirsResponse(data))
-      .catch(() => setError('浏览这个文件夹时出了点问题。'))
-      .finally(() => setLoading(false));
+      .then((data: DirsResponse) => {
+        if (gate.isCurrent(ticket)) setDirsResponse(data);
+      })
+      .catch(() => {
+        if (gate.isCurrent(ticket)) setError('浏览这个文件夹时出了点问题。');
+      })
+      .finally(() => {
+        if (gate.isCurrent(ticket)) setLoading(false);
+      });
   };
 
   useEffect(() => {
@@ -52,6 +63,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
 
   const handleSelectFolder = () => {
     if (!dirsResponse) return;
+    const ticket = gate.begin();
     setSelecting(true);
     setError(null);
     fetch(`/api/project?path=${encodeURIComponent(dirsResponse.path)}`)
@@ -59,9 +71,15 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         if (!res.ok) throw new Error('failed');
         return res.json();
       })
-      .then((data: ProjectResponse) => onProjectLoaded(data))
-      .catch(() => setError('读取这个文件夹时出了点问题。'))
-      .finally(() => setSelecting(false));
+      .then((data: ProjectResponse) => {
+        if (gate.isCurrent(ticket)) onProjectLoaded(data);
+      })
+      .catch(() => {
+        if (gate.isCurrent(ticket)) setError('读取这个文件夹时出了点问题。');
+      })
+      .finally(() => {
+        if (gate.isCurrent(ticket)) setSelecting(false);
+      });
   };
 
   const crumbs = dirsResponse ? splitBreadcrumb(dirsResponse.path, dirsResponse.root) : [];
