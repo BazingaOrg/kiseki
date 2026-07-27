@@ -15,7 +15,7 @@ import 'yet-another-react-lightbox/styles.css';
 import 'yet-another-react-lightbox/plugins/counter.css';
 
 import {basename, mediaUrl, thumbUrl} from './media';
-import type {ExifResponse, ProjectResponse} from './types';
+import type {AssetItem, ExifResponse, ProjectResponse} from './types';
 
 // 把原始路径挂在 slide 上,让 render.slideFooter 从回调参数里取 —— 不要读闭包里的
 // 当前 index:lightbox 会同时挂载前后各若干张幻灯片,它们都会拿到同一个 index,
@@ -32,6 +32,8 @@ export interface PhotoGroup {
   title: string;
   hint: string;
   paths: string[];
+  assets?: AssetItem[];
+  showCount?: boolean;
 }
 
 interface OpenState {
@@ -108,10 +110,48 @@ const ExifTag = ({path}: {path: string}) => {
   );
 };
 
-export const PhotoGrid = ({project, groups: suppliedGroups}: {project: ProjectResponse; groups?: PhotoGroup[]}) => {
+interface PhotoGridProps {
+  project: ProjectResponse;
+  groups?: PhotoGroup[];
+  busy?: boolean;
+  onRename?: (item: AssetItem, stem: string) => void;
+  onDelete?: (item: AssetItem) => void;
+}
+
+const PhotoItem = ({path, asset, busy, onOpen, onRename, onDelete}: {path: string; asset?: AssetItem; busy: boolean; onOpen: () => void; onRename?: (item: AssetItem, stem: string) => void; onDelete?: (item: AssetItem) => void}) => {
+  const [editing, setEditing] = useState(false);
+  const name = asset?.name ?? basename(path);
+  const extensionIndex = name.lastIndexOf('.');
+  const extension = extensionIndex > 0 ? name.slice(extensionIndex) : '';
+  const originalStem = extension ? name.slice(0, -extension.length) : name;
+  const [stem, setStem] = useState(originalStem);
+  const disabled = busy || asset?.manageable === false;
+
+  return (
+    <article className="photo-item">
+      <button className="photo-card" onClick={onOpen} aria-label={`查看 ${name}`}>
+        <img src={thumbUrl(path, 400)} alt="" loading="lazy" decoding="async" />
+      </button>
+      <div className="photo-item-meta">
+        {editing ? <input className="asset-rename-input" value={stem} onChange={(event) => setStem(event.target.value)} aria-label={`重命名 ${name}`} /> : <span className="photo-item-name" title={name}>{name}</span>}
+        {asset && (onRename || onDelete) && <span className="asset-actions photo-item-actions">
+          {editing ? <>
+            <button className="link-button" disabled={disabled || !stem.trim()} onClick={() => { onRename?.(asset, stem); setEditing(false); }}>确认</button>
+            <button className="link-button" onClick={() => { setStem(originalStem); setEditing(false); }}>取消</button>
+          </> : <>
+            <button className="link-button" disabled={disabled || !onRename} title={asset.actionHint ?? undefined} onClick={() => setEditing(true)}>改名</button>
+            <button className="link-button" disabled={disabled || !onDelete} title={asset.actionHint ?? undefined} onClick={() => onDelete?.(asset)}>删除</button>
+          </>}
+        </span>}
+      </div>
+    </article>
+  );
+};
+
+export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRename, onDelete}: PhotoGridProps) => {
   const [open, setOpen] = useState<OpenState | null>(null);
 
-  const groups: PhotoGroup[] = suppliedGroups ?? [
+  const allGroups: PhotoGroup[] = suppliedGroups ?? [
     {
       key: 'stills',
       title: '导出作品',
@@ -124,35 +164,35 @@ export const PhotoGrid = ({project, groups: suppliedGroups}: {project: ProjectRe
       hint: '这个文件夹里的原始照片',
       paths: project.photos,
     },
-  ].filter((group) => group.paths.length > 0);
+  ];
+  const groups = allGroups.filter((group) => group.paths.length > 0);
 
   const activeGroup = groups.find((group) => group.key === open?.groupKey) ?? null;
 
   return (
     <div className="photo-groups">
-      {groups.map((group) => (
-        <div className="photo-group" key={group.key}>
+      {groups.map((group) => {
+        const assetsByPath = new Map(group.assets?.map((item) => [item.path, item]));
+        return <div className="photo-group" key={group.key}>
           <div className="photo-group-head">
             <h3>{group.title}</h3>
             <span className="section-meta">
-              {group.paths.length} 张 · {group.hint}
+              {group.showCount !== false && `${group.paths.length} 张 · `}{group.hint}
             </span>
           </div>
           <div className="photo-grid">
-            {group.paths.map((photoPath, index) => (
-              <button
-                key={photoPath}
-                className="photo-card"
-                onClick={() => setOpen({groupKey: group.key, index})}
-                aria-label={basename(photoPath)}
-              >
-                {/* 网格用缩略图,点开的大图才走 /media 拿原图 */}
-                <img src={thumbUrl(photoPath, 400)} alt="" loading="lazy" decoding="async" />
-              </button>
-            ))}
+            {group.paths.map((photoPath, index) => <PhotoItem
+              key={photoPath}
+              path={photoPath}
+              asset={assetsByPath.get(photoPath)}
+              busy={busy}
+              onOpen={() => setOpen({groupKey: group.key, index})}
+              onRename={onRename}
+              onDelete={onDelete}
+            />)}
           </div>
-        </div>
-      ))}
+        </div>;
+      })}
 
       {activeGroup && open && (
         <Lightbox

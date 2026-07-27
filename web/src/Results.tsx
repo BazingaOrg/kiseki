@@ -149,8 +149,16 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
         <div role="tabpanel" id="result-panel-photos" aria-labelledby="result-tab-photos">
           {capabilities.browsePhotos.enabled ? (
             <>
-              <PhotoGrid project={project} />
-              <AssetCollection collection={project.assets?.stills ?? fallbackAssetCollection('still', project.output.stills)} empty="" ambiguous={() => ''} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
+              <PhotoGrid
+                project={project}
+                groups={[
+                  {key: 'stills', title: '导出作品', hint: '按成片同款视觉导出的静态图', paths: project.output.stills, assets: project.assets?.stills.items ?? fallbackAssetCollection('still', project.output.stills).items},
+                  {key: 'photos', title: '素材照片', hint: '这个文件夹里的原始照片', paths: project.photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', project.photos).items},
+                ]}
+                busy={assetBusy}
+                onRename={(item, stem) => onAsset(item, 'rename', stem)}
+                onDelete={(item) => onAsset(item, 'delete')}
+              />
             </>
           ) : (
             <Blocked capability={capabilities.browsePhotos} onRemedy={onRemedy} />

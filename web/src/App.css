@@ -305,9 +305,13 @@
 
 .folder-switch-name {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   white-space: nowrap;
+}
+
+.folder-switch {
+  max-width: min(34vw, 32rem);
 }
 
 .topbar-actions {
@@ -1379,7 +1383,15 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   gap: 1.5rem;
 }
 
+.photo-item { min-width: 0; }
+.photo-item-meta { display: flex; align-items: center; gap: 0.5rem; min-width: 0; margin-top: 0.5rem; color: var(--color-secondary-text); font-size: 0.78rem; }
+.photo-item-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.photo-item-actions { gap: 0.4rem; font-size: 0.78rem; }
+.photo-item-meta .asset-rename-input { min-height: 1.8rem; }
+
 .photo-card {
+  display: block;
+  width: 100%;
   background: none;
   padding: 0;
   border-radius: 3px;
@@ -1404,18 +1416,18 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 /* Lightbox 只通过实例 class 变更 YARL,避免影响未来的其他查看器。 */
 .tsuzuri-lightbox {
   --yarl__color_backdrop: rgba(26, 24, 21, 0.96);
-  --yarl__color_button: rgba(255, 253, 248, 0.78);
+  --yarl__color_button: #fffdf8;
   --yarl__color_button_active: #fffdf8;
   --yarl__color_button_disabled: rgba(255, 253, 248, 0.34);
-  --yarl__icon_size: 20px;
-  --yarl__toolbar_padding: 20px 24px;
-  --yarl__navigation_button_padding: 12px;
+  --yarl__icon_size: 18px;
+  --yarl__toolbar_padding: 12px 16px;
+  --yarl__navigation_button_padding: 8px;
 }
 
 .tsuzuri-lightbox .yarl__toolbar {
   align-items: center;
-  gap: 0.25rem;
-  border: 1px solid rgba(255, 253, 248, 0.16);
+  gap: 0.125rem;
+  border: 1px solid rgba(255, 253, 248, 0.22);
   border-radius: 999px;
   background: rgba(35, 32, 28, 0.7);
   box-shadow: 0 10px 32px rgba(0, 0, 0, 0.18);
@@ -1424,23 +1436,23 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .tsuzuri-lightbox .yarl__button,
 .tsuzuri-lightbox-tool {
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   display: inline-grid;
   place-items: center;
   border: 0;
   border-radius: 50%;
   background: transparent;
-  color: inherit;
+  color: #fffdf8;
   filter: none;
   transition: background-color 160ms ease, color 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 .tsuzuri-lightbox-tool svg,
 .tsuzuri-lightbox .yarl__button svg {
-  width: 20px;
-  height: 20px;
+  width: 18px;
+  height: 18px;
   stroke-width: 1.75;
 }
 
@@ -1464,7 +1476,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .tsuzuri-lightbox-tool {
   cursor: pointer;
-  color: rgba(255, 253, 248, 0.78);
+  color: #fffdf8;
   -webkit-tap-highlight-color: transparent;
 }
 
@@ -1481,8 +1493,8 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .tsuzuri-lightbox .yarl__navigation_prev,
 .tsuzuri-lightbox .yarl__navigation_next {
-  width: 44px;
-  height: 44px;
+  width: 38px;
+  height: 38px;
   padding: 0;
   border: 1px solid rgba(255, 253, 248, 0.14);
   border-radius: 50%;
@@ -1494,8 +1506,8 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .tsuzuri-lightbox .yarl__slide_image {
   width: auto;
   height: auto;
-  max-width: min(84vw, 1440px);
-  max-height: calc(100dvh - 168px);
+  max-width: min(68vw, 1120px) !important;
+  max-height: 68vh !important;
   object-fit: contain;
 }
 
@@ -1527,17 +1539,15 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   justify-content: center;
   gap: 0.2rem 1rem;
   margin: 0 auto;
-  padding: 0.55rem 0.85rem;
-  border: 1px solid rgba(255, 253, 248, 0.12);
-  border-radius: 0.6rem;
-  background: rgba(35, 32, 28, 0.64);
-  box-shadow: 0 8px 26px rgba(0, 0, 0, 0.14);
-  color: rgba(255, 253, 248, 0.76);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: rgba(255, 253, 248, 0.88);
   font-family: var(--font-sans);
   font-size: 0.75rem;
   line-height: 1.45;
   text-align: center;
-  backdrop-filter: blur(12px);
   pointer-events: none;
 }
 
@@ -1554,12 +1564,12 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 @media (max-width: 700px) {
   .tsuzuri-lightbox {
-    --yarl__toolbar_padding: 12px 16px;
+    --yarl__toolbar_padding: 10px 12px;
   }
 
   .tsuzuri-lightbox .yarl__slide_image {
-    max-width: calc(100vw - 32px);
-    max-height: calc(100dvh - 144px);
+    max-width: calc(100vw - 48px) !important;
+    max-height: 72vh !important;
   }
 
   .tsuzuri-lightbox .yarl__counter {

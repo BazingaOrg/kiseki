@@ -32,6 +32,12 @@ const SECTIONS: {key: SectionKey; label: string}[] = [
 const initialSection = (project: ProjectResponse): SectionKey =>
   project.output.videos.length > 0 ? 'results' : 'materials';
 
+const middleTruncate = (value: string, maxLength = 36) => {
+  if (value.length <= maxLength) return value;
+  const edge = Math.floor((maxLength - 1) / 2);
+  return `${value.slice(0, edge)}…${value.slice(-edge)}`;
+};
+
 interface WorkbenchProps {
   project: ProjectResponse;
   doctor: DoctorState;
@@ -130,14 +136,14 @@ export const Workbench = ({
             换成一个说明,并告诉用户换一种启动方式就能挑别的。
           */}
           {locked ? (
-            <span className="folder-switch folder-switch-locked" title="启动时已锁定这个素材夹">
+            <span className="folder-switch folder-switch-locked" title={`${project.path}\n启动时已锁定这个素材夹`}>
               <FolderOpen size={15} strokeWidth={1.5} />
-              <span className="folder-switch-name">{project.name}</span>
+              <span className="folder-switch-name">{middleTruncate(project.path)}</span>
             </span>
           ) : (
-            <button className="folder-switch" onClick={onSwitchFolder} title="换一个素材夹">
+            <button className="folder-switch" onClick={onSwitchFolder} title={project.path}>
               <FolderOpen size={15} strokeWidth={1.5} />
-              <span className="folder-switch-name">{project.name}</span>
+              <span className="folder-switch-name">{middleTruncate(project.path)}</span>
             </button>
           )}
           <DoctorPanel

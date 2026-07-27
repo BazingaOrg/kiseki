@@ -403,7 +403,7 @@ export const Materials = ({
   const running = job.status === 'running';
 
   return (
-    <Section title="素材" meta={project.path} titleHidden>
+    <Section title="素材" titleHidden>
       <div className="material-cards">
         <MaterialCard
           icon={<Image size={20} strokeWidth={1.5} />}
@@ -417,8 +417,7 @@ export const Materials = ({
         >
           {photos.length > 0 && (
             <>
-              <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '点击查看原图', paths: photos}]} />
-              <AssetCollection collection={project.assets?.photos ?? fallbackAssetCollection('photo', photos)} empty="" ambiguous={() => ''} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
+              <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '点击查看原图', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showCount: false}]} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
             </>
           )}
         </MaterialCard>
