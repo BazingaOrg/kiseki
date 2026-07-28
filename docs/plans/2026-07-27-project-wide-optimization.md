@@ -160,11 +160,11 @@
 
 ### 批次 6：动画、reduced-motion 与交互质量
 
-- [ ] 为 reduced-motion 设计组件级降级，消除移动/缩放但保留必要状态反馈。
-- [ ] 降低照片 hover 的布局/绘制成本并限定细指针设备。
-- [ ] 将参数/环境面板 keyframe 改为可中断、可反向的 transition。
-- [ ] 将进度条改为 transform 驱动或取消不必要的平滑。
-- [ ] 合并 Tabs 的重复 motion 样式，移除无效 transition。
+- [x] 为 reduced-motion 设计组件级降级，消除移动/缩放但保留必要状态反馈。
+- [x] 降低照片 hover 的布局/绘制成本并限定细指针设备。
+- [x] 将参数/环境面板 keyframe 改为可中断、可反向的 transition。
+- [x] 将进度条改为 transform 驱动或取消不必要的平滑。
+- [x] 合并 Tabs 的重复 motion 样式，移除无效 transition。
 
 影响范围：`web/src/index.css`、`web/src/App.css` 及引用该样式的组件。
 
@@ -370,6 +370,42 @@ timeline 等价筛选 100 / 500 / 2000 条目的 median 为 `0.074` / `0.326` / 
 
 批次 5 完成，未提交。
 
+### 批次 6（2026-07-28，实施）
+
+移除了全局的 `0.01ms` reduced-motion 覆盖，改为组件级规则：参数与环境面板在 reduced motion 下只淡入淡出，spinner 与不确定进度条保留 opacity 状态反馈而不再旋转或横移。新增最小 `useTransitionPresence`，参数表单与环境面板关闭后保留 150ms，进入为 200ms；因此快速开关可中断且不会直接消失。
+
+照片卡片不再位移或扩张阴影，只在 `hover: hover` 和 `pointer: fine` 下反馈边框颜色。任务确定进度换为带完整 ARIA 数值的 `div[role=progressbar]`，内部填充以 `scaleX()` 过渡，不再依赖浏览器 progress value 的 `width` transition。素材与成果 Tabs 合并为同一组 CSS，并移除无实际 transform 的 transition。
+
+新增 `motion-contract.test.ts` 守护上述约束，并按现有 Node 测试惯例加入 `tsconfig` exclude。实施者已跑 Web `40/40`、typecheck、production build 与 `git diff --check`，均通过；人工视觉、触摸与系统 reduced-motion 验收待独立 QA。
+
 ## 复审记录
 
+### 批次 6 QA 退回（2026-07-28）
+
+- 发现：presence 仅靠 150ms timer 卸载，未消费真实的 `opacity` transitionend；快速 reopen 后旧的异步回调没有代际隔离。
+  根因：初版 hook 只建模了可见状态，没有把 transition 生命周期和过期事件视为独立契约。
+- 发现：退出中的参数/环境面板仍可能接收焦点或点击；reduced-motion 把 spinner 和不确定进度改成 pulse keyframe，仍违反无位移动画的退化要求。
+  根因：只处理了视觉 opacity，缺少交互隔离与静态替代的无障碍约束。
+
+### 批次 6 QA 修复（2026-07-28）
+
+`useTransitionPresence` 现以 `opacity` 的直属 transitionend 为优先卸载路径，并保留约 250ms timer 作为缺失事件的 fallback；reopen 会取消 pending rAF/timer，并以 generation 重建承载节点，隔离旧 transition 事件。参数和环境面板在关闭的同一渲染中设置 `aria-hidden` 与 pointer-events，并通过 DOM `inert` 属性移出交互树。reduced-motion 下 spinner 与不确定进度的移动填充均隐藏，状态文本仍保留。
+
+复验结果：Web motion 契约 `3/3`（整套 Web `40/40`）、typecheck、production build 与 `git diff --check` 通过；人工浏览器/辅助技术验收仍待独立 QA。
+
 待实施后复审。复审应记录发现项、根因、修复批次、回归验证与仍保留的已知限制。
+
+### 批次 6 QA 第三轮发现（2026-07-28）
+
+- 发现：reduced-motion 的 presence 规则选择器与普通 `.transition-presence-open`、`.transition-presence` 同级或更弱，open 的 200ms 与 closing 的 150ms 可在层叠中覆盖预期的 120ms。
+  根因：初版 reduced-motion 规则只收窄 transition 属性，没有为 open 和 closing 状态建立能胜过普通状态规则的明确选择器与时长契约。
+
+修复待后续最终验证：reduced-motion 以 `.transition-presence.transition-presence-open` 与 `.transition-presence:not(.transition-presence-open)` 分别覆盖 open/closing，二者均只保留 opacity、`transform: none` 与 `transition-duration: 120ms`；不使用 `!important`。回归断言将明确检查 closing selector 与 120ms 同在该规则中，避免普通 closing 150ms 重新覆盖。
+
+### 批次 6（2026-07-28，最终独立 QA）
+
+独立 QA：Web `40/40`、typecheck、production build 与 `git diff --check` 全部通过。首次 QA 曾因 presence 生命周期语义及 reduced-motion pulse 退回；修复后，normal 模式实测 Doctor 面板 open 为 `200ms`，close 为 `10ms`，关闭期间仍挂载且具备 `aria-hidden`、`inert` 与 `pointer-events: none`，`50ms` reopen 不会被旧回调误删，`300ms` 后卸载。
+
+reduced-motion 最终加载的 CSS 为 `index-BPgiXn1-.css`，`matchMedia` 为 `true`；open/close 均为 `transform: none`、`transition-property: opacity`、`transition-duration: 120ms`、`transition-timing-function: ease-out`、`transition-delay: 0`、`animation: none`，close 于 `160ms` 卸载。中间一次 duration 断言失败的根因是旧 dist fingerprint，重新 production build 后通过。
+
+人工验收边界：未在浏览器验证 Make 的实际快速反向、390px coarse-touch 照片反馈、动态 JobPanel progress/spinner，以及 Lightbox 的 reduced-motion；源码与守护测试已覆盖相应约束，但不以此宣称完整视觉验收。验证工具目录已清理。
