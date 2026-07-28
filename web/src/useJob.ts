@@ -53,7 +53,7 @@ export type JobKind = JobRequest['kind'];
 
 export type StartJobArgs = JobRequest & {folder: string};
 
-export const useJob = (onEnd?: () => void) => {
+export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
   const [status, setStatus] = useState<JobStatus>('idle');
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +68,12 @@ export const useJob = (onEnd?: () => void) => {
   // 点了取消但 job id 还没回来:等 id 到手后补发一次
   const cancelPendingRef = useRef(false);
 
-  const closeSource = useCallback(() => {
+  const closeSource = useCallback((source?: EventSource) => {
+    // 旧连接的延迟回调只能关它自己，不能把后来接管的 SSE 一并关掉。
+    if (source && sourceRef.current !== source) {
+      source.close();
+      return;
+    }
     sourceRef.current?.close();
     sourceRef.current = null;
   }, []);
@@ -105,33 +110,45 @@ export const useJob = (onEnd?: () => void) => {
       sourceRef.current = source;
 
       source.onmessage = (event) => {
+        if (!mountedRef.current || run !== runRef.current || sourceRef.current !== source) return;
         const parsed = JSON.parse(event.data) as JobEvent;
-        setEvents((prev) => [...prev, parsed]);
+        // progress 是高频、可替代的当前快照；保留它只会让长任务的 React 队列和
+        // 日志不断膨胀。开始、详情、完成、警告与错误则是不可替代的任务语义，按
+        // 到达顺序完整留下。服务端重放同样遵循这份契约，双层收口防止旧服务积压。
+        setEvents((prev) =>
+          parsed.kind === 'progress'
+            ? [...prev.filter((item) => item.kind !== 'progress'), parsed]
+            : [...prev, parsed],
+        );
       };
 
       source.addEventListener('end', (event) => {
+        if (!mountedRef.current || run !== runRef.current || sourceRef.current !== source) return;
         const payload = JSON.parse((event as MessageEvent).data) as {status: JobStatus};
-        if (mountedRef.current) setStatus(payload.status);
-        closeSource();
+        setStatus(payload.status);
+        closeSource(source);
         onEnd?.();
       });
 
       // 连接本身断了(不是任务失败,是没收到 end 事件就断流),别让用户一直盯着转圈
       source.onerror = () => {
         if (mountedRef.current && sourceRef.current === source) {
-          setError('进度连接断开了。任务可能仍在后台运行，稍后刷新成果查看。');
+          setError('进度连接断开了，正在确认后台任务。');
+          // 先以失败态保留可见错误；若 probe 发现任务仍在，reconnect 会把它恢复成
+          // running。若服务端已无任务，则 current: null 只释放锁，保留这个终态。
           setStatus('failed');
+          onDisconnect?.();
         }
-        closeSource();
+        closeSource(source);
       };
     },
-    [closeSource, onEnd],
+    [closeSource, onDisconnect, onEnd],
   );
 
   const start = useCallback(
-    (args: StartJobArgs) => {
+    async (args: StartJobArgs): Promise<boolean> => {
       // POST 在途时重复提交直接丢弃,不然并发 start 会互相踩状态(见文件头注释里的竞态清单)
-      if (startingRef.current) return;
+      if (startingRef.current) return false;
       const run = ++runRef.current;
       startingRef.current = true;
       cancelPendingRef.current = false;
@@ -142,42 +159,42 @@ export const useJob = (onEnd?: () => void) => {
       setError(null);
       setStatus('running');
 
-      fetch('/api/jobs', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()},
-        body: JSON.stringify(args),
-      })
-        .then((res) => {
-          if (res.status === 409) throw new Error('busy');
-          if (!res.ok) throw new Error('failed');
-          return res.json() as Promise<{id: string}>;
-        })
-        .then(({id}) => {
-          // 先落 id、再判断是否被取代 —— 反过来(先判断)会让 jobIdRef 永远赋不上值,
-          // EventSource 建不起来,服务端 job 却已经在跑,runningJobId 从此占死。
-          startingRef.current = false;
-          jobIdRef.current = id;
-          if (!mountedRef.current || run !== runRef.current) return;
-
-          if (cancelPendingRef.current) {
-            cancelPendingRef.current = false;
-            fetch(`/api/jobs/${id}/cancel`, {
-              method: 'POST',
-              headers: {'X-Tsuzuri-Token': getToken()},
-            }).catch(() => setError('取消请求没发出去，任务可能还在后台跑。'));
-          }
-
-          attach(id, run);
-        })
-        .catch((err: Error) => {
-          startingRef.current = false;
-          if (!mountedRef.current || run !== runRef.current) return;
-          setStatus('failed');
-          // 守卫落地后,409 只可能来自另一个标签页或另一个服务实例
-          setError(err.message === 'busy' ? '已经有一个任务在跑（可能是另一个标签页开着）。等它结束再试。' : '任务没能起来。');
+      try {
+        const res = await fetch('/api/jobs', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()},
+          body: JSON.stringify(args),
         });
+        if (res.status === 409) throw new Error('busy');
+        if (!res.ok) throw new Error('failed');
+        const {id} = await res.json() as {id: string};
+
+        // 先落 id、再判断是否被取代 —— 反过来(先判断)会让 jobIdRef 永远赋不上值,
+        // EventSource 建不起来,服务端 job 却已经在跑,runningJobId 从此占死。
+        startingRef.current = false;
+        jobIdRef.current = id;
+        if (!mountedRef.current || run !== runRef.current) return false;
+
+        if (cancelPendingRef.current) {
+          cancelPendingRef.current = false;
+          fetch(`/api/jobs/${id}/cancel`, {
+            method: 'POST',
+            headers: {'X-Tsuzuri-Token': getToken()},
+          }).catch(() => setError('取消请求没发出去，任务可能还在后台跑。'));
+        }
+
+        attach(id, run);
+        return true;
+      } catch (err) {
+        startingRef.current = false;
+        if (!mountedRef.current || run !== runRef.current) return false;
+        setStatus('failed');
+        // 守卫落地后,409 只可能来自另一个标签页或另一个服务实例
+        setError(err instanceof Error && err.message === 'busy' ? '已经有一个任务在跑（可能是另一个标签页开着）。等它结束再试。' : '任务没能起来。');
+        return false;
+      }
     },
-    [closeSource, onEnd, attach],
+    [closeSource, attach],
   );
 
   /**
@@ -214,5 +231,25 @@ export const useJob = (onEnd?: () => void) => {
     }).catch(() => setError('取消请求没发出去，任务可能还在后台跑。'));
   }, []);
 
-  return {status, events, error, start, cancel, reconnect};
+  /**
+   * 仅在 `/api/jobs/current` 明确返回 `job: null` 后由上层调用。
+   *
+   * 这里只释放本地对服务端任务的持有与 SSE；终态（done/failed/cancelled）的
+   * 日志和错误仍应留在面板中，直到用户主动调整参数或重新开始。
+   */
+  const release = useCallback(() => {
+    ++runRef.current;
+    jobIdRef.current = null;
+    cancelPendingRef.current = false;
+    closeSource();
+  }, [closeSource]);
+
+  /** 用户主动离开终态面板时，才清除那次任务的展示状态。 */
+  const resetDisplay = useCallback(() => {
+    setEvents([]);
+    setError(null);
+    setStatus('idle');
+  }, []);
+
+  return {status, events, error, busy: status === 'running', start, cancel, reconnect, release, resetDisplay};
 };

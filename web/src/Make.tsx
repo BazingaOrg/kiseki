@@ -303,6 +303,12 @@ const ActionCard = ({
   }, [expanded, optionsPresence.present]);
 
   const showJobPanel = isActive && job.status !== 'idle';
+  const adjustLabel = kind === 'render' ? '调整参数再渲染' : '调整参数再导出';
+  const handleAdjust = () => {
+    // 先保留并展开当前卡片的设置，再收起任务面板；不回填默认值。
+    setExpanded(true);
+    onReset();
+  };
   const command = useMemo(
     () => equivalentCommand(kind, folder, options),
     [kind, folder, options],
@@ -325,8 +331,8 @@ const ActionCard = ({
               events={job.events}
               error={job.error}
               onCancel={job.cancel}
-              onReset={onReset}
-              resetLabel="重新设置参数"
+              onReset={handleAdjust}
+              resetLabel={adjustLabel}
             />
           </div>
         ) : (
@@ -383,13 +389,14 @@ interface MakeProps {
    */
   job: ReturnType<typeof useJob>;
   activeKind: Kind | null;
+  locked: boolean;
   onStart: (kind: Kind, options: JobOptions) => void;
   /** 收起已结束的进度面板,回到参数表单 */
   onReset: () => void;
 }
 
-export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart, onReset}: MakeProps) => {
-  const otherRunning = (kind: Kind) => job.status === 'running' && activeKind !== kind;
+export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, onStart, onReset}: MakeProps) => {
+  const otherRunning = () => locked;
 
   return (
     <Section title="制作" titleHidden>
@@ -405,7 +412,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart,
           onRemedy={onRemedy}
           job={job}
           isActive={activeKind === 'render'}
-          otherRunning={otherRunning('render')}
+          otherRunning={otherRunning()}
           onStart={(options) => onStart('render', options)}
           onReset={onReset}
         />
@@ -420,7 +427,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, onStart,
           onRemedy={onRemedy}
           job={job}
           isActive={activeKind === 'still'}
-          otherRunning={otherRunning('still')}
+          otherRunning={otherRunning()}
           onStart={(options) => onStart('still', options)}
           onReset={onReset}
         />

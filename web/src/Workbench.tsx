@@ -3,7 +3,7 @@
  *
  * 三段按「素材 → 制作 → 成果」受控前进；历史成片始终可以回看。
  */
-import {useEffect, useState} from 'react';
+import {useCallback, useEffect, useRef, useState} from 'react';
 import {FolderOpen} from 'lucide-react';
 
 import {deriveCapabilities} from './capabilities';
@@ -22,6 +22,15 @@ import {mutateAsset, undoAssetDelete} from './api';
 import type {AssetItem} from './types';
 
 type SectionKey = 'materials' | 'make' | 'results';
+type JobLock = 'checking' | 'free' | 'owned' | 'busy' | 'unknown';
+
+const isCurrentJob = (value: unknown): value is {id: string; kind: JobKind; folder: string} =>
+  value !== null &&
+  typeof value === 'object' &&
+  'id' in value && typeof value.id === 'string' &&
+  'kind' in value && typeof value.kind === 'string' &&
+  'folder' in value && typeof value.folder === 'string' &&
+  ['render', 'still', 'fetch-audio', 'lyrics'].includes(value.kind);
 
 const SECTIONS: {key: SectionKey; label: string}[] = [
   {key: 'materials', label: '素材'},
@@ -74,9 +83,74 @@ export const Workbench = ({
   // 放这里之后,渲染途中可以自由去看素材或成果,回来进度还在。
   // 把 useJob 上移到 App 能让任务跨素材夹存活,但那恰好是本批次要禁止的语义
   // (任务期间禁止切素材夹),且会让 onProjectRefresh 刷到错的项目 —— 不要上移。
-  const job = useJob(onProjectRefresh);
-  const jobBusy = job.status === 'running';
+  const probeRef = useRef<() => void>(() => {});
+  const probeGenerationRef = useRef(0);
+  const probeAbortRef = useRef<AbortController | null>(null);
+  const projectPathRef = useRef(project.path);
+  projectPathRef.current = project.path;
+  const handleDisconnect = useCallback(() => probeRef.current(), []);
+  const job = useJob(onProjectRefresh, handleDisconnect);
+  const {reconnect, release, resetDisplay} = job;
   const [activeKind, setActiveKind] = useState<JobKind | null>(null);
+  const [jobLock, setJobLock] = useState<JobLock>('checking');
+  const jobBusy = jobLock !== 'free' || job.busy;
+
+  const invalidateProbe = useCallback(() => {
+    ++probeGenerationRef.current;
+    probeAbortRef.current?.abort();
+    probeAbortRef.current = null;
+  }, []);
+
+  const probeCurrentJob = useCallback(() => {
+    invalidateProbe();
+    const generation = probeGenerationRef.current;
+    const projectPath = project.path;
+    const controller = new AbortController();
+    probeAbortRef.current = controller;
+    setJobLock('checking');
+    const isCurrent = () =>
+      generation === probeGenerationRef.current &&
+      projectPathRef.current === projectPath &&
+      !controller.signal.aborted;
+
+    fetch('/api/jobs/current', {signal: controller.signal})
+      .then((res) => {
+        if (!res.ok) throw new Error('current-job-unavailable');
+        return res.json() as Promise<unknown>;
+      })
+      .then((payload) => {
+        if (!isCurrent()) return;
+        // 只有服务端明确表示没有任务时才能解锁；失败或未知形状一律维持锁定。
+        if (!payload || typeof payload !== 'object' || !('job' in payload)) {
+          setJobLock('unknown');
+          return;
+        }
+        const runningJob = payload.job;
+        if (runningJob === null) {
+          // 这里只确认服务端锁已释放。不要抹掉终态面板，用户仍需看到这次
+          // done/failed/cancelled 的事件与错误，并主动决定是否重新调整参数。
+          release();
+          setJobLock('free');
+          return;
+        }
+        if (!isCurrentJob(runningJob)) {
+          setJobLock('unknown');
+          return;
+        }
+        if (runningJob.folder !== project.path) {
+          setJobLock('busy');
+          return;
+        }
+        setActiveKind(runningJob.kind);
+        reconnect(runningJob.id);
+        setJobLock('owned');
+      })
+      .catch(() => {
+        if (isCurrent()) setJobLock('unknown');
+      });
+  }, [invalidateProbe, project.path, reconnect, release]);
+
+  probeRef.current = probeCurrentJob;
 
   // 页面刷新/关标签页会丢掉 job 状态和 EventSource,但服务端任务(runningJobId)
   // 可能还在跑——不探测的话,用户新起任务一律 409,取消按钮又只在本地
@@ -89,26 +163,47 @@ export const Workbench = ({
   // Workbench 实例、project.path 变了"的情况,所以只在真正首次挂载时探测一次
   // 就够了,不需要跟着 project.path 重跑。
   useEffect(() => {
-    fetch('/api/jobs/current')
-      .then((res) => (res.ok ? res.json() : {job: null}))
-      .then(({job: runningJob}: {job: {id: string; kind: string; folder: string} | null}) => {
-        if (!runningJob || runningJob.folder !== project.path) return;
-        // 服务端的 kind 就是建任务时传入的原始字符串,来源可信(不是用户可篡改
-        // 的输入),这里按 JobKind 的枚举收窄一下,避免整段用 any。
-        const kind = runningJob.kind as JobKind;
-        setActiveKind(kind);
-        job.reconnect(runningJob.id);
-      })
-      .catch(() => {}); // 探测失败静默——不影响正常起新任务,用户最坏只是看不到重连
-  }, []);
+    probeCurrentJob();
+    // 不能只清理这一次 probe：SSE 断开或任务终态可能在之后发起更新的 probe，
+    // 卸载时必须一并作废当前 generation 并中止它。
+    return invalidateProbe;
+  }, [invalidateProbe, probeCurrentJob]);
+
+  // 收到 SSE end 后也重新确认服务端状态；不能仅凭前端结束事件放开写入口。
+  useEffect(() => {
+    if (jobLock === 'owned' && !job.busy) probeCurrentJob();
+  }, [job.busy, jobLock, probeCurrentJob]);
   const [undoIds, setUndoIds] = useState<string[]>([]);
   const [assetBusy, setAssetBusy] = useState(false);
   const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean} | null>(null);
 
   // folder 在这里补上:起任务的组件只说要做什么,不必自己传素材夹路径
-  const handleStart = (request: JobRequest) => {
+  const handleStart = async (request: JobRequest): Promise<boolean> => {
+    if (jobBusy) return false;
+    // 请求在途也必须锁住，直到服务端明确接受或 current 明确为空。
+    invalidateProbe();
+    // POST 尚未返回 id 时也要把面板归属到发起卡片，取消会被 useJob 记下并在
+    // id 到手后补发，不能让用户在这个窗口失去取消入口。
     setActiveKind(request.kind);
-    job.start({...request, folder: project.path});
+    setJobLock('checking');
+    try {
+      const accepted = await job.start({...request, folder: project.path});
+      if (accepted) {
+        setJobLock('owned');
+        return true;
+      }
+    } catch {
+      // start 当前会把网络错误转成 false；保留这个分支以免未来实现变化时误解锁。
+    }
+    // 失败或未被接受时仍然 fail-closed，只有最新一次 current probe 明确为 null
+    // 才会解锁；不要清空 pending kind 或旧终态展示。
+    probeCurrentJob();
+    return false;
+  };
+
+  const resetJobDisplay = () => {
+    resetDisplay();
+    setActiveKind(null);
   };
 
   const handleRemedy = (target: Remedy['target']) => {
@@ -116,7 +211,7 @@ export const Workbench = ({
     else if (sectionUnlocked(target)) setSection(target);
   };
   const performAsset = async (item: AssetItem, action: 'rename' | 'delete', stem?: string): Promise<boolean> => {
-    if (assetBusy || job.status === 'running') return false;
+    if (assetBusy || jobBusy) return false;
     setAssetBusy(true);
     const result = await mutateAsset(project.path, item.id, action, stem);
     setAssetBusy(false);
@@ -140,7 +235,7 @@ export const Workbench = ({
     void performAsset(item, action, stem);
   };
   const handleUndo = async (undoId: string) => {
-    if (assetBusy || job.status === 'running') return;
+    if (assetBusy || jobBusy) return;
     setAssetBusy(true);
     const result = await undoAssetDelete(project.path, undoId);
     setAssetBusy(false);
@@ -213,7 +308,7 @@ export const Workbench = ({
         )}
         {!locked && jobBusy && (
           <p className="locked-note" id="folder-switch-busy">
-            任务还在跑，这期间换不了素材夹 —— 换了进度和取消入口都会消失，任务却还在后台继续。
+            {jobLock === 'checking' || jobLock === 'unknown' ? '正在确认后台任务，这期间不能改动素材夹。' : '任务还在跑，这期间换不了素材夹 —— 换了进度和取消入口都会消失，任务却还在后台继续。'}
             <button className="link-button" onClick={() => setSection(activeKind ? 'make' : 'materials')}>回到任务</button>
           </p>
         )}
@@ -225,7 +320,7 @@ export const Workbench = ({
         )}
 
         <main className="workbench-main">
-          {undoIds.map((undoId) => <div className="asset-undo" key={undoId}><span>文件已移到项目回收区。</span><button className="link-button" disabled={assetBusy || job.status === 'running'} onClick={() => handleUndo(undoId)}>撤销</button></div>)}
+          {undoIds.map((undoId) => <div className="asset-undo" key={undoId}><span>文件已移到项目回收区。</span><button className="link-button" disabled={assetBusy || jobBusy} onClick={() => handleUndo(undoId)}>撤销</button></div>)}
           {section === 'materials' && (
             <Materials
               project={project}
@@ -234,9 +329,10 @@ export const Workbench = ({
               job={job}
               activeKind={activeKind === 'fetch-audio' || activeKind === 'lyrics' ? activeKind : null}
               onStart={handleStart}
-              onReset={() => setActiveKind(null)}
+              onReset={resetJobDisplay}
               onRefresh={onProjectRefresh}
-              assetBusy={assetBusy || job.status === 'running'}
+              locked={jobBusy}
+              assetBusy={assetBusy || jobBusy}
               onAsset={handleAsset}
             />
           )}
@@ -248,11 +344,12 @@ export const Workbench = ({
               job={job}
               activeKind={activeKind === 'render' || activeKind === 'still' ? activeKind : null}
               onStart={(kind, options) => handleStart({kind, options})}
-              onReset={() => setActiveKind(null)}
+              onReset={resetJobDisplay}
+              locked={jobBusy}
             />
           )}
           {section === 'results' && (
-            <Results project={project} capabilities={capabilities} onRemedy={handleRemedy} assetBusy={assetBusy || job.status === 'running'} onAsset={handleAsset} />
+            <Results project={project} capabilities={capabilities} onRemedy={handleRemedy} assetBusy={assetBusy || jobBusy} onAsset={handleAsset} />
           )}
         </main>
       </div>

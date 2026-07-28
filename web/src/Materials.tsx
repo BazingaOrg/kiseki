@@ -57,7 +57,7 @@ interface FetchProps {
   isActive: boolean;
   /** 别的地方起的任务正在跑 —— 服务端一次只跑一个,这时候按钮点了也是 409 */
   busy: boolean;
-  onStart: (request: MaterialJob) => void;
+  onStart: (request: MaterialJob) => Promise<boolean>;
   onReset: () => void;
 }
 
@@ -181,7 +181,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
 };
 
 /** 在线找歌词:查询词后端从音频推,前端只管点一下和挑一条。 */
-const LyricsSearch = ({project, onDone}: {project: ProjectResponse; onDone: () => void}) => {
+const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; locked: boolean; onDone: () => void}) => {
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<ApiResult<{candidates: LyricsCandidate[]; query: string}> | null>(null);
   const [installing, setInstalling] = useState<LyricsCandidate['id'] | null>(null);
@@ -203,7 +203,7 @@ const LyricsSearch = ({project, onDone}: {project: ProjectResponse; onDone: () =
   };
 
   const install = async (candidate: LyricsCandidate) => {
-    if (installing !== null) return;
+    if (locked || installing !== null) return;
     setInstalling(candidate.id);
     const outcome = await installLyrics(project.path, candidate.id);
     setInstalling(null);
@@ -286,7 +286,7 @@ const LyricsSearch = ({project, onDone}: {project: ProjectResponse; onDone: () =
             <button className="link-button" onClick={() => setSelected(null)}>取消</button>
             <button
               className="fetch-button"
-              disabled={installing !== null}
+              disabled={locked || installing !== null}
               onClick={() => {
                 install(selected);
                 setSelected(null);
@@ -305,6 +305,7 @@ interface LyricsFetchProps extends FetchProps {
   capabilities: Capabilities;
   onRemedy: (target: Remedy['target']) => void;
   onRefresh: () => void;
+  locked: boolean;
 }
 
 /**
@@ -322,6 +323,7 @@ const LyricsFetch = ({
   onStart,
   onReset,
   onRefresh,
+  locked,
 }: LyricsFetchProps) => {
   if (isActive && job.status !== 'idle') {
     return (
@@ -343,7 +345,7 @@ const LyricsFetch = ({
       <div className="fetch-path">
         <span className="fetch-path-label">在线找</span>
         {capabilities.fetchLyrics.enabled ? (
-          <LyricsSearch project={project} onDone={onRefresh} />
+          <LyricsSearch project={project} locked={locked} onDone={onRefresh} />
         ) : (
           <Blocked capability={capabilities.fetchLyrics} onRemedy={onRemedy} currentSection="materials" />
         )}
@@ -355,7 +357,7 @@ const LyricsFetch = ({
           <>
             <button
               className="fetch-button"
-              disabled={busy}
+              disabled={busy || locked}
               onClick={() => onStart({kind: 'lyrics'})}
             >
               开始识别
@@ -384,11 +386,12 @@ interface MaterialsProps {
    */
   job: ReturnType<typeof useJob>;
   activeKind: MaterialJob['kind'] | null;
-  onStart: (request: MaterialJob) => void;
+  onStart: (request: MaterialJob) => Promise<boolean>;
   onReset: () => void;
   /** 歌词落地走的是普通端点,没有任务结束事件,得自己触发一次刷新 */
   onRefresh: () => void;
   assetBusy: boolean;
+  locked: boolean;
   onAsset: (item: AssetItem, action: 'rename' | 'delete', stem?: string) => void;
 }
 
@@ -402,6 +405,7 @@ export const Materials = ({
   onReset,
   onRefresh,
   assetBusy,
+  locked,
   onAsset,
 }: MaterialsProps) => {
   const photos = project.photos;
@@ -474,7 +478,7 @@ export const Materials = ({
                 project={project}
                 job={job}
                 isActive={activeKind === 'fetch-audio'}
-                busy={running && activeKind !== 'fetch-audio'}
+                busy={locked || (running && activeKind !== 'fetch-audio')}
                 onStart={onStart}
                 onReset={onReset}
               />
@@ -510,7 +514,8 @@ export const Materials = ({
               onRemedy={onRemedy}
               job={job}
               isActive={activeKind === 'lyrics'}
-              busy={running && activeKind !== 'lyrics'}
+              busy={locked || (running && activeKind !== 'lyrics')}
+              locked={locked}
               onStart={onStart}
               onReset={onReset}
               onRefresh={onRefresh}

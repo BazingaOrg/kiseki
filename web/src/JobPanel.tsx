@@ -7,7 +7,7 @@
  */
 import {useEffect, useRef} from 'react';
 import type {CSSProperties, ReactNode} from 'react';
-import {Loader2, X} from 'lucide-react';
+import {CircleAlert, CircleCheck, Info, Loader2, Play, TriangleAlert, X} from 'lucide-react';
 
 import type {JobEvent, JobStatus} from './useJob';
 
@@ -37,10 +37,14 @@ const translateStage = (label: string): string => {
   return label;
 };
 
-const eventText = (event: JobEvent): string =>
-  event.kind === 'progress'
-    ? `${translateStage(event.label)} ${event.percent}%`
-    : event.text;
+const EVENT_PRESENTATION = {
+  start: {label: '开始', Icon: Play},
+  info: {label: '信息', Icon: Info},
+  detail: {label: '详情', Icon: Info},
+  success: {label: '完成', Icon: CircleCheck},
+  warn: {label: '注意', Icon: TriangleAlert},
+  error: {label: '错误', Icon: CircleAlert},
+} as const;
 
 interface JobPanelProps {
   /** 拼进"正在○○…",如"渲染"/"下载" */
@@ -70,6 +74,9 @@ export const JobPanel = ({
   const lastProgress = [...events]
     .reverse()
     .find((event): event is Extract<JobEvent, {kind: 'progress'}> => event.kind === 'progress');
+  const semanticEvents = events.filter(
+    (event): event is Exclude<JobEvent, {kind: 'progress'}> => event.kind !== 'progress',
+  );
 
   useEffect(() => {
     const el = logRef.current;
@@ -94,9 +101,15 @@ export const JobPanel = ({
 
       {status === 'running' &&
         (lastProgress ? (
-          <div className="job-progress" role="progressbar" aria-label={`${verb}进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lastProgress.percent} aria-valuetext={`${lastProgress.percent}%`}>
-            <span className="job-progress-fill" style={{transform: `scaleX(${lastProgress.percent / 100})`} as CSSProperties} />
-          </div>
+          <>
+            <div className="job-progress-summary">
+              <span>{translateStage(lastProgress.label)}</span>
+              <span>{lastProgress.percent}%</span>
+            </div>
+            <div className="job-progress" role="progressbar" aria-label={`${verb}进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lastProgress.percent} aria-valuetext={`${translateStage(lastProgress.label)} ${lastProgress.percent}%`}>
+              <span className="job-progress-fill" style={{transform: `scaleX(${lastProgress.percent / 100})`} as CSSProperties} />
+            </div>
+          </>
         ) : (
           <div className="job-progress job-progress-indeterminate" role="progressbar" aria-label={`${verb}进度`} aria-valuetext="正在处理，暂时无法估计进度" />
         ))}
@@ -105,13 +118,18 @@ export const JobPanel = ({
 
       {error && <p className="hint hint-error" role="alert">{error}</p>}
 
-      {events.length > 0 && (
+      {semanticEvents.length > 0 && (
         <div className="job-log" ref={logRef}>
-          {events.map((event, index) => (
-            <p className="job-log-line" key={index}>
-              {eventText(event)}
-            </p>
-          ))}
+          {semanticEvents.map((event, index) => {
+            const {Icon, label} = EVENT_PRESENTATION[event.kind];
+            return (
+              <p className={`job-log-line job-log-${event.kind}`} key={index}>
+                <Icon size={13} strokeWidth={1.8} aria-hidden="true" />
+                <span className="job-log-kind">{label}</span>
+                <span>{event.text}</span>
+              </p>
+            );
+          })}
         </div>
       )}
 
