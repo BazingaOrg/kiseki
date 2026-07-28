@@ -143,6 +143,16 @@ test('readFilterConfig parses global filter/intensity and perPhoto overrides', (
   }
 });
 
+test('readFilterConfig stores filter aliases as canonical registry ids', () => {
+  const dir = makeFolder([]);
+  try {
+    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({filter: 'tealorange'}));
+    assert.deepEqual(readFilterConfig(dir), {filter: 'teal-orange'});
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
 test('readFilterConfig rejects invalid JSON, unknown filter ids and out-of-range intensity', () => {
   const dir = makeFolder(['a.jpg']);
   try {

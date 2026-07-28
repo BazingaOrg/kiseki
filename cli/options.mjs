@@ -1,4 +1,4 @@
-import {FILTER_IDS} from './filters.mjs';
+import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 
 export class CliError extends Error {}
 
@@ -11,10 +11,11 @@ const parseFilterIntensity = (raw, flagLabel) => {
 };
 
 const parseFilterId = (raw) => {
-  if (!FILTER_IDS.includes(raw)) {
+  const id = normalizeFilterId(raw);
+  if (!id) {
     throw new CliError(`--filter 未知滤镜 id: ${raw}(可选: ${FILTER_IDS.join(', ')})`);
   }
-  return raw;
+  return id;
 };
 
 const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';

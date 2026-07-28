@@ -48,6 +48,25 @@ test('default and EXIF variants use separate output names', () => {
   assert.equal(path.basename(resolveJobs(photo, null, {exif: true, sign: true}).jobs[0].outPath), 'IMG-exif-sign.png');
 });
 
+test('still filter suffix is stable and never rewrites an explicit output file', () => {
+  const dir = fixture();
+  const photo = path.join(dir, 'IMG.jpg');
+  fs.writeFileSync(photo, 'x');
+  assert.equal(path.basename(resolveJobs(photo, null, {filter: {id: 'mono', intensity: 0.80}}).jobs[0].outPath), 'IMG-mono-0.8.png');
+  assert.equal(
+    resolveJobs(photo, path.join(dir, 'custom.png'), {filter: {id: 'mono', intensity: 0.8}}).jobs[0].outPath,
+    path.join(dir, 'custom.png'),
+  );
+});
+
+test('still reads an explicit project filter config for the default filename', () => {
+  const dir = fixture();
+  const photo = path.join(dir, 'IMG.jpg');
+  fs.writeFileSync(photo, 'x');
+  fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({filter: 'teal_orange', intensity: 0.80}));
+  assert.equal(path.basename(resolveJobs(photo, null).jobs[0].outPath), 'IMG-teal-orange-0.8.png');
+});
+
 test('dark variants append a final suffix for every EXIF/sign combination', () => {
   const dir = fixture();
   const photo = path.join(dir, 'IMG.jpg');

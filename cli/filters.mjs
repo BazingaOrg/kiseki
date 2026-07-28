@@ -14,3 +14,18 @@ export const FILTER_IDS = [
   'riso',
   'film',
 ];
+
+/**
+ * Accept the two unambiguous spellings users commonly type for the only
+ * hyphenated registry id. All pipeline consumers receive the registry id.
+ */
+const FILTER_ALIASES = new Map([
+  ['tealorange', 'teal-orange'],
+  ['teal_orange', 'teal-orange'],
+]);
+
+export const normalizeFilterId = (raw) => {
+  if (typeof raw !== 'string') return null;
+  const id = FILTER_ALIASES.get(raw) ?? raw;
+  return FILTER_IDS.includes(id) ? id : null;
+};

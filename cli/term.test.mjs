@@ -273,6 +273,10 @@ test('an output suffix is appended to the default filename but not to an explici
     resolveProjectPaths('/tmp/summer-album', null, '-draft').outputPath,
     '/tmp/summer-album/output/summer-album-draft.mp4',
   );
+  assert.equal(
+    resolveProjectPaths('/tmp/summer-album', null, '-mono-0.8').outputPath,
+    '/tmp/summer-album/output/summer-album-mono-0.8.mp4',
+  );
 });
 
 test('legacy JSON is copied once without removing or overwriting files', () => {
@@ -516,6 +520,7 @@ test(
         });
         assert.equal(result.status, 0, result.stderr);
         const calls = JSON.parse(readFileSync(callsPath, 'utf8'));
+        assert.equal(calls.some((call) => call[0] === 'error'), false, JSON.stringify(calls));
         assert.ok(calls.some((args) => args.includes('tsuzuri-plan')), JSON.stringify(calls));
         return {plannerCalls: calls.filter((args) => args.includes('tsuzuri-plan')), stdout: result.stdout};
       };

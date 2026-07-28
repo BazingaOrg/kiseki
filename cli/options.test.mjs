@@ -214,6 +214,10 @@ test('render command accepts --filter with optional --filter-intensity', () => {
   });
 });
 
+test('filter aliases are normalized to the registry id before render args are built', () => {
+  assert.deepEqual(parseArgs(['album', '--filter', 'teal_orange']).filter, {id: 'teal-orange'});
+});
+
 test('render command rejects unknown filter id and lists available ids', () => {
   assert.throws(() => parseArgs(['album', '--filter', 'nope']), /未知滤镜 id: nope/);
   assert.throws(() => parseArgs(['album', '--filter', 'nope']), /faded/);

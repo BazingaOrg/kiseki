@@ -40,6 +40,11 @@ test('render: filter + filterIntensity', () => {
   assert.deepEqual(argv, ['/f', '--filter', 'warm', '--filter-intensity', '0.5']);
 });
 
+test('web job argv normalizes a filter alias before it reaches the CLI', () => {
+  const argv = buildJobArgv({kind: 'render', folder: '/f', options: {filter: 'tealorange', filterIntensity: 0.8}});
+  assert.deepEqual(argv, ['/f', '--filter', 'teal-orange', '--filter-intensity', '0.8']);
+});
+
 test('render: draft + trim', () => {
   const argv = buildJobArgv({kind: 'render', folder: '/f', options: {draft: true, trim: 'auto'}});
   assert.deepEqual(argv, ['/f', '--draft', '--trim', 'auto']);

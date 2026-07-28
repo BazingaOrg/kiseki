@@ -14,6 +14,7 @@ import {bundleRenderer, loadRemotionRenderer, RENDERER} from './bundle.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {term} from './term.mjs';
+import {resolveFilterOutputSuffix} from './output-naming.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const PRESENTATION_SUFFIXES = ['', '-exif', '-sign', '-dark', '-exif-sign', '-exif-dark', '-sign-dark', '-exif-sign-dark'];
@@ -64,8 +65,7 @@ const assertNoCrossVariantCollisions = (jobs, variantSuffix) => {
   }
 };
 
-export const resolveJobs = (target, output, {exif = false, sign = false, dark = false, portrait = false, square = false} = {}) => {
-  const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}`;
+export const resolveJobs = (target, output, {exif = false, sign = false, dark = false, portrait = false, square = false, filter = null} = {}) => {
   const resolved = path.resolve(target);
   if (!fs.existsSync(resolved)) {
     throw new CliError(`找不到路径: ${resolved}`);
@@ -78,6 +78,12 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
       throw new CliError(`不是支持的图片格式: ${resolved}(支持 ${[...IMAGE_EXTS].join(' ')})`);
     }
     const publicDir = path.dirname(resolved);
+    const filterSuffix = resolveFilterOutputSuffix({
+      filter,
+      filterConfig: readFilterConfig(publicDir),
+      photoNames: [path.basename(resolved)],
+    });
+    const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${filterSuffix}`;
     const base = path.basename(resolved, path.extname(resolved));
     const filename = `${base}${variantSuffix}.png`;
     let outPath;
@@ -109,6 +115,12 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
     if (photos.length === 0) {
       throw new CliError(`文件夹里没有图片: ${resolved}`);
     }
+    const filterSuffix = resolveFilterOutputSuffix({
+      filter,
+      filterConfig: readFilterConfig(resolved),
+      photoNames: photos.map((photo) => path.basename(photo)),
+    });
+    const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${filterSuffix}`;
     const outDir = output
       ? path.resolve(output)
       : path.join(resolved, 'output', 'stills');

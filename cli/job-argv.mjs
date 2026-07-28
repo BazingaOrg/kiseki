@@ -1,4 +1,4 @@
-import {FILTER_IDS} from './filters.mjs';
+import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 
 export class JobValidationError extends Error {
   constructor(field, message) {
@@ -49,7 +49,8 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
   if (format === 'square') flags.push('--square');
 
   const hasFilter = opts.filter !== undefined && opts.filter !== null;
-  if (hasFilter && !FILTER_IDS.includes(opts.filter)) {
+  const filter = hasFilter ? normalizeFilterId(opts.filter) : null;
+  if (hasFilter && !filter) {
     throw new JobValidationError('filter', `filter 必须是以下之一: ${FILTER_IDS.join(', ')}`);
   }
 
@@ -63,7 +64,7 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
     }
   }
 
-  if (hasFilter) flags.push('--filter', opts.filter);
+  if (hasFilter) flags.push('--filter', filter);
   if (hasFilterIntensity) flags.push('--filter-intensity', String(opts.filterIntensity));
 
   if (kind === 'render') {

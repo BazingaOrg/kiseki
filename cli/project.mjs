@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import {CliError} from './options.mjs';
 import {formatEquivalentCommand} from './command-format.mjs';
-import {FILTER_IDS} from './filters.mjs';
+import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 
 const LEGACY_JSON = ['beats.json', 'lyrics.json', 'analysis.json', 'timeline.json'];
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -173,10 +173,11 @@ export const readFilterConfig = (folder) => {
   }
   const config = {};
   if (raw.filter !== undefined) {
-    if (!FILTER_IDS.includes(raw.filter)) {
+    const filter = normalizeFilterId(raw.filter);
+    if (!filter) {
       throw new CliError(`tsuzuri.json 里 filter 未知滤镜 id: ${raw.filter}(可选: ${FILTER_IDS.join(', ')})`);
     }
-    config.filter = raw.filter;
+    config.filter = filter;
   }
   if (raw.intensity !== undefined) {
     if (!isValidIntensity(raw.intensity)) {
@@ -195,10 +196,11 @@ export const readFilterConfig = (folder) => {
       }
       const photoConfig = {};
       if (entry.filter !== undefined) {
-        if (!FILTER_IDS.includes(entry.filter)) {
+        const filter = normalizeFilterId(entry.filter);
+        if (!filter) {
           throw new CliError(`tsuzuri.json 里 perPhoto.${photoName}.filter 未知滤镜 id: ${entry.filter}(可选: ${FILTER_IDS.join(', ')})`);
         }
-        photoConfig.filter = entry.filter;
+        photoConfig.filter = filter;
       }
       if (entry.intensity !== undefined) {
         if (!isValidIntensity(entry.intensity)) {

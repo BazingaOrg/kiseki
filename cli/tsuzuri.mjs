@@ -24,7 +24,7 @@ import {
 } from './analysis-cache.mjs';
 import {
   computeInputHash, copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, hasExplicitTrimConfig,
-  readTrimPreference, resolveProjectPaths, scanFolder,
+  readFilterConfig, readTrimPreference, resolveProjectPaths, scanFolder,
 } from './project.mjs';
 import {runDoctor} from './doctor.mjs';
 import {offerFetch, runFetch} from './fetch.mjs';
@@ -38,6 +38,7 @@ import {maybePersistTrimChoice} from './trim.mjs';
 import {FIXES} from './dependencies.mjs';
 import {runCommand} from './run-command.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
+import {resolveFilterOutputSuffix} from './output-naming.mjs';
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -141,7 +142,12 @@ export const runCommandFromArgv = async (
   if (videos.length > 0) {
     term.warn(`发现视频文件,tsuzuri 目前只处理照片,已忽略: ${videos.join(', ')}`);
   }
-  const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}`;
+  const filterSuffix = resolveFilterOutputSuffix({
+    filter,
+    filterConfig: readFilterConfig(folder),
+    photoNames: photos,
+  });
+  const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}${filterSuffix}`;
   const project = resolveProjectPaths(folder, output, variantSuffix);
   ensureProjectDirs(project);
   if (copyLegacyMetadata(folder, project.metadataDir)) {
