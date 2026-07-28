@@ -6,7 +6,7 @@
  * 文案,所以参数化的只有这两项。
  */
 import {useEffect, useRef} from 'react';
-import type {ReactNode} from 'react';
+import type {CSSProperties, ReactNode} from 'react';
 import {Loader2, X} from 'lucide-react';
 
 import type {JobEvent, JobStatus} from './useJob';
@@ -94,7 +94,9 @@ export const JobPanel = ({
 
       {status === 'running' &&
         (lastProgress ? (
-          <progress className="job-progress" value={lastProgress.percent} max={100} aria-label={`${verb}进度`} aria-valuetext={`${lastProgress.percent}%`} />
+          <div className="job-progress" role="progressbar" aria-label={`${verb}进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lastProgress.percent} aria-valuetext={`${lastProgress.percent}%`}>
+            <span className="job-progress-fill" style={{transform: `scaleX(${lastProgress.percent / 100})`} as CSSProperties} />
+          </div>
         ) : (
           <div className="job-progress job-progress-indeterminate" role="progressbar" aria-label={`${verb}进度`} aria-valuetext="正在处理，暂时无法估计进度" />
         ))}

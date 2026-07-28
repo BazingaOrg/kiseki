@@ -433,7 +433,8 @@
 
 /* ── 素材 ─────────────────────────────────────────────── */
 
-.material-tabs {
+.material-tabs,
+.result-tabs {
   display: flex;
   gap: 1rem;
   justify-content: center;
@@ -441,7 +442,8 @@
   border-bottom: 1px solid var(--color-divider);
 }
 
-.material-tab {
+.material-tab,
+.result-tab {
   flex: 0 0 auto;
   padding: 0.45rem 0.35rem 0.5rem;
   border: 0;
@@ -454,17 +456,19 @@
   flex-direction: column;
   align-items: center;
   gap: 0.12rem;
-  transition: transform 120ms ease-out, color 0.16s ease-out;
+  transition: color 0.16s ease-out, border-color 0.16s ease-out;
 }
 
-.material-tab-meta {
+.material-tab-meta,
+.result-tab-meta {
   color: var(--color-secondary-text);
   font-size: 0.7rem;
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
 }
 
-.material-tab-active {
+.material-tab-active,
+.result-tab-active {
   color: var(--color-text);
   border-bottom-color: var(--color-text);
 }
@@ -607,7 +611,14 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   border: 1px solid var(--color-divider);
   border-radius: 5px;
   overflow: hidden;
-  animation: panel-in 0.2s ease-out;
+  animation: fetch-candidates-in 0.2s ease-out;
+}
+
+@keyframes fetch-candidates-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
 }
 
 .fetch-candidates li + li {
@@ -761,7 +772,6 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   margin-top: 0.85rem;
   padding-top: 0.85rem;
   border-top: 1px solid var(--color-divider);
-  animation: panel-in 0.2s ease-out;
 }
 
 .make-checkboxes {
@@ -865,42 +875,6 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   gap: 0.75rem;
 }
 
-.result-tabs {
-  display: flex;
-  gap: 1rem;
-  justify-content: center;
-  margin-bottom: 1.25rem;
-  border-bottom: 1px solid var(--color-divider);
-}
-
-.result-tab {
-  flex: 0 0 auto;
-  padding: 0.45rem 0.35rem 0.5rem;
-  border: 0;
-  border-bottom: 1px solid transparent;
-  margin-bottom: -1px;
-  background: none;
-  color: var(--color-secondary-text);
-  font-size: 0.85rem;
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.12rem;
-  transition: transform 120ms ease-out, color 0.16s ease-out;
-}
-
-.result-tab-meta {
-  color: var(--color-secondary-text);
-  font-size: 0.7rem;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.35;
-}
-
-.result-tab-active {
-  color: var(--color-text);
-  border-bottom-color: var(--color-text);
-}
-
 /* 滤镜实时预览:与成片同源的 CSS/SVG,仅浏览器渲染,细节以成片为准 */
 .filter-preview {
   margin-bottom: 0.85rem;
@@ -936,7 +910,6 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   margin-top: 0.85rem;
   padding-top: 0.85rem;
   border-top: 1px solid var(--color-divider);
-  animation: panel-in 0.2s ease-out;
 }
 
 .job-status {
@@ -961,26 +934,19 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   width: 100%;
   height: 6px;
   margin-top: 0.7rem;
-  appearance: none;
-  border: none;
   border-radius: 999px;
   overflow: hidden;
-}
-
-.job-progress::-webkit-progress-bar {
   background: var(--color-divider);
-  border-radius: 999px;
 }
 
-.job-progress::-webkit-progress-value {
+.job-progress-fill {
+  display: block;
+  width: 100%;
+  height: 100%;
   background: var(--color-text);
   border-radius: 999px;
-  transition: width 0.2s ease-out;
-}
-
-.job-progress::-moz-progress-bar {
-  background: var(--color-text);
-  border-radius: 999px;
+  transform-origin: left center;
+  transition: transform 0.2s ease-out;
 }
 
 /* 不确定态:还没收到带 percent 的进度事件,只有日志在滚 —— 画一条来回扫的条 */
@@ -1401,12 +1367,13 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   overflow: hidden;
   border: 1px solid var(--color-photo-outline);
   box-shadow: var(--shadow-photo);
-  transition: transform 0.25s ease-out, box-shadow 0.25s ease-out;
+  transition: border-color 0.16s ease-out;
 }
 
-.photo-card:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow-photo-large);
+@media (hover: hover) and (pointer: fine) {
+  .photo-card:hover {
+    border-color: var(--color-secondary-text);
+  }
 }
 
 .photo-card img {
@@ -1641,13 +1608,45 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   border: 1px solid var(--color-divider);
   border-radius: 6px;
   box-shadow: var(--shadow-photo);
-  animation: panel-in 0.2s ease-out;
 }
 
-@keyframes panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
+.transition-presence {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity 150ms ease-out, transform 150ms ease-out;
+}
+
+.transition-presence-open {
+  opacity: 1;
+  transform: translateY(0);
+  transition-duration: 200ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dialog,
+  .fetch-candidates {
+    animation: dialog-fade-in 120ms ease-out;
+  }
+
+  .make-toggle-icon-open {
+    transform: none;
+  }
+
+  .doctor-panel.transition-presence,
+  .make-form-presence.transition-presence {
+    transform: none;
+    transition-property: opacity;
+    transition-duration: 120ms;
+    transition-timing-function: ease-out;
+    transition-delay: 0;
+  }
+
+  .job-spinner {
+    display: none;
+  }
+
+  .job-progress-indeterminate::after {
+    display: none;
   }
 }
 
