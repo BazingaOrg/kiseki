@@ -116,14 +116,14 @@
 
 前置决策（本批次开工前必须定，不得边写边定）：
 
-- **存量配置兼容**：`cli/still.mjs` 当前是宽容的手写 flat 解析器 —— 未知键静默跳过、非法值静默回退默认、`background = FFFFFF` 这类标准 TOML 非法写法今天可用。改为 fail-fast 会让现存 `tsuzuri.toml` 从静默降级变成直接报错。需先在 deep-reasoner 结论中选定：硬切并在文档/CHANGELOG 声明，或先出一版 warning 再硬切。默认倾向硬切 + 明确报错信息（含键名与期望形式），因为静默降级本身就是本轮要消除的问题。
+- **存量配置兼容**：~~需先选定硬切还是先出 warning~~ —— **已定：硬切，不做兼容层**（2026-07-27 用户确认：项目目前只有作者本人在用，不存在需要保护的存量配置）。`cli/still.mjs` 当前是宽容的手写 flat 解析器（未知键静默跳过、非法值静默回退默认、`background = FFFFFF` 这类标准 TOML 非法写法今天可用），一律改为 fail-fast + 明确报错信息（含键名与期望形式）。静默降级本身就是本轮要消除的问题。
 - **Node 侧解析实现**：与 `tomllib` 对齐语义，要么引入 TOML 依赖，要么扩写手写解析器。这与「不为理论收益增加新依赖」存在张力；本轮的取舍是：仅在手写解析器无法覆盖 schema 所需语义时才引依赖，且必须在本文件记录理由。
 
-- [ ] 定义视频/still 共用字段 schema 与跨 Node/Python fixture。
-- [ ] 按上述前置决策统一合法数值形式和非法字段的 fail-fast 行为，并给出可读错误信息。
-- [ ] 在渲染前增加只读 timeline validator，报告精确 JSON path，不自动改写文件。
-- [ ] 为显式滤镜/强度生成稳定默认后缀，保持显式 `-o` 原样优先。
-- [ ] 记录本批次导致失效的文档点（默认产物文件名示例、配置字段说明），交批次 7 统一更新。
+- [x] 定义视频/still 共用字段 schema 与跨 Node/Python fixture。
+- [x] 按上述前置决策统一合法数值形式和非法字段的 fail-fast 行为，并给出可读错误信息。
+- [x] 在渲染前增加只读 timeline validator，报告精确 JSON path，不自动改写文件。
+- [x] 为显式滤镜/强度生成稳定默认后缀，保持显式 `-o` 原样优先。
+- [x] 记录本批次导致失效的文档点（默认产物文件名示例、配置字段说明），交批次 7 统一更新。
 
 影响范围：`analyzer/plan.py`、`cli/still.mjs`、`cli/render.mjs`、`cli/tsuzuri.mjs`、配置与 fixture 测试。
 
@@ -275,6 +275,32 @@
 验证：web typecheck / 33 测试 / build，cli 380 测试，renderer 9 测试，analyzer 128 测试，全部通过。qa-runner 另行逐条确认 `menu-loop.test.mjs` 原有四条用例一字未改，且全部测试改动均为新增、无削弱。
 
 待人工验收：慢创建期间立刻点取消是否真的取消；渲染中换素材夹按钮禁用与「回到任务」链接；**回归项 —— 渲染中在三段间来回切进度与日志不丢**；任务跑到一半硬刷新页面，进度与取消入口是否都回来；面包屑一深一浅快速连点是否停在最后点的那层；菜单选 web 后菜单不再出现且 Ctrl+C 后无 chromium 残留。
+
+### 批次 3（2026-07-28，配置契约第一段完成）
+
+新增 `cli/config.mjs` 与 `cli/toml.mjs`：Node 不新增 TOML 依赖，只解析顶层单行 bool/int/float/string 子集，明确拒绝 table、数组、内联表、多行字符串和点号键。`cli/still.mjs` 改为投影这份共用 schema，不再因错误配置静默回退默认画布；字符串中的 `#` 保持为内容。背景色收紧为 `#RRGGBB`。
+
+Python `tomllib` 解析后以 `analyzer/plan.py` 的镜像字段表收窄到同一产品子集，未知/弃用/类型或范围错误一律退出；`examples/config-cases.json` 由 Node 与 Python 测试共同消费，固定默认值、21 个字段与接受/拒绝案例。未引入 TOML 依赖，因为当前严格标量子集已由手写解析器覆盖。
+
+独立 QA 最终验证：Node targeted 51/51、完整 CLI 260/260、Python config+plan 87、完整 analyzer 150，`git diff --check` 通过。timeline validator 与滤镜输出命名仍未开始，留待本批次后续工作。
+
+### 批次 3（2026-07-28，timeline validator）
+
+新增无依赖的 `cli/timeline-validator.mjs`。它是纯函数：只检查渲染器实际消费的根字段、照片/章节/字幕与可选 `trim`、`chapters`、`branding`、`beats`、`motion` 的真实形态，使用如 `$.photos[2].transition.duration` 的精确路径报错；不补默认、不修复或写回 timeline。省略 `kind` 的旧照片仍合法，未知 `kind` 事件保持忽略以支持将来扩展。
+
+主 CLI 每次读取 timeline 后、统计照片前校验；内部 `render.mjs` 在加载任何 Remotion 代码前再次校验，覆盖直接内部调用。新增 Node 窄测覆盖 analyzer 兼容 fixture、根/事件/数组索引错误、有限数、可选字段、旧照片、未知事件与两个入口的拒绝路径。
+
+独立 QA 最终验证：targeted 20/20、完整 CLI 430/430（无 skip）、analyzer 150、renderer 9/9 + typecheck，`git diff --check` 均通过。QA 发现 `cli/term.test.mjs` 的 trim precedence stub 因缺少 v1 必填字段与首张照片边界，曾把 validator 错误写进 calls 却未断言；已补全合法 timeline v1（保留未知 kind fixture）并断言不存在 `['error', ...]`。另补 `trimmed_duration <= full_duration` 边界，超出时报告 `$.meta.trim.trimmed_duration`。滤镜命名第三段尚未开始。
+
+### 批次 3（2026-07-28，滤镜默认输出命名）
+
+新增 `cli/output-naming.mjs` 作为视频与 still 共用的纯命名规则：只有 CLI、Web job argv 或项目 `tsuzuri.json` 实际给出并最终生效的滤镜才进入默认文件名；渲染器内部滤镜默认强度不会让普通产物改名。规范化后的 registry id 进入后缀，显式强度按数值稳定化（`0.8` 与 `0.80` 同名）；项目逐张配置有多个有效组合时按排序后的完整组合命名，避免覆盖不同滤镜版本。没有有效滤镜的仅强度配置不产生误导性后缀。
+
+`-o` 明确文件路径继续完全原样，仍只对默认基名（以及 existing 的 still 目录输出基名）追加后缀；视频和 still 的原扩展名/基础命名保持不变。CLI、Web 和项目配置统一将 `tealorange`/`teal_orange` 规范为注册表的 `teal-orange`，渲染参数仍使用同一规范 id，未改动滤镜效果。
+
+批次 7 待更新：README 中默认视频/still 产物文件名示例，以及 `tsuzuri.json` 的 filter/intensity 配置说明，需明确显式有效滤镜会形成默认输出后缀与逐张组合规则。
+
+批次 3 至此完成。独立 QA 最终验证：targeted 141/141、完整 CLI 438/438（无 skip）、Web 33/33 + typecheck/build、analyzer 150、renderer 9/9 + typecheck，`git diff --check` 通过。
 
 ## 复审记录
 
