@@ -37,11 +37,15 @@ import {term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
 import {FIXES} from './dependencies.mjs';
 import {runCommand} from './run-command.mjs';
+import {validateTimeline} from './timeline-validator.mjs';
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 const TARGET_LUFS = -14;
 const TARGET_TP = -1.5;
+
+export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
+  validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
 
 const ffmpegQuiet = (args) => spawnSync('ffmpeg', ['-hide_banner', '-nostats', ...args], {encoding: 'utf8'});
 
@@ -219,7 +223,7 @@ export const runCommandFromArgv = async (
   if (planCode !== 0) return planCode;
   term.success('照片时间线规划完成');
 
-  let tl = JSON.parse(fs.readFileSync(timelinePath, 'utf8'));
+  let tl = readValidatedTimeline(timelinePath);
   const trimChoice = await maybePersistTrimChoice({
     folder, preferencesPath: project.preferencesPath, timeline: tl, trimOverride: trim, planOutcome,
     ...(trimInteractive === undefined ? {} : {interactive: trimInteractive}),
@@ -230,7 +234,7 @@ export const runCommandFromArgv = async (
     if (replanCode !== 0) return replanCode;
     term.detail('已按完整歌曲重新规划');
     term.success('已记住你的选择');
-    tl = JSON.parse(fs.readFileSync(timelinePath, 'utf8'));
+    tl = readValidatedTimeline(timelinePath);
   }
   const n = tl.photos.filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string').length;
   term.info('渲染计划');

@@ -9,6 +9,7 @@ import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
+import {validateTimeline} from './timeline-validator.mjs';
 
 export const detectParallelism = (osModule = os) =>
   typeof osModule.availableParallelism === 'function'
@@ -41,6 +42,9 @@ export const resolveRenderSettings = (
     jpegQuality: draft ? 80 : 90,
   };
 };
+
+export const readTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
+  validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
 
 /**
  * 渲染时覆盖 inputProps(timeline.json 本身绝不改写):
@@ -123,7 +127,8 @@ const main = async () => {
   const timelinePath = path.resolve(timelineArg);
   const outputPath = path.resolve(outputArg);
   const publicDir = path.resolve(publicDirArg);
-  const timeline = JSON.parse(fs.readFileSync(timelinePath, 'utf8'));
+  // 必须在加载 Remotion 前失败：内部入口也可直接调用，不能只依赖主 CLI。
+  const timeline = readTimeline(timelinePath);
   const {renderMedia, selectComposition} = loadRemotionRenderer();
   const progress = createPercentProgress();
   const renderSettings = resolveRenderSettings({draft: flags.draft});
