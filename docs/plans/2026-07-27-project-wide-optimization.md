@@ -2,7 +2,7 @@
 
 日期：2026-07-27  
 基线：`d761ac5`（`main` 与 `origin/main`）  
-状态：待实施
+状态：批次 0–7 已实施；最终文档/全量 QA 待记录
 
 ## 目标与边界
 
@@ -77,8 +77,8 @@
 
 ### 批次 0：静态导出流程门禁（P0，可独立发布）
 
-- [ ] 将 `exportStill`、`output.stills` 纳入流程解锁判定：无音频但有照片时可进入「制作」，仅有静态作品时可进入「成果」。
-- [ ] 同步修正默认 Tab（`initialSection`）与能力 remedy 回链，使静态-only 素材夹不会落到锁死的步骤。
+- [x] 将 `exportStill`、`output.stills` 纳入流程解锁判定：无音频但有照片时可进入「制作」，仅有静态作品时可进入「成果」。
+- [x] 同步修正默认 Tab（`initialSection`）与能力 remedy 回链，使静态-only 素材夹不会落到锁死的步骤。
 
 影响范围：`web/src/Workbench.tsx` 及其测试。
 
@@ -88,10 +88,10 @@
 
 ### 批次 1：能力门禁、歌词确认与命令映射
 
-- [ ] 收紧在线找歌词能力为“恰好一份音频”，显示多音频歧义说明。
-- [ ] 将歌词候选改为选择后显式确认保存，与 CLI 的确认模型一致（与上一条同属歌词语义域，一次改完，不拆到后续批次）。
-- [ ] 抽出纯 `options → argv → command` 映射，使任务参数与“等效终端命令”同源。
-- [ ] 将启动提示与界面内文案由“只读画廊”改为“本地工作台”，写清写入、撤销与回收边界。README 双语不在本批次改动，统一留到批次 7。
+- [x] 收紧在线找歌词能力为“恰好一份音频”，显示多音频歧义说明。
+- [x] 将歌词候选改为选择后显式确认保存，与 CLI 的确认模型一致（与上一条同属歌词语义域，一次改完，不拆到后续批次）。
+- [x] 抽出纯 `options → argv → command` 映射，使任务参数与“等效终端命令”同源。
+- [x] 将启动提示与界面内文案由“只读画廊”改为“本地工作台”，写清写入、撤销与回收边界。README 双语不在本批次改动，统一留到批次 7。
 
 影响范围：`web/src/capabilities.ts`、`web/src/Materials.tsx`、`web/src/Make.tsx`、`cli/web-api/fetch.mjs`、`cli/web.mjs` 启动提示。
 
@@ -101,10 +101,10 @@
 
 ### 批次 2：任务生命周期、单实例与请求竞态
 
-- [ ] 任务创建/运行期间禁用素材夹切换，保留进度、错误和取消入口。
-- [ ] 确保 POST 成功后 job id 即使在状态切换中也不丢失。
-- [ ] Web 启动后退出交互菜单循环，避免同一项目多服务实例。
-- [ ] 为项目刷新提供可见错误与重试；为文件夹导航加入请求取消或序号防旧响应覆盖。
+- [x] 任务创建/运行期间禁用素材夹切换，保留进度、错误和取消入口。
+- [x] 确保 POST 成功后 job id 即使在状态切换中也不丢失。
+- [x] Web 启动后退出交互菜单循环，避免同一项目多服务实例。
+- [x] 为项目刷新提供可见错误与重试；为文件夹导航加入请求取消或序号防旧响应覆盖。
 
 影响范围：`web/src/useJob.ts`、`web/src/Workbench.tsx`、`web/src/App.tsx`、`web/src/FolderPicker.tsx`、`cli/tsuzuri.mjs`、`cli/web.mjs` 及相应测试。
 
@@ -174,10 +174,10 @@
 
 ### 批次 7：文档、配置说明与状态对齐
 
-- [ ] 校对 README 中英版本、命令帮助、配置字段、API 与当前 UI 行为（README 双语的“只读画廊”表述由本批次统一处理，批次 1 只改启动与界面文案）。
-- [ ] 落实批次 3 登记的失效文档点：默认产物文件名示例、配置字段合法形式与报错行为。
-- [ ] 明确素材变更、撤销、回收区、任务、静态导出、歌词歧义和缓存行为。
-- [ ] 维护项目状态与本计划的实施/复审记录，避免测试数量或实现描述漂移。
+- [x] 校对 README 中英版本、命令帮助、配置字段、API 与当前 UI 行为（README 双语的“只读画廊”表述由本批次统一处理，批次 1 只改启动与界面文案）。
+- [x] 落实批次 3 登记的失效文档点：默认产物文件名示例、配置字段合法形式与报错行为。
+- [x] 明确素材变更、撤销、回收区、任务、静态导出、歌词歧义和缓存行为。
+- [x] 维护项目状态与本计划的实施/复审记录，避免测试数量或实现描述漂移。
 
 影响范围：`README.md`、`README.en.md`、`docs/` 中相关配置/状态文档及本文件。
 
@@ -380,6 +380,18 @@ timeline 等价筛选 100 / 500 / 2000 条目的 median 为 `0.074` / `0.326` / 
 
 ## 复审记录
 
+### 批次 3 配置契约漂移修复（2026-07-28）
+
+- 根因：Node 标量解析器曾支持 TOML literal 单引号字符串，而 schema 校验阶段已丢失引号来源；Python 仅在 `tomllib` 解析后检查 `str`，同样无法区分双引号与单引号。共享 fixture 因而错误地将该写法固定为合法。
+- 修复：Node 在标量入口按键名和行号拒绝单引号；Python 在 `tomllib` 前以最小逐行 bare-key/标量词法扫描镜像拒绝，不重写第二套 TOML parser，双引号值中的 `#` 不受影响。fixture 改为 `single-quoted-string-rejected`，供两侧契约测试共同消费。
+- 回归边界：保留双引号基本字符串和行尾注释语义；`1_920`、`0x780`、数组和 table 的既有接受/拒绝规则不变。定向验证交由 QA，未提交。
+
+### 批次 3 数字下划线契约补正（2026-07-28）
+
+- QA 复核发现真实产品入口仍接受 `width = 1_920`。根因是此前测试名称与 parser 的 standalone 覆盖被误读为入口契约，数值下划线没有锁入 Node/Python 共用 fixture。
+- 修复：Node bare number 词法层拒绝含 `_` 的数字；Python 的原始标量预扫描镜像同一规则。错误均包含键名、行号与“改用不带下划线的十进制”指导；键名及双引号字符串中的下划线不受影响。
+- fixture 改为 `numeric-underscore-rejected`，保留 0x 与单引号拒绝路径；窄测可选，完整验证交 QA，未提交。
+
 ### 批次 6 QA 退回（2026-07-28）
 
 - 发现：presence 仅靠 150ms timer 卸载，未消费真实的 `opacity` transitionend；快速 reopen 后旧的异步回调没有代际隔离。
@@ -409,3 +421,25 @@ timeline 等价筛选 100 / 500 / 2000 条目的 median 为 `0.074` / `0.326` / 
 reduced-motion 最终加载的 CSS 为 `index-BPgiXn1-.css`，`matchMedia` 为 `true`；open/close 均为 `transform: none`、`transition-property: opacity`、`transition-duration: 120ms`、`transition-timing-function: ease-out`、`transition-delay: 0`、`animation: none`，close 于 `160ms` 卸载。中间一次 duration 断言失败的根因是旧 dist fingerprint，重新 production build 后通过。
 
 人工验收边界：未在浏览器验证 Make 的实际快速反向、390px coarse-touch 照片反馈、动态 JobPanel progress/spinner，以及 Lightbox 的 reduced-motion；源码与守护测试已覆盖相应约束，但不以此宣称完整视觉验收。验证工具目录已清理。
+
+### 批次 7（2026-07-28，文档实施）
+
+README 中英版压缩为同构的「快速开始、使用、配置与文档、开发、许可」入口：明确产品是可写入的本地工作台，保留最短命令、裸命令菜单语义、默认视频/still 命名与显式 `-o` 优先级，移除长滤镜 JSON、签名教程、并发、fetch 流程、架构和 FAQ 式内容。两版标题顺序、命令和链接目标已逐项对齐。
+
+`docs/config.md` 改为严格 21 键 schema，列出默认值、范围和 TOML 词法边界；明确 Python 视频和 Node still 使用同一契约与 fixture，但不承诺错误文字逐字一致。`timeline-schema.md` 限定为 validator 实际消费的只读检查、精确 path、双入口、filter/sign、旧照片与未知 kind 兼容，不再夸大为完整 JSON Schema 或连续性保证。
+
+`tsuzuri-status.md` 对齐本地工作台的资产 mutation 安全、回收区与进程内 undo、job 409、换夹禁用、同 server 同 folder 刷新重挂、歌词确认、still scale、doctor、缩略图 ETag/304 与分析缓存 v2。移除过期测试数字 `103` / `138`，最终 QA 数字由独立 QA 后补。
+
+自检：仅修改 README、配置、timeline、状态和本计划；相对链接、README 标题/命令/链接对齐、21 个配置键及 `git diff --check` 交由本批次自检。完整测试仍交 QA，未提交。
+
+### 批次 7 文档漂移复审（2026-07-28）
+
+- 发现：README 与状态页仍把工作台描述为只读，并保留已被批次 3 输出命名与严格配置契约淘汰的说明和过期测试计数。
+  根因：跨层实现批次将用户可见行为登记在计划中，但没有在同一批更新长期入口文档，且历史验证数在后续测试扩展后未被替换。
+- 修复：批次 7 将入口文档压缩并链接至稳定参考，配置和 timeline 文档按当前 validator/schema 收窄，状态页以行为边界替代历史实现流水账；测试数字等待最终 QA 后再写入。
+
+### 批次 7（2026-07-28，最终验证）
+
+基线 HEAD `8a40d07`，在当前工作树完成最终验证：CLI `460/460`、Analyzer `150`、Renderer `9/9` 加 typecheck、Web `40/40` 加 typecheck 与 production build 全部通过，0 skip / only。浏览器真实媒体播放与成片视觉质量仍由人工验收。
+
+历史段落中的“只读画廊”和 `Cache-Control: private, max-age=86400` 是保留的审计/性能基线文字，不能按现状解读；它们不改写历史记录，当前语义以批次 1、5C 与批次 7 的实现记录为准。
