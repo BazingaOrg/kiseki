@@ -94,17 +94,17 @@ def test_multiline_cjk_repeats_prefix(monkeypatch: pytest.MonkeyPatch):
     assert stderr.getvalue() == "● 错误甲\n● 错误乙\n"
 
 
-def test_deprecated_motion_config_is_accepted_but_ignored(tmp_path, monkeypatch):
+def test_deprecated_motion_config_is_rejected(tmp_path, monkeypatch):
     (tmp_path / "tsuzuri.toml").write_text(
         'motion = "kenburns"\nkenburns_from = 1.0\nkenburns_to = 1.1\n',
         encoding="utf-8",
     )
     stdout, stderr = install_streams(monkeypatch, stdout_tty=False, stderr_tty=False)
 
-    config = plan.load_config(tmp_path)
-
-    assert "motion" not in config
+    with pytest.raises(SystemExit):
+        plan.load_config(tmp_path)
     assert stdout.getvalue() == ""
+    assert "motion" in stderr.getvalue()
     assert "已弃用且不再生效" in stderr.getvalue()
 
 

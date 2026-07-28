@@ -5,9 +5,38 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
-import {resolveJobs} from './still.mjs';
+import {loadStillCanvasConfig, resolveJobs} from './still.mjs';
 
 const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-still-'));
+
+test('still projects the shared strict config and preserves # inside quoted text', () => {
+  const dir = fixture();
+  try {
+    fs.writeFileSync(
+      path.join(dir, 'tsuzuri.toml'),
+      'width = 1280\nheight = 720\nbackground = "#123456"\nphoto_scale = 0.5\noutro_text = "a # b"\n',
+    );
+    assert.deepEqual(loadStillCanvasConfig(dir), {
+      width: 1280,
+      height: 720,
+      background: '#123456',
+      photo_scale: 0.5,
+      signature: '',
+    });
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('still fails fast for an invalid shared config instead of falling back to defaults', () => {
+  const dir = fixture();
+  try {
+    fs.writeFileSync(path.join(dir, 'tsuzuri.toml'), 'background = FFFFFF\n');
+    assert.throws(() => loadStillCanvasConfig(dir), CliError);
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
 
 test('default and EXIF variants use separate output names', () => {
   const dir = fixture();

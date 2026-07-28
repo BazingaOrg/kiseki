@@ -1,0 +1,302 @@
+{
+  "version": 1,
+  "defaults": {
+    "width": 1920,
+    "height": 1080,
+    "fps": 60,
+    "background": "#FFFFFF",
+    "photo_scale": 0.8,
+    "transition": "album",
+    "album_fade": 0.4,
+    "crossfade": 0.6,
+    "min_gap": 2.0,
+    "flash_min_gap": 0.8,
+    "flash_avg_threshold": 2.0,
+    "trim_avg_threshold": 10.0,
+    "trim_target_avg": 8.0,
+    "pacing": "dynamic",
+    "trim": "auto",
+    "subtitles": true,
+    "chapters": true,
+    "demucs": true,
+    "intro": true,
+    "outro_text": "",
+    "signature": ""
+  },
+  "cases": [
+    {
+      "name": "empty-file",
+      "toml": "",
+      "expect": "ok",
+      "config": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "background": "#FFFFFF",
+        "photo_scale": 0.8,
+        "transition": "album",
+        "album_fade": 0.4,
+        "crossfade": 0.6,
+        "min_gap": 2.0,
+        "flash_min_gap": 0.8,
+        "flash_avg_threshold": 2.0,
+        "trim_avg_threshold": 10.0,
+        "trim_target_avg": 8.0,
+        "pacing": "dynamic",
+        "trim": "auto",
+        "subtitles": true,
+        "chapters": true,
+        "demucs": true,
+        "intro": true,
+        "outro_text": "",
+        "signature": ""
+      }
+    },
+    {
+      "name": "all-keys-non-default",
+      "toml": "width = 1280\nheight = 720\nfps = 30\nbackground = \"#123456\"\nphoto_scale = 0.5\ntransition = \"cut\"\nalbum_fade = 0.1\ncrossfade = 0.2\nmin_gap = 1.5\nflash_min_gap = 0.3\nflash_avg_threshold = 1.0\ntrim_avg_threshold = 5.0\ntrim_target_avg = 4.0\npacing = \"uniform\"\ntrim = 15\nsubtitles = false\nchapters = false\ndemucs = false\nintro = false\noutro_text = \"the end\"\nsignature = \"sig.svg\"\n",
+      "files": [{"name": "sig.svg", "content": "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"}],
+      "expect": "ok",
+      "config": {
+        "width": 1280,
+        "height": 720,
+        "fps": 30,
+        "background": "#123456",
+        "photo_scale": 0.5,
+        "transition": "cut",
+        "album_fade": 0.1,
+        "crossfade": 0.2,
+        "min_gap": 1.5,
+        "flash_min_gap": 0.3,
+        "flash_avg_threshold": 1.0,
+        "trim_avg_threshold": 5.0,
+        "trim_target_avg": 4.0,
+        "pacing": "uniform",
+        "trim": 15,
+        "subtitles": false,
+        "chapters": false,
+        "demucs": false,
+        "intro": false,
+        "outro_text": "the end",
+        "signature": "sig.svg"
+      }
+    },
+    {
+      "name": "background-unquoted",
+      "toml": "background = FFFFFF\n",
+      "expect": "error",
+      "key": "background",
+      "line": 1
+    },
+    {
+      "name": "background-named-color",
+      "toml": "background = \"red\"\n",
+      "expect": "error",
+      "key": "background",
+      "line": 1
+    },
+    {
+      "name": "background-short-hex",
+      "toml": "background = \"#FFF\"\n",
+      "expect": "error",
+      "key": "background",
+      "line": 1
+    },
+    {
+      "name": "unknown-key",
+      "toml": "foo_bar = 1\n",
+      "expect": "error",
+      "key": "foo_bar",
+      "line": 1
+    },
+    {
+      "name": "deprecated-motion",
+      "toml": "motion = \"xxx\"\n",
+      "expect": "error",
+      "key": "motion",
+      "line": 1
+    },
+    {
+      "name": "fps-float",
+      "toml": "fps = 60.0\n",
+      "expect": "error",
+      "key": "fps",
+      "line": 1
+    },
+    {
+      "name": "hash-inside-string",
+      "toml": "outro_text = \"a # b\"\n",
+      "expect": "ok",
+      "config": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "background": "#FFFFFF",
+        "photo_scale": 0.8,
+        "transition": "album",
+        "album_fade": 0.4,
+        "crossfade": 0.6,
+        "min_gap": 2.0,
+        "flash_min_gap": 0.8,
+        "flash_avg_threshold": 2.0,
+        "trim_avg_threshold": 10.0,
+        "trim_target_avg": 8.0,
+        "pacing": "dynamic",
+        "trim": "auto",
+        "subtitles": true,
+        "chapters": true,
+        "demucs": true,
+        "intro": true,
+        "outro_text": "a # b",
+        "signature": ""
+      }
+    },
+    {
+      "name": "table-rejected",
+      "toml": "[table]\na = 1\n",
+      "expect": "error",
+      "key": "[table]",
+      "line": 1
+    },
+    {
+      "name": "duplicate-key",
+      "toml": "dup = 1\ndup = 2\n",
+      "expect": "error",
+      "key": "dup",
+      "line": 2
+    },
+    {
+      "name": "array-value",
+      "toml": "x = [1,2]\n",
+      "expect": "error",
+      "key": "内联表",
+      "line": 1
+    },
+    {
+      "name": "multiline-string",
+      "toml": "x = \"\"\"abc\"\"\"\n",
+      "expect": "error",
+      "key": "多行字符串",
+      "line": 1
+    },
+    {
+      "name": "dotted-key",
+      "toml": "a.b = 1\n",
+      "expect": "error",
+      "key": "点号键",
+      "line": 1
+    },
+    {
+      "name": "underscored-int",
+      "toml": "width = 1_920\n",
+      "expect": "ok",
+      "config": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "background": "#FFFFFF",
+        "photo_scale": 0.8,
+        "transition": "album",
+        "album_fade": 0.4,
+        "crossfade": 0.6,
+        "min_gap": 2.0,
+        "flash_min_gap": 0.8,
+        "flash_avg_threshold": 2.0,
+        "trim_avg_threshold": 10.0,
+        "trim_target_avg": 8.0,
+        "pacing": "dynamic",
+        "trim": "auto",
+        "subtitles": true,
+        "chapters": true,
+        "demucs": true,
+        "intro": true,
+        "outro_text": "",
+        "signature": ""
+      }
+    },
+    {
+      "name": "hex-integer-rejected",
+      "toml": "width = 0x780\n",
+      "expect": "error",
+      "key": "width",
+      "line": 1
+    },
+    {
+      "name": "literal-string",
+      "toml": "background = '#000000'\n",
+      "expect": "ok",
+      "config": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "background": "#000000",
+        "photo_scale": 0.8,
+        "transition": "album",
+        "album_fade": 0.4,
+        "crossfade": 0.6,
+        "min_gap": 2.0,
+        "flash_min_gap": 0.8,
+        "flash_avg_threshold": 2.0,
+        "trim_avg_threshold": 10.0,
+        "trim_target_avg": 8.0,
+        "pacing": "dynamic",
+        "trim": "auto",
+        "subtitles": true,
+        "chapters": true,
+        "demucs": true,
+        "intro": true,
+        "outro_text": "",
+        "signature": ""
+      }
+    },
+    {
+      "name": "trim-seconds",
+      "toml": "trim = 12.5\n",
+      "expect": "ok",
+      "config": {
+        "width": 1920,
+        "height": 1080,
+        "fps": 60,
+        "background": "#FFFFFF",
+        "photo_scale": 0.8,
+        "transition": "album",
+        "album_fade": 0.4,
+        "crossfade": 0.6,
+        "min_gap": 2.0,
+        "flash_min_gap": 0.8,
+        "flash_avg_threshold": 2.0,
+        "trim_avg_threshold": 10.0,
+        "trim_target_avg": 8.0,
+        "pacing": "dynamic",
+        "trim": 12.5,
+        "subtitles": true,
+        "chapters": true,
+        "demucs": true,
+        "intro": true,
+        "outro_text": "",
+        "signature": ""
+      }
+    },
+    {
+      "name": "trim-zero",
+      "toml": "trim = 0\n",
+      "expect": "error",
+      "key": "trim",
+      "line": 1
+    },
+    {
+      "name": "photo-scale-zero",
+      "toml": "photo_scale = 0\n",
+      "expect": "error",
+      "key": "photo_scale",
+      "line": 1
+    },
+    {
+      "name": "demucs-string",
+      "toml": "demucs = \"yes\"\n",
+      "expect": "error",
+      "key": "demucs",
+      "line": 1
+    }
+  ]
+}

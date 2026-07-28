@@ -8,6 +8,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {extractFormattedExif} from './exif.mjs';
+import {loadProjectConfig} from './config.mjs';
 import {CliError} from './options.mjs';
 import {bundleRenderer, loadRemotionRenderer, RENDERER} from './bundle.mjs';
 import {createPercentProgress} from './progress.mjs';
@@ -21,52 +22,16 @@ const ALL_VARIANT_SUFFIXES = PRESENTATION_SUFFIXES.flatMap((presentation) =>
   CANVAS_SUFFIXES.map((canvas) => `${presentation}${canvas}`),
 );
 
-const DEFAULT_CANVAS = {
-  width: 1920,
-  height: 1080,
-  background: '#FFFFFF',
-  photo_scale: 0.8,
-  signature: '',
-};
-
-/**
- * 极简 flat toml 读取(tsuzuri.toml 仅一层 key = value)。镜像约束见
- * docs/config.md;analyzer/plan.py 使用 tomllib,这里不要扩展嵌套 TOML 语法。
- * 只取 still 需要的画布字段;解析失败时回退默认并警告。
- */
+/** 读取视频/still 共享配置 schema,仅投影 still 所需画布字段。 */
 export const loadStillCanvasConfig = (folder) => {
-  const cfg = {...DEFAULT_CANVAS};
-  const tomlPath = path.join(folder, 'tsuzuri.toml');
-  if (!fs.existsSync(tomlPath)) return cfg;
-  try {
-    const text = fs.readFileSync(tomlPath, 'utf8');
-    for (const line of text.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) continue;
-      const m = trimmed.match(/^([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+)$/);
-      if (!m) continue;
-      const key = m[1];
-      let raw = m[2].trim();
-      if (raw.startsWith('#') || raw.includes(' #')) {
-        raw = raw.replace(/\s+#.*$/, '').trim();
-      }
-      if (key === 'width' || key === 'height') {
-        const n = Number(raw);
-        if (Number.isFinite(n) && n > 0) cfg[key] = Math.round(n);
-      } else if (key === 'photo_scale') {
-        const n = Number(raw);
-        if (Number.isFinite(n) && n > 0 && n <= 1) cfg.photo_scale = n;
-      } else if (key === 'background') {
-        const s = raw.replace(/^["']|["']$/g, '');
-        if (s) cfg.background = s;
-      } else if (key === 'signature') {
-        cfg.signature = raw.replace(/^["']|["']$/g, '');
-      }
-    }
-  } catch {
-    term.warn('tsuzuri.toml 无法解析,still 使用默认画布');
-  }
-  return cfg;
+  const {values} = loadProjectConfig(folder);
+  return {
+    width: values.width,
+    height: values.height,
+    background: values.background,
+    photo_scale: values.photo_scale,
+    signature: values.signature,
+  };
 };
 
 const listPhotosInFolder = (folder) => {

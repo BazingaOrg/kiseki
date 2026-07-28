@@ -14,6 +14,7 @@ from datetime import datetime
 import hashlib
 import json
 import math
+import re
 import sys
 import tomllib
 from pathlib import Path
@@ -47,10 +48,9 @@ DEFAULTS = {
     "outro_text": "",
     "signature": "",             # 空串 = 内置签名;非空为素材夹内 .svg 相对路径
     "intro": True,               # false 时跳过片头且 plan 不预留片头时长
+    "demucs": True,              # 分离人声开关;由 analyze 阶段消费
 }
 
-# 属于其他阶段的合法配置键,plan 不消费但不该告警
-FOREIGN_KEYS = {"demucs"}
 DEPRECATED_KEYS = {"motion", "kenburns_from", "kenburns_to"}
 
 # 识别段置信度阈值,与渲染层 SUBTITLE.confidenceThreshold 保持一致(LRC 固定为 1.0)
@@ -96,39 +96,6 @@ def _write_status(path: Path | None, outcome: str) -> None:
     path.write_text(json.dumps({"outcome": outcome}), encoding="utf-8")
 
 
-def _validate_branding(cfg: dict, folder: Path) -> None:
-    """校验 branding 相关配置;失败直接退出(不静默回退)。"""
-    sig = cfg.get("signature") or ""
-    if not isinstance(sig, str):
-        term.error(f"tsuzuri.toml: signature 必须是字符串,收到 {type(sig).__name__}")
-        raise SystemExit(1)
-    if sig:
-        if not sig.lower().endswith(".svg"):
-            term.error(f"tsuzuri.toml: signature 必须是 .svg 文件,收到 {sig!r}")
-            raise SystemExit(1)
-        sig_path = folder / sig
-        if not sig_path.is_file():
-            term.error(f"tsuzuri.toml: 找不到签名 SVG: {sig_path}")
-            raise SystemExit(1)
-    if not isinstance(cfg.get("outro_text"), str):
-        term.error(
-            f"tsuzuri.toml: outro_text 必须是字符串,收到 {type(cfg.get('outro_text')).__name__}"
-        )
-        raise SystemExit(1)
-    if not isinstance(cfg.get("intro"), bool):
-        term.error(f"tsuzuri.toml: intro 必须是布尔值,收到 {type(cfg.get('intro')).__name__}")
-        raise SystemExit(1)
-
-
-def _validate_background(cfg: dict) -> None:
-    background = cfg.get("background")
-    if not isinstance(background, str):
-        term.error(
-            f"tsuzuri.toml: background 必须是字符串,收到 {type(background).__name__}"
-        )
-        raise SystemExit(1)
-
-
 def _is_trim_seconds(value: object) -> bool:
     return (
         isinstance(value, (int, float))
@@ -138,12 +105,62 @@ def _is_trim_seconds(value: object) -> bool:
     )
 
 
-def _validate_trim(cfg: dict) -> None:
-    trim = cfg.get("trim")
-    if (isinstance(trim, str) and trim in {"auto", "full"}) or _is_trim_seconds(trim):
-        return
-    term.error('tsuzuri.toml: trim 必须是 "auto"、"full" 或正数秒数')
-    raise SystemExit(1)
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and abs(value) <= 2**53 - 1
+
+
+def _is_number(value: object) -> bool:
+    return isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(float(value))
+
+
+def _non_decimal_integer_key(text: str) -> str | None:
+    """返回首个使用 0x/0o/0b 的顶层配置键，镜像 Node 标量子集。"""
+    for line in text.splitlines():
+        match = re.match(r"^\s*([A-Za-z0-9_-]+)\s*=\s*[+-]?0[xob]", line, re.IGNORECASE)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _signature_is_in_folder(value: object, folder: Path) -> bool:
+    if not isinstance(value, str):
+        return False
+    if value == "":
+        return True
+    candidate = (folder / value).resolve()
+    return (
+        value.lower().endswith(".svg")
+        and candidate.is_file()
+        and candidate.is_relative_to(folder.resolve())
+    )
+
+
+# 与 cli/config.mjs 保持字段、默认值和约束一致。tomllib 负责完整 TOML
+# 语法;本表随后将其收窄到产品约定的顶层标量子集,防止 Python 侧悄悄接受
+# Node 侧拒绝的 table/array/date 等 TOML 值。
+CONFIG_SCHEMA = {
+    "width": ("正整数", lambda v, _folder: _is_int(v) and v > 0),
+    "height": ("正整数", lambda v, _folder: _is_int(v) and v > 0),
+    "fps": ("1–240 之间的整数(不接受 60.0 这样的小数字面量)", lambda v, _folder: _is_int(v) and 1 <= v <= 240),
+    "background": ("6 位十六进制颜色字符串(如 '#FFFFFF')", lambda v, _folder: isinstance(v, str) and bool(re.fullmatch(r"#[0-9A-Fa-f]{6}", v))),
+    "photo_scale": ("0–1 之间的数字(不含 0)", lambda v, _folder: _is_number(v) and 0 < v <= 1),
+    "transition": ('"album"、"cut" 或 "crossfade"', lambda v, _folder: isinstance(v, str) and v in {"album", "cut", "crossfade"}),
+    "album_fade": ("大于等于 0 的数字", lambda v, _folder: _is_number(v) and v >= 0),
+    "crossfade": ("大于等于 0 的数字", lambda v, _folder: _is_number(v) and v >= 0),
+    "min_gap": ("大于 0 的数字", lambda v, _folder: _is_number(v) and v > 0),
+    "flash_min_gap": ("大于 0 的数字", lambda v, _folder: _is_number(v) and v > 0),
+    "flash_avg_threshold": ("大于 0 的数字", lambda v, _folder: _is_number(v) and v > 0),
+    "trim_avg_threshold": ("大于 0 的数字", lambda v, _folder: _is_number(v) and v > 0),
+    "trim_target_avg": ("大于 0 的数字", lambda v, _folder: _is_number(v) and v > 0),
+    "pacing": ('"dynamic" 或 "uniform"', lambda v, _folder: isinstance(v, str) and v in {"dynamic", "uniform"}),
+    "trim": ('"auto"、"full" 或正数秒数', lambda v, _folder: (isinstance(v, str) and v in {"auto", "full"}) or _is_trim_seconds(v)),
+    "subtitles": ("布尔值 true/false", lambda v, _folder: isinstance(v, bool)),
+    "chapters": ("true 或 false", lambda v, _folder: isinstance(v, bool)),
+    "demucs": ("布尔值 true/false", lambda v, _folder: isinstance(v, bool)),
+    "intro": ("布尔值 true/false", lambda v, _folder: isinstance(v, bool)),
+    "outro_text": ("不含换行符的字符串", lambda v, _folder: isinstance(v, str) and "\n" not in v),
+    "signature": ("空字符串,或以 .svg 结尾且存在于素材夹内的相对路径", _signature_is_in_folder),
+}
 
 
 def _parse_trim_arg(value: str) -> str | float:
@@ -163,29 +180,34 @@ def load_config(folder: Path) -> dict:
     explicit_branding: set[str] = set()
     toml_path = folder / "tsuzuri.toml"
     if toml_path.is_file():
-        with toml_path.open("rb") as f:
-            user = tomllib.load(f)
+        text = toml_path.read_text(encoding="utf-8")
+        try:
+            user = tomllib.loads(text)
+        except tomllib.TOMLDecodeError as exc:
+            term.error(f"tsuzuri.toml 语法错误: {exc}")
+            raise SystemExit(1) from exc
+        non_decimal_key = _non_decimal_integer_key(text)
+        if non_decimal_key:
+            term.error(
+                f"tsuzuri.toml: {non_decimal_key} 不支持 0x/0o/0b 进制整数,请改用十进制"
+            )
+            raise SystemExit(1)
         deprecated = set(user) & DEPRECATED_KEYS
         if deprecated:
-            term.warn(
-                f"tsuzuri.toml 配置 {sorted(deprecated)} 已弃用且不再生效;"
-                "照片保持静止显示"
-            )
-        unknown = set(user) - set(DEFAULTS) - FOREIGN_KEYS - DEPRECATED_KEYS
+            term.error(f"tsuzuri.toml 配置 {sorted(deprecated)} 已弃用且不再生效,请删除该行")
+            raise SystemExit(1)
+        unknown = set(user) - set(CONFIG_SCHEMA)
         if unknown:
-            term.warn(f"tsuzuri.toml 中未知配置项被忽略: {sorted(unknown)}")
-        cfg.update({k: v for k, v in user.items() if k in DEFAULTS})
+            term.error(f"tsuzuri.toml 中存在未知配置项: {sorted(unknown)}")
+            raise SystemExit(1)
+        for key, value in user.items():
+            expected, validator = CONFIG_SCHEMA[key]
+            if not validator(value, folder):
+                term.error(f"tsuzuri.toml: {key} 必须是 {expected},收到 {value!r}")
+                raise SystemExit(1)
+        cfg.update(user)
         explicit_branding = set(user) & {"outro_text", "signature", "intro"}
     cfg["_explicit_branding"] = explicit_branding
-    _validate_background(cfg)
-    _validate_branding(cfg, folder)
-    _validate_trim(cfg)
-    if not isinstance(cfg["chapters"], bool):
-        term.error(f"tsuzuri.toml: chapters 必须是 true 或 false,收到 {cfg['chapters']!r}")
-        raise SystemExit(1)
-    if not isinstance(cfg["pacing"], str) or cfg["pacing"] not in {"dynamic", "uniform"}:
-        term.error('tsuzuri.toml: pacing 必须是 "dynamic" 或 "uniform"')
-        raise SystemExit(1)
     return cfg
 
 
