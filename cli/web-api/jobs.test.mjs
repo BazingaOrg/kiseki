@@ -11,12 +11,13 @@ import {
   buildJobEnv,
   buildJobInvocation,
   buildJobSpec,
-  createJobManager,
+  createJobManager as createJobManagerActual,
   JobValidationError,
   listDescendants,
   parseYtDlpProgress,
 } from './jobs.mjs';
 import {JobValidationError as JobSpecValidationError} from './job-spec.mjs';
+import {outputArtifactPaths} from '../atomic-output.mjs';
 
 test('job-spec 与 jobs 复用同一个 JobValidationError 类身份', () => {
   assert.equal(JobSpecValidationError, JobValidationError);
@@ -181,14 +182,65 @@ test('未知 options 字段被忽略', () => {
 // ---- createJobManager -----------------------------------------------------
 
 /** 造一个假的 child_process.ChildProcess,足够 jobs.mjs 使用的接口都给到。 */
-const makeFakeChild = () => {
+const makeFakeChild = ({autoCloseOnExit = true, pid = 12345} = {}) => {
   const child = new EventEmitter();
-  child.pid = 12345;
+  child.pid = pid;
   const fd3 = new PassThrough();
   child.stdio = [null, new PassThrough(), new PassThrough(), fd3];
   child.kill = () => {};
+  const emit = child.emit.bind(child);
+  child.emit = (event, ...args) => {
+    const result = emit(event, ...args);
+    if (event === 'exit' && autoCloseOnExit) emit('close', ...args);
+    return result;
+  };
   return child;
 };
+
+const makeCanonicalLeaseManager = ({onRelease = () => {}} = {}) => {
+  let nextId = 0;
+  const transactions = new Map();
+  return {
+    acquire: ({resources = []} = {}) => {
+      const id = `fake-lease-${++nextId}`;
+      const taskRoot = path.join(os.tmpdir(), id);
+      fs.mkdirSync(taskRoot, {recursive: true});
+      return {id, token: 'token', taskRoot, resources};
+    },
+    markSpawnIntent: () => {},
+    registerExecutor: (_lease, executor) => ({pid: executor.pid, start: 'Mon Jan  1 00:00:00 2024'}),
+    extendOutputClaims: () => {},
+    prepareOutputTransaction: (lease, entries) => transactions.set(lease.id, entries),
+    setOutputTransactionPhase: () => {},
+    rollbackOutputTransaction: (lease) => {
+      for (const entry of transactions.get(lease.id) ?? []) {
+        const {finalPath, partialPath, backupPath} = outputArtifactPaths(entry.finalPath, lease.id);
+        if (fs.existsSync(backupPath)) {
+          if (fs.existsSync(finalPath)) fs.rmSync(finalPath, {force: true});
+          fs.renameSync(backupPath, finalPath);
+        }
+        fs.rmSync(partialPath, {force: true});
+      }
+      transactions.delete(lease.id);
+    },
+    finalizeOutputTransaction: (lease) => {
+      for (const entry of transactions.get(lease.id) ?? []) {
+        fs.rmSync(outputArtifactPaths(entry.finalPath, lease.id).backupPath, {force: true});
+      }
+      transactions.delete(lease.id);
+    },
+    release: (lease) => {
+      onRelease(lease);
+      fs.rmSync(lease.taskRoot, {recursive: true, force: true});
+      return true;
+    },
+  };
+};
+
+const createJobManager = (deps = {}) => createJobManagerActual({
+  leaseManager: makeCanonicalLeaseManager(),
+  ...deps,
+});
 
 const writeNdjson = (fd3, events) => {
   for (const event of events) fd3.write(JSON.stringify(event) + '\n');
@@ -220,6 +272,7 @@ test('任务完成后 getJob 反映 done/failed 与 exitCode', async () => {
   writeNdjson(child.stdio[3], [{kind: 'start', text: '开始'}]);
   await new Promise((resolve) => setImmediate(resolve));
   child.emit('exit', 0);
+  child.emit('close', 0);
   await new Promise((resolve) => setImmediate(resolve));
 
   const job = manager.getJob(id);
@@ -237,9 +290,46 @@ test('非零退出码 → status failed', async () => {
   const manager = createJobManager({spawnImpl});
   const {id} = manager.createJob({kind: 'render', folder: '/f'});
   child.emit('exit', 1);
+  child.emit('close', 1);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(manager.getJob(id).status, 'failed');
   assert.equal(manager.getJob(id).exitCode, 1);
+});
+
+test('exit 后仍保持 running，直到 stdio close/reap 才发送唯一终态', () => {
+  const child = makeFakeChild({autoCloseOnExit: false});
+  const manager = createJobManager({spawnImpl: () => child});
+  const {id} = manager.createJob({kind: 'render', folder: '/f'});
+  const chunks = [];
+  manager.subscribeEvents(id, (chunk) => chunks.push(chunk));
+
+  child.emit('exit', 0);
+  assert.equal(manager.getJob(id).status, 'running');
+  assert.equal(chunks.filter((chunk) => chunk.startsWith('event: end\n')).length, 0);
+  child.emit('close', 0);
+  child.emit('close', 0);
+  assert.equal(manager.getJob(id).status, 'done');
+  assert.equal(chunks.filter((chunk) => chunk.startsWith('event: end\n')).length, 1);
+});
+
+test('cancel 进入 stopping；Windows 只使用 taskkill /T 路径', async () => {
+  const child = makeFakeChild();
+  const taskkillCalls = [];
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    platform: 'win32',
+    leaseManager: makeCanonicalLeaseManager(),
+    taskkillImpl: async (pid, force) => taskkillCalls.push([pid, force]),
+    executorLivenessImpl: () => 'alive',
+    forceKillAfterMs: 1,
+  });
+  const {id} = manager.createJob({kind: 'render', folder: '/f'});
+  assert.equal(manager.cancelJob(id), true);
+  assert.equal(manager.getJob(id).status, 'stopping');
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(taskkillCalls, [[12345, false]]);
+  child.emit('close', null);
+  assert.equal(manager.getJob(id).status, 'cancelled');
 });
 
 test('不存在的 job → getJob 返回 null', () => {
@@ -394,10 +484,7 @@ test('cancel escalates to SIGKILL when the child ignores SIGTERM', async () => {
   assert.deepEqual(signals[1], [-12345, 'SIGKILL']);
 });
 
-test('取消过的任务即使直接子进程已退出,仍要对进程组补 SIGKILL', async () => {
-  // 直接子进程只是个很薄的 tsuzuri.mjs 壳,SIGTERM 一到立刻就死;真正吃 CPU 的
-  // render.mjs 与十几个 chromium 会扛住 SIGTERM。以前兜底判 status === 'running',
-  // 壳一死状态就变 cancelled,那一刀被跳过 —— 实测点了取消 14 个进程一个没少。
+test('取消后 child close 且未快照到后代时可直接完成，不补盲目的 SIGKILL', async () => {
   const child = makeFakeChild();
   const signals = [];
   const manager = createJobManager({
@@ -409,7 +496,94 @@ test('取消过的任务即使直接子进程已退出,仍要对进程组补 SIG
   child.emit('exit', null);
   assert.equal(manager.getJob(id).status, 'cancelled');
   await new Promise((resolve) => setTimeout(resolve, 3200));
-  assert.deepEqual(signals, [[-12345, 'SIGTERM'], [-12345, 'SIGKILL']]);
+  assert.deepEqual(signals, [[-12345, 'SIGTERM']]);
+});
+
+test('取消时 child close 不是终态：已快照后代仍存活则保留 lease 并等待/强杀', async () => {
+  const child = makeFakeChild({autoCloseOnExit: false});
+  const signals = [];
+  const processTable = '12346 12345 Mon Jan  1 00:00:00 2024\n';
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: (pid, signal) => signals.push([pid, signal]),
+    readProcessTable: () => processTable,
+    forceKillAfterMs: 1,
+  });
+  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  manager.cancelJob(id);
+  child.emit('exit', null);
+  child.emit('close', null);
+  assert.equal(manager.getJob(id).status, 'stopping');
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  assert.ok(signals.some(([pid, signal]) => pid === 12346 && signal === 'SIGKILL'));
+  assert.equal(manager.getJob(id).status, 'failed');
+});
+
+test('重复取消与 shutdown 共用同一个终止流程，不重复发送 TERM', () => {
+  const child = makeFakeChild({autoCloseOnExit: false});
+  const signals = [];
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    killImpl: (pid, signal) => signals.push([pid, signal]),
+    forceKillAfterMs: 1000,
+  });
+  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  assert.equal(manager.cancelJob(id), true);
+  assert.equal(manager.cancelJob(id), false);
+  void manager.killAll({deadlineMs: 1});
+  assert.deepEqual(signals.filter(([, signal]) => signal === 'SIGTERM'), [[-12345, 'SIGTERM']]);
+});
+
+test('spawn 后父进程登记 executor 失败且身份不可证实时保留 lease', () => {
+  const child = makeFakeChild({autoCloseOnExit: false});
+  child.pid = process.pid;
+  const lease = {id: 'registration-race', token: 'token', taskRoot: '/tmp/registration-race'};
+  let releases = 0;
+  const leaseManager = {
+    acquire: () => lease, markSpawnIntent: () => {},
+    registerExecutor: () => { throw new Error('executor identity 不匹配'); },
+    release: () => { releases += 1; return true; },
+  };
+  const manager = createJobManager({
+    spawnImpl: () => child, leaseManager, killImpl: () => {},
+    readProcessTable: () => `${process.pid} 1 ${new Date().toString()}\n`,
+  });
+  assert.throws(() => manager.createJob({kind: 'still', folder: '/tmp/x', options: {}}), /identity 不匹配/);
+  assert.equal(manager.getJob(lease.id).status, 'failed');
+  assert.equal(releases, 0, '已 spawn 的 child 未确认退出前不能直接释放 lease');
+});
+
+test('Windows 终止不读取 ps 快照，taskkill 成功后仍要求 child close 与平台判活', async () => {
+  const child = makeFakeChild({autoCloseOnExit: false});
+  const manager = createJobManager({
+    spawnImpl: () => child, leaseManager: makeCanonicalLeaseManager(), platform: 'win32',
+    readProcessTable: () => { throw new Error('Windows must not call ps'); },
+    taskkillImpl: async () => {}, executorLivenessImpl: () => 'alive', forceKillAfterMs: 20,
+  });
+  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  manager.cancelJob(id);
+  child.emit('close', null);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(manager.getJob(id).status, 'cancelled');
+});
+
+test('Windows does not taskkill an executor with unknown liveness and retains its lease', async () => {
+  const child = makeFakeChild({autoCloseOnExit: false});
+  const taskkillCalls = [];
+  const releases = [];
+  const manager = createJobManager({
+    spawnImpl: () => child,
+    leaseManager: makeCanonicalLeaseManager({onRelease: (lease) => releases.push(lease.id)}),
+    platform: 'win32',
+    taskkillImpl: async (pid, force) => taskkillCalls.push([pid, force]),
+    executorLivenessImpl: () => 'unknown',
+  });
+  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  manager.cancelJob(id);
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(taskkillCalls, []);
+  assert.equal(manager.getJob(id).status, 'failed');
+  assert.deepEqual(releases, []);
 });
 
 test('正常结束的任务不该收到任何信号', async () => {
@@ -427,24 +601,40 @@ test('正常结束的任务不该收到任何信号', async () => {
 });
 
 test('a spawn failure releases the concurrency lock instead of wedging it', () => {
-  const child = makeFakeChild();
+  const child = makeFakeChild({pid: undefined});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
   const first = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
-  // spawn 失败时 ChildProcess 发 'error' 而不发 'exit',不处理就永远占着并发锁
-  child.emit('error', new Error('EAGAIN'));
+  // 没有 pid 说明 spawn 根本没创建进程,可直接释放并发锁。
   assert.equal(manager.getJob(first.id).status, 'failed');
   const second = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
   assert.ok(second.id, '第一个任务失败后应当能再起一个,而不是一直 409');
 });
 
 test('a spawn failure notifies subscribers with an end frame', () => {
-  const child = makeFakeChild();
+  const child = makeFakeChild({pid: undefined});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
   const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
   const chunks = [];
   manager.subscribeEvents(id, (chunk) => chunks.push(chunk));
-  child.emit('error', new Error('EMFILE'));
   assert.ok(chunks.some((chunk) => chunk.startsWith('event: end\n')), '订阅者不该干等一个永远不来的结束');
+});
+
+test('positive pid with an unknown start probe may use the child self-registration identity', () => {
+  const child = makeFakeChild({pid: 987654321});
+  const lease = {id: 'self-registered', token: 'token', taskRoot: '/tmp/self-registered'};
+  const canonical = {pid: 987654321, start: 'Mon Jan  1 00:00:00 2024'};
+  let received = null;
+  const leaseManager = {
+    acquire: () => lease, markSpawnIntent: () => {},
+    registerExecutor: (_lease, executor) => {
+      received = executor;
+      return canonical;
+    },
+    release: () => true,
+  };
+  const manager = createJobManager({spawnImpl: () => child, leaseManager});
+  assert.ok(manager.createJob({kind: 'still', folder: '/tmp/x', options: {}}).id);
+  assert.deepEqual(received, {pid: 987654321, start: null});
 });
 
 test('killAll signals every running job so Ctrl+C leaves no orphans', () => {
@@ -530,6 +720,24 @@ test('buildJobSpec:render/still 的命令组装不回归', () => {
   assert.equal(render.progressSource, 'fd3');
   const still = buildJobSpec({kind: 'still', folder: '/f'});
   assert.deepEqual(still.args.slice(-2), ['still', '/f']);
+});
+
+test('buildJobSpec claims the same canonical variant outputs the child CLI will write', () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-output-'));
+  try {
+    fs.writeFileSync(path.join(folder, 'a.jpg'), 'x');
+    fs.writeFileSync(path.join(folder, 'b.png'), 'x');
+    const options = {exif: true, sign: true, dark: true, format: 'square', draft: true, filter: 'mono', filterIntensity: 0.8, scale: 4};
+    const render = buildJobSpec({kind: 'render', folder, options});
+    assert.deepEqual(render.outputPaths, [path.join(folder, 'output', `${path.basename(folder)}-exif-sign-dark-square-draft-mono-0.8.mp4`)]);
+    const still = buildJobSpec({kind: 'still', folder, options});
+    assert.deepEqual(still.outputPaths, [
+      path.join(folder, 'output', 'stills', 'a-exif-sign-dark-square-mono-0.8.png'),
+      path.join(folder, 'output', 'stills', 'b-exif-sign-dark-square-mono-0.8.png'),
+    ]);
+  } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
 });
 
 test('buildJobSpec:fetch-audio 直接跑 yt-dlp,下载到素材夹外的临时目录', () => {

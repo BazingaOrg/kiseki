@@ -10,12 +10,13 @@
  * 本模块不碰 http,argv/spec 组装尽量做成纯函数,方便单测直接调用。
  */
 import {spawn as spawnActual, spawnSync} from 'node:child_process';
-import crypto from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import readline from 'node:readline';
 
 import {buildJobSpec, parseYtDlpProgress} from './job-spec.mjs';
+import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
+import {executorIdentity, executorLiveness, freezeExecutorTree, resumeFrozenExecutorTree, signalExecutorGroupOrRoot, signalExecutorTree, terminateExecutorTree} from '../runtime-lifecycle.mjs';
 
 export {JobValidationError, buildJobArgv, buildJobEnv, buildJobInvocation} from '../job-argv.mjs';
 
@@ -56,10 +57,10 @@ const MAX_JOBS_KEPT = 20;
  * 到 launchd/init,从我们的 pid 再也走不到它们。
  */
 export const listDescendants = (rootPid, readTable = defaultReadProcessTable) => {
-  const table = readTable();
+  const table = readTable() ?? '';
   const childrenOf = new Map();
   for (const line of table.split('\n')) {
-    const match = /^\s*(\d+)\s+(\d+)\s*$/.exec(line);
+    const match = /^\s*(\d+)\s+(\d+)(?:\s+.*)?$/.exec(line);
     if (!match) continue;
     const pid = Number(match[1]);
     const ppid = Number(match[2]);
@@ -82,11 +83,23 @@ export const listDescendants = (rootPid, readTable = defaultReadProcessTable) =>
 
 const defaultReadProcessTable = () => {
   try {
-    return spawnSync('ps', ['-Ao', 'pid=,ppid='], {encoding: 'utf8', timeout: 2000}).stdout ?? '';
+    // lstart 是 pid 复用防护的一部分。KILL 前必须重新确认还是同一个进程，
+    // 不能把三秒前的 pid 快照直接当作永远有效。
+    const result = spawnSync('ps', ['-Ao', 'pid=,ppid=,lstart='], {encoding: 'utf8', timeout: 2000});
+    return result.error || result.signal ? null : result.stdout ?? '';
   } catch {
-    return '';
+    return null;
   }
 };
+
+const defaultTaskkill = (pid, force) => new Promise((resolve, reject) => {
+  const args = force ? ['/PID', String(pid), '/F', '/T'] : ['/PID', String(pid), '/T'];
+  const child = spawnActual('taskkill', args, {
+    stdio: 'ignore', windowsHide: true,
+  });
+  child.once('error', reject);
+  child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`退出码 ${code}`)));
+});
 
 /**
  * @param {{spawnImpl?: Function, killImpl?: Function, tempParent?: string}} [deps]
@@ -103,6 +116,11 @@ export const createJobManager =({
   now = () => Date.now(),
   stallTimeoutMs = STALL_TIMEOUT_MS,
   stallCheckIntervalMs = STALL_CHECK_INTERVAL_MS,
+  forceKillAfterMs = FORCE_KILL_AFTER_MS,
+  platform = process.platform,
+  taskkillImpl = defaultTaskkill,
+  executorLivenessImpl = executorLiveness,
+  leaseManager = createTaskLeaseManager({terminateExecutor: terminateExecutorTree, executorLiveness}),
 } = {}) => {
   /** @type {Map<string, object>} */
   const jobs = new Map();
@@ -167,31 +185,63 @@ export const createJobManager =({
     if (runningJobId !== null) {
       return {error: 'busy'};
     }
-    // 校验失败在这里往外抛 JobValidationError,交给 HTTP 层捕获转 400。
-    const spec = buildJobSpec({kind, folder, options, tempParent});
+    // Lease 先于 spawn：第二个 web server 即使内存里没有 runningJobId，也不能
+    // 在同一个项目上并发写入。临时下载目录必须位于 taskRoot，不碰系统 /tmp。
+    let lease;
+    let spec;
+    try {
+      // Validate/specify outputs before claiming so two projects cannot write the
+      // same explicit -o destination. fetch's staging is rebuilt under taskRoot.
+      spec = buildJobSpec({kind, folder, options, tempParent});
+      lease = leaseManager.acquire({kind, resources: [folder], outputPaths: spec.outputPaths});
+      if (kind === 'fetch-audio') {
+        fs.rmSync(spec.tempDir, {recursive: true, force: true});
+        spec = buildJobSpec({kind, folder, options, tempParent: lease.taskRoot});
+      }
+    } catch (error) {
+      if (lease) leaseManager.release(lease);
+      if (error instanceof ProjectBusyError) return {error: 'busy'};
+      throw error;
+    }
+    const id = lease.id;
+    // detached 使 CLI 脱离 Web server 的终端组；渲染/下载还会拉起 chromium、
+    // ffmpeg 等后代。终止路径必须快照并逐个核验 identity，不能把负 PID
+    // 进程组信号当作跨平台、跨子树的可靠树终止。
+    let child;
+    try {
+      leaseManager.markSpawnIntent(lease);
+      child = spawnImpl(spec.command, spec.args, {
+        stdio: spec.stdio,
+        detached: true,
+        env: {
+          ...spec.env,
+          TSUZURI_LEASE_TASK_ID: lease.id,
+          TSUZURI_LEASE_TASK_TOKEN: lease.token,
+          TSUZURI_LEASE_TASK_ROOT: lease.taskRoot,
+        },
+      });
+    } catch (error) {
+      leaseManager.release(lease);
+      throw error;
+    }
 
-    const id = crypto.randomUUID();
-    // detached: true 让子进程成为一个新进程组的组长。渲染/出图任务会再往下拉起
-    // remotion/chromium 等孙子进程,child.kill() 只能杀直接子进程,孙子进程(尤其
-    // 是渲染用的 chromium)会变成孤儿继续占着资源跑;取消时改用
-    // process.kill(-child.pid, 'SIGTERM')(负 pid 表示对整个进程组发信号)才能
-    // 把这一整棵进程树斩草除根。yt-dlp 同理(它会拉起 ffmpeg 做转码)。
-    const child = spawnImpl(spec.command, spec.args, {
-      stdio: spec.stdio,
-      detached: true,
-      env: spec.env,
-    });
-
+    // Probe the identity exactly once. registerExecutor may return the value
+    // already persisted by the child; job termination must use that canonical
+    // pid/start pair, never a second adjacent ps lookup that can drift.
+    const spawnedExecutor = executorIdentity(child.pid);
     const job = {
-      id, kind, folder, status: 'running', exitCode: null, events: [], child,
+      id, kind, folder, spec, status: 'running', exitCode: null, events: [], child, lease,
       cancelled: false, listeners: new Set(), killTimer: null,
-      tempDir: spec.tempDir ?? null,
       // 停滞检测用:最后一次收到事件的时间
       lastActivityAt: Date.now(),
       stallTimer: null,
+      exited: false, closed: false, finalized: false, descendants: [], executor: spawnedExecutor,
+      terminationPromise: null, resolveTermination: null, terminationSettled: false,
     };
+    job.closePromise = new Promise((resolve) => { job.resolveClose = resolve; });
     jobs.set(id, job);
     runningJobId = id;
+    let executorRegistered = false;
 
     // 停滞看门狗:只给 fetch-audio 挂。yt-dlp 下载时每秒都在刷进度,长时间一条
     // 都没有就是卡死了;而 whisper 识别本来就会安静好几分钟,给它挂必然误杀。
@@ -228,31 +278,101 @@ export const createJobManager =({
     // spawn 失败(EAGAIN/EMFILE 等)时 ChildProcess 发 'error' 而**不发** 'exit'。
     // 没有监听器时 EventEmitter 会直接 throw,在 server 里就是 uncaughtException;
     // 就算不崩,不发 exit 也意味着 runningJobId 永远不释放,此后所有任务都 409。
-    child.on('error', () => {
-      if (job.status !== 'running') return;
+    // Node leaves pid undefined when spawn failed before creating a process.
+    // This is the only startup path that can safely release immediately.
+    const finishSpawnFailed = () => {
+      if (job.finalized) return;
+      job.closed = true;
       job.status = 'failed';
       job.exitCode = null;
       rl?.close();
-      // 命令根本没起来(比如没装 yt-dlp),善后逻辑仍要跑一遍,否则临时目录会漏。
       runFinalize(job, spec, null, {spawnFailed: true});
       finish(job);
+      job.resolveClose();
+    };
+
+    const failUnregisteredChild = () => {
+      if (job.finalized || job.status !== 'running') return;
+      // A positive pid can already be a real process even when its start time
+      // probe or durable registration failed. Keep the lease fail-closed and
+      // use the normal termination path only when identity permits it.
+      job.terminalFailure = true;
+      void beginTermination(job, spec);
+    };
+
+    child.on('error', () => {
+      if (!executorRegistered) {
+        failUnregisteredChild();
+        return;
+      }
+      if (job.status === 'stopping') {
+        job.closed = true;
+        maybeCompleteTermination(job, spec, null);
+        return;
+      }
+      if (job.status !== 'running') return;
+      job.terminalFailure = true;
+      void beginTermination(job, spec);
     });
 
     child.on('exit', (code) => {
+      // exit 只说明可执行体结束；stdio 仍可能把尾部数据刷进 pipe。终态以 close
+      // 为准，确保所有 fd 关闭且 child 已被 reap。
+      job.exited = true;
+      job.exitCode = code;
+    });
+
+    child.on('close', (code) => {
+      if (!executorRegistered) {
+        job.closed = true;
+        failUnregisteredChild();
+        job.resolveClose();
+        return;
+      }
+      if (job.closed) return;
+      job.closed = true;
       rl?.close();
+      if (job.status === 'stopping') {
+        // `close` only reaps the direct child. Detached render descendants can
+        // still be alive, so cancellation remains pending until their identity
+        // snapshots are proven absent.
+        maybeCompleteTermination(job, spec, job.exitCode ?? code);
+        job.resolveClose();
+        return;
+      }
       // finalize 决定"退出码 0 但收尾失败"这种情况(比如下载成功却装不进 audio/),
       // 必须在定 status 之前跑完,而且它自己保证不抛。
-      const ok = runFinalize(job, spec, code, {spawnFailed: false});
+      const finalCode = job.exitCode ?? code;
+      const ok = runFinalize(job, spec, finalCode, {spawnFailed: false});
       job.status = job.cancelled ? 'cancelled' : ok ? 'done' : 'failed';
-      job.exitCode = code;
-      // 取消过的任务**不清**兜底定时器:退出的只是那个薄壳,孙进程可能还活着,
-      // 那一刀必须照常补。只有正常结束的任务才需要撤掉定时器。
-      if (job.killTimer !== null && !job.cancelled) {
-        clearTimeout(job.killTimer);
-        job.killTimer = null;
-      }
+      job.exitCode = finalCode;
       finish(job);
+      job.resolveClose();
     });
+
+    if (!Number.isInteger(child.pid) || child.pid <= 0) {
+      finishSpawnFailed();
+      return {id};
+    }
+
+    // The CLI may authenticate the inherited lease and record its own PID
+    // before this parent gets scheduled again. registerExecutor is idempotent
+    // for that exact identity.
+    try {
+      const canonicalExecutor = leaseManager.registerExecutor(lease, spawnedExecutor);
+      if (!canonicalExecutor || !Number.isInteger(canonicalExecutor.pid) || typeof canonicalExecutor.start !== 'string' || !canonicalExecutor.start) {
+        throw new Error('task executor canonical identity 无效');
+      }
+      job.executor = canonicalExecutor;
+      executorRegistered = true;
+    } catch (error) {
+      // Registration can fail after spawn created a real process. The
+      // spawned identity is still the best available evidence; if it is
+      // unknown, beginTermination fails closed and retains the lease.
+      job.terminalFailure = true;
+      void beginTermination(job, spec);
+      throw error;
+    }
 
     return {id};
   };
@@ -262,24 +382,66 @@ export const createJobManager =({
     if (!spec.finalize) return code === 0;
     let outcome;
     try {
-      outcome = spec.finalize(code, {stderrTail: job.stderrTail ?? [], spawnFailed});
+      outcome = spec.finalize(code, {
+        stderrTail: job.stderrTail ?? [], spawnFailed,
+        task: {lease: job.lease, manager: leaseManager},
+      });
     } catch {
       // finalize 是在子进程回调里跑的,漏出去就是 uncaughtException 直接崩 server。
       return false;
     }
-    for (const event of outcome.events ?? []) emit(job, event);
+    for (const event of outcome.events ?? []) {
+      // A success event is terminal-facing: hold it until the durable lease is
+      // actually released, otherwise the next request can immediately learn
+      // that the project is still busy after the UI was told it succeeded.
+      if (event.kind === 'success') {
+        job.pendingSuccessEvents = [...(job.pendingSuccessEvents ?? []), event];
+      } else {
+        emit(job, event);
+      }
+    }
     return outcome.ok === true;
   };
 
   /** 广播 end 帧、清监听器、释放并发锁。exit 与 error 两条收尾路径共用。 */
-  const finish = (job) => {
+  const finish = (job, {releaseLease = true} = {}) => {
+    if (job.finalized) return;
+    job.finalized = true;
     if (job.stallTimer !== null) {
       clearInterval(job.stallTimer);
       job.stallTimer = null;
     }
+    if (job.killTimer !== null) {
+      clearTimeout(job.killTimer);
+      job.killTimer = null;
+    }
+    if (job.terminationPoll !== null && job.terminationPoll !== undefined) {
+      clearTimeout(job.terminationPoll);
+      job.terminationPoll = null;
+    }
+    if (releaseLease) {
+      // A false/throwing release means durable ownership was not proven gone.
+      // Never advertise success and let the next writer discover the busy lease.
+      let released = false;
+      try { released = leaseManager.release(job.lease) === true; } catch { /* fail closed below */ }
+      if (!released) {
+        job.status = 'failed';
+        job.exitCode = null;
+        emit(job, {kind: 'error', text: '任务 lease 释放失败，已保留占用以防止并发写入'});
+      }
+    }
+    if (job.status === 'done') {
+      for (const event of job.pendingSuccessEvents ?? []) emit(job, event);
+    }
+    job.pendingSuccessEvents = [];
     const endChunk = `event: end\ndata: ${JSON.stringify({status: job.status, exitCode: job.exitCode})}\n\n`;
     for (const listener of job.listeners) listener(endChunk);
     job.listeners.clear();
+    // Finalize (including fetch-audio temp cleanup) runs before finish. Release
+    // verifies the manifest token, so an old callback cannot delete another task.
+    // An unconfirmed tree deliberately retains its durable claim. Releasing it
+    // would allow a new process to write into a project still owned by a stray
+    // chromium/ffmpeg descendant.
     if (runningJobId === job.id) runningJobId = null;
     pruneJobs();
   };
@@ -295,7 +457,7 @@ export const createJobManager =({
     if (!job) return null;
     // 迟到的订阅者也要能补上已经发生过的事件,先把缓冲区里已有的逐条重放一遍。
     for (const event of job.events) listener(`data: ${JSON.stringify(event)}\n\n`);
-    if (job.status !== 'running') {
+    if (job.status !== 'running' && job.status !== 'stopping') {
       listener(`event: end\ndata: ${JSON.stringify({status: job.status, exitCode: job.exitCode})}\n\n`);
       return () => {};
     }
@@ -306,79 +468,235 @@ export const createJobManager =({
     return () => job.listeners.delete(listener);
   };
 
-
-/** 向整个进程组发信号。负 pid 配合 detached: true 覆盖同组的孙进程。 */
-  const signalGroup = (job, signal) => {
-    try {
-      killImpl(-job.child.pid, signal);
-    } catch {
-      // 进程可能已经退出,或权限问题——取消语义上已经"发起"了,不该报 500。
-    }
-  };
-
-  /** 删掉 fetch-audio 的下载中转目录。没有就什么都不做。 */
-  const removeTempDir = (job) => {
-    if (!job.tempDir) return;
-    try {
-      fs.rmSync(job.tempDir, {recursive: true, force: true});
-    } catch {
-      // 删不掉就算了,系统临时目录自己会回收
-    }
-    job.tempDir = null;
-  };
-
   /** 只保留最近的若干条任务记录,避免长时间开着的 server 无限攒 events。 */
   const pruneJobs = () => {
     if (jobs.size <= MAX_JOBS_KEPT) return;
     for (const [id, job] of jobs) {
       if (jobs.size <= MAX_JOBS_KEPT) break;
       // 只清已结束的,正在跑的绝不能动
-      if (job.status !== 'running') jobs.delete(id);
+      if (job.status !== 'running' && job.status !== 'stopping') jobs.delete(id);
     }
   };
 
-  /** 逐个杀掉快照里的后代。它们可能已经退出,ESRCH 一律忽略。 */
-  const killSnapshot = (job, signal) => {
-    for (const pid of job.descendants ?? []) {
-      try {
-        killImpl(pid, signal);
-      } catch {
-        // 已经退出了,正常
-      }
+  const mergeDescendants = (previous, current) => {
+    const merged = new Map();
+    for (const descendant of [...previous, ...current]) {
+      if (!Number.isInteger(descendant?.pid) || descendant.pid <= 0 || typeof descendant.start !== 'string' || !descendant.start) continue;
+      merged.set(`${descendant.pid}:${descendant.start}`, descendant);
     }
+    return [...merged.values()];
+  };
+
+  const readDescendantSnapshot = (job) => {
+    if (platform === 'win32') {
+      // taskkill owns tree discovery on Windows. ps snapshots are neither
+      // available nor trustworthy there; close + platform liveness is proof.
+      return {known: true, descendants: []};
+    }
+    const table = readProcessTable();
+    if (typeof table !== 'string') return {known: false, descendants: []};
+    const identities = new Map();
+    for (const line of table.split('\n')) {
+      const match = /^\s*(\d+)\s+(\d+)(?:\s+(.*\S))?\s*$/.exec(line);
+      if (match?.[3]) identities.set(Number(match[1]), match[3]);
+    }
+    const observed = listDescendants(job.child.pid, () => table)
+      .map((pid) => ({pid, start: identities.get(pid) ?? null}));
+    if (observed.some((identity) => !identity.start)) return {known: false, descendants: []};
+    return {known: true, descendants: observed};
+  };
+
+  const snapshotDescendants = (job, {merge = true} = {}) => {
+    const snapshot = readDescendantSnapshot(job);
+    if (!snapshot.known) {
+      job.snapshotUnknown = true;
+      return false;
+    }
+    const observed = snapshot.descendants;
+    job.descendants = merge ? mergeDescendants(job.descendants ?? [], observed) : observed;
+    job.snapshotUnknown = false;
+    return true;
+  };
+
+  const snapshotLiveness = (job, executor) => {
+    if (platform === 'win32') return executorLivenessImpl(executor, {platform});
+    // A missing start identity is never proof that a PID disappeared: both
+    // values could be undefined after a failed/partial process-table read.
+    if (!executor || !Number.isInteger(executor.pid) || executor.pid <= 0 || typeof executor.start !== 'string' || !executor.start) {
+      return 'unknown';
+    }
+    const table = readProcessTable();
+    if (typeof table !== 'string') return 'unknown';
+    const live = new Map();
+    for (const line of table.split('\n')) {
+      const match = /^\s*(\d+)\s+\d+(?:\s+(.*\S))?\s*$/.exec(line);
+      if (match?.[2]) live.set(Number(match[1]), match[2]);
+    }
+    return live.get(executor.pid) === executor.start ? 'alive' : 'dead';
+  };
+
+  /** True only when direct-child close and every captured identity is absent. */
+  const snapshotTreeAbsent = (job) => {
+    if (!job.closed || job.snapshotUnknown) return false;
+    return snapshotLiveness(job, job.executor) === 'dead'
+      && (job.descendants ?? []).every((descendant) => snapshotLiveness(job, descendant) === 'dead');
+  };
+
+  const signalSnapshotTree = (job, signal) => signalExecutorTree(job.executor, job.descendants, signal, {
+    killImpl, platform, liveness: (executor) => snapshotLiveness(job, executor),
+  });
+
+  const signalGroupThenSnapshot = (job, signal) => {
+    const root = snapshotLiveness(job, job.executor);
+    if (root === 'unknown') return false;
+    if (root === 'alive' && !signalExecutorGroupOrRoot(job.executor, signal, {
+      killImpl, platform, liveness: (executor) => snapshotLiveness(job, executor),
+    })) return false;
+    // The group/root signal must happen before this fresh sample, otherwise a
+    // still-running executor can create a detached child between the two.
+    if (!snapshotDescendants(job)) return false;
+    return signalSnapshotTree(job, signal) || snapshotTreeAbsent(job);
+  };
+
+  const freezeThenSignal = (job, signal) => {
+    if (signal === 'SIGKILL' && snapshotLiveness(job, job.executor) === 'dead') {
+      // TERM may reap the direct executor before the force timer. Its verified
+      // descendant union remains authoritative, so drain it directly and let
+      // the normal poll wait for both close and identity absence.
+      return signalSnapshotTree(job, signal) || snapshotTreeAbsent(job);
+    }
+    const frozen = freezeExecutorTree(job.executor, {
+      killImpl,
+      platform,
+      liveness: (executor) => snapshotLiveness(job, executor),
+      snapshot: () => readDescendantSnapshot(job),
+    });
+    job.descendants = mergeDescendants(job.descendants ?? [], frozen.descendants);
+    if (!frozen.confirmed) {
+      resumeFrozenExecutorTree(job.executor, frozen.frozen, {
+        killImpl, platform, liveness: (executor) => snapshotLiveness(job, executor),
+      });
+      return false;
+    }
+    // All known writers are stopped, so TERM cannot race a fork/reparent.
+    const signalled = signalExecutorGroupOrRoot(job.executor, signal, {
+      killImpl, platform, liveness: (executor) => snapshotLiveness(job, executor),
+    }) && signalSnapshotTree(job, signal);
+    resumeFrozenExecutorTree(job.executor, job.descendants, {
+      killImpl, platform, liveness: (executor) => snapshotLiveness(job, executor),
+    });
+    return signalled;
+  };
+
+  const terminateWindowsTree = async (job, force = false) => {
+    const executor = job.executor;
+    if (!executor || !Number.isInteger(executor.pid) || executor.pid <= 0 || typeof executor.start !== 'string' || !executor.start) {
+      return false;
+    }
+    if (executorLivenessImpl(executor, {platform}) !== 'alive') return false;
+    try {
+      await taskkillImpl(executor.pid, force);
+      return true;
+    } catch (error) {
+      emit(job, {kind: 'error', text: `taskkill ${force ? '强制' : '终止'}进程树失败: ${error.message}`});
+      return false;
+    }
+  };
+
+  const settleTerminationFailure = (job, reason) => {
+    if (job.terminationSettled) return;
+    job.terminationSettled = true;
+    job.status = 'failed';
+    job.exitCode = null;
+    emit(job, {kind: 'error', text: `${reason}；任务 lease 已保留，请人工确认残留进程后重启清理`});
+    finish(job, {releaseLease: false});
+    job.resolveTermination?.({clean: false});
+  };
+
+  const completeTermination = (job, spec, code) => {
+    if (job.terminationSettled) return;
+    if (!snapshotTreeAbsent(job)) return;
+    job.terminationSettled = true;
+    if (job.terminalFailure) {
+      // A post-spawn registration failure remains failed even if the cleanup
+      // tree exits cleanly; a later close callback must not regress it.
+      job.status = 'failed';
+      job.exitCode = null;
+      runFinalize(job, spec, null, {spawnFailed: true});
+      finish(job);
+      job.resolveTermination?.({clean: true});
+      return;
+    }
+    job.status = 'cancelled';
+    job.exitCode = code;
+    runFinalize(job, spec, code, {spawnFailed: false});
+    finish(job);
+    job.resolveTermination?.({clean: true});
+  };
+
+  const maybeCompleteTermination = (job, spec, code) => completeTermination(job, spec, code);
+
+  const pollTermination = (job, spec) => {
+    if (job.terminationSettled) return;
+    if (job.terminationPoll !== null && job.terminationPoll !== undefined) {
+      clearTimeout(job.terminationPoll);
+      job.terminationPoll = null;
+    }
+    // While the root still exists, keep merging newly observed descendants.
+    // Once reparented, an identity remains in the union until proven absent.
+    if (snapshotLiveness(job, job.executor) === 'alive') snapshotDescendants(job);
+    maybeCompleteTermination(job, spec, job.exitCode);
+    if (job.terminationSettled) return;
+    if (now() >= job.terminationDeadlineAt) {
+      settleTerminationFailure(job, '终止期限内无法确认 child close 与进程树退出');
+      return;
+    }
+    job.terminationPoll = setTimeout(() => pollTermination(job, spec), 50);
+    job.terminationPoll.unref?.();
+  };
+
+  const beginTermination = (job, spec = null) => {
+    if (job.terminationPromise) return job.terminationPromise;
+    if (job.status !== 'running') return Promise.resolve({clean: job.status !== 'failed'});
+    job.status = 'stopping';
+    job.cancelled = true;
+    job.terminationPromise = new Promise((resolve) => { job.resolveTermination = resolve; });
+    job.terminationDeadlineAt = now() + forceKillAfterMs * 2;
+    if (platform === 'win32') {
+      void terminateWindowsTree(job).then((ok) => {
+        if (!ok) settleTerminationFailure(job, '终止进程树失败');
+        else pollTermination(job, spec);
+      });
+    } else {
+      // Freeze before TERM so a detached child cannot fork and reparent between
+      // snapshotting and its parent being terminated.
+      if (!freezeThenSignal(job, 'SIGTERM')) settleTerminationFailure(job, '无法证明进程树身份以发送终止信号');
+      else pollTermination(job, spec);
+    }
+    job.killTimer = setTimeout(() => {
+      job.killTimer = null;
+      if (platform === 'win32') {
+        void terminateWindowsTree(job, true).then((ok) => {
+          if (!ok) return settleTerminationFailure(job, '强制终止进程树失败');
+          pollTermination(job, spec);
+        });
+      } else {
+        if (!freezeThenSignal(job, 'SIGKILL') && !snapshotTreeAbsent(job)) {
+          settleTerminationFailure(job, '无法证明剩余进程组身份或进程树已退出');
+          return;
+        }
+        pollTermination(job, spec);
+      }
+    }, forceKillAfterMs);
+    job.killTimer.unref?.();
+    return job.terminationPromise;
   };
 
   const cancelJob = (id) => {
     const job = jobs.get(id);
     if (!job) return false;
     if (job.status !== 'running') return false;
-    job.cancelled = true;
-    // 趁进程树还完整先快照:render.mjs 一死,chromium 就被 reparent 到 launchd,
-    // 从我们的 pid 再也走不到它们。
-    job.descendants = listDescendants(job.child.pid, readProcessTable);
-    signalGroup(job, 'SIGTERM');
-    // 后代**立刻**杀,不给宽限期。SIGTERM 的宽限是留给我们自己那个 tsuzuri.mjs
-    // 壳的(它可能要收尾),而 chromium 没有任何要 flush 的状态;更要命的是实测
-    // 发现等 3 秒之后那批 pid 已经全部 ESRCH、却又有 13 个新的 chromium 在跑,
-    // 快照就此失效。只有"快照完立刻动手"才抓得住。
-    killSnapshot(job, 'SIGKILL');
-    // SIGTERM 是"请你退出",render.mjs 与 chromium 扛住它是实测出来的常态。
-    //
-    // 兜底**不能**以"直接子进程是否退出"为条件:直接子进程只是个很薄的
-    // tsuzuri.mjs 壳,SIGTERM 一到立刻就死,真正吃 CPU 的是它下面的 render.mjs
-    // 和十几个 chromium。以前这里判 `job.status === 'running'`,而壳一死状态就
-    // 变成 cancelled,兜底直接被跳过——实测点了取消之后 14 个进程一个没少,
-    // render.mjs 还在 33% CPU 上跑。所以这里无条件对整个进程组补一刀。
-    // 组里已经空了的话 kill 会抛 ESRCH,被 signalGroup 吞掉,无害。
-    if (job.killTimer === null) {
-      job.killTimer = setTimeout(() => {
-        job.killTimer = null;
-        signalGroup(job, 'SIGKILL');
-        killSnapshot(job, 'SIGKILL');
-      }, FORCE_KILL_AFTER_MS);
-      // 这个定时器不该拖着进程不让退出
-      job.killTimer.unref?.();
-    }
+    void beginTermination(job, job.spec);
     return true;
   };
 
@@ -387,21 +705,27 @@ export const createJobManager =({
    * 用户按 Ctrl+C 时 SIGINT 只发给前台进程组,子进程收不到 —— 不显式收尾,
    * 关掉 tsuzuri web 之后 remotion/chromium 会变成孤儿继续吃满 CPU 直到渲染完。
    */
-  const killAll = () => {
-    for (const job of jobs.values()) {
-      if (job.status !== 'running') continue;
-      job.cancelled = true;
-      // Ctrl+C 之后进程马上就走,没有等它体面退出的余地;而 SIGTERM 单独发
-      // 挡不住 render.mjs 与 chromium(实测)。两刀一起发,SIGKILL 保证不留孤儿。
-      job.descendants = listDescendants(job.child.pid, readProcessTable);
-      signalGroup(job, 'SIGTERM');
-      signalGroup(job, 'SIGKILL');
-      killSnapshot(job, 'SIGKILL');
-      // Ctrl+C 之后进程立刻就走,'exit' 回调没机会跑,finalize 里的 rmSync 也就
-      // 不会执行 —— 下载中途关掉 server 会把 /tmp/tsuzuri-fetch-* 留在磁盘上。
-      // 这里同步删掉,是这条路径上唯一的机会。
-      removeTempDir(job);
+  const killAll = async ({deadlineMs = forceKillAfterMs + 2000} = {}) => {
+    const active = [...jobs.values()].filter((job) => job.status === 'running' || job.status === 'stopping');
+    const terminations = active.map((job) => beginTermination(job, job.spec));
+    if (terminations.length === 0) return {clean: true};
+    let timer;
+    const deadline = new Promise((resolve) => {
+      timer = setTimeout(() => resolve('deadline'), deadlineMs);
+      timer.unref?.();
+    });
+    const outcome = await Promise.race([Promise.all(terminations).then(() => 'done'), deadline]);
+    clearTimeout(timer);
+    if (outcome === 'deadline') {
+      for (const job of active) {
+        if (job.terminationSettled) continue;
+        if (platform === 'win32') void terminateWindowsTree(job, true);
+        else freezeThenSignal(job, 'SIGKILL');
+        settleTerminationFailure(job, '关闭期限内无法确认进程树退出');
+      }
+      return {clean: false};
     }
+    return {clean: active.every((job) => job.status === 'cancelled')};
   };
 
   /** 仅供测试观测 SSE 监听者是否被正确清理,生产代码不要用。 */

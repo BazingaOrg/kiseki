@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import {normalizeFilterId} from './filters.mjs';
 import {resolveFilterForPhoto} from './project.mjs';
 
@@ -41,3 +43,25 @@ export const resolveFilterOutputSuffix = ({filter = null, filterConfig = null, p
   if (values.length === 0) return '';
   return values.length === 1 ? `-${values[0]}` : `-filters-${values.join('-')}`;
 };
+
+/** The stable suffix order shared by video and still output names. */
+export const resolveOutputVariantSuffix = ({
+  exif = false,
+  sign = false,
+  dark = false,
+  portrait = false,
+  square = false,
+  draft = false,
+  filter = null,
+  filterConfig = null,
+  photoNames = [],
+} = {}) => `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}` +
+  `${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}` +
+  resolveFilterOutputSuffix({filter, filterConfig, photoNames});
+
+/**
+ * Pure canonical video destination resolver. Explicit -o remains authoritative;
+ * only default names receive presentation, canvas, draft, and filter suffixes.
+ */
+export const resolveRenderOutputPath = ({folder, output = null, ...options} = {}) =>
+  path.resolve(output ?? path.join(folder, 'output', `${path.basename(folder)}${resolveOutputVariantSuffix(options)}.mp4`));

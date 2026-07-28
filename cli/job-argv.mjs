@@ -27,6 +27,9 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
   }
   const opts = options ?? {};
   const flags = [];
+  if (opts.output !== undefined && (typeof opts.output !== 'string' || !opts.output.trim())) {
+    throw new JobValidationError('output', 'output 必须是非空字符串');
+  }
 
   const readBool = (field) => {
     const value = opts[field];
@@ -87,6 +90,8 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
     }
     if (scale !== 2) flags.push('--scale', String(scale));
   }
+
+  if (opts.output !== undefined) flags.push('-o', opts.output);
 
   return kind === 'still' ? ['still', folder, ...flags] : [folder, ...flags];
 };

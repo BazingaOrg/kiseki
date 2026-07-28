@@ -11,7 +11,9 @@ import {fileURLToPath} from 'node:url';
 
 import {buildAudioFilename, installDownloadedAudio, sanitizeFilePart} from '../fetch.mjs';
 import {FIXES} from '../dependencies.mjs';
-import {scanFolderLoose} from '../project.mjs';
+import {readFilterConfig, scanFolderLoose} from '../project.mjs';
+import {resolveJobs} from '../still.mjs';
+import {resolveRenderOutputPath} from '../output-naming.mjs';
 import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
 import {parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from '../ytdlp.mjs';
 
@@ -44,6 +46,7 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
   }
   const {title, artist} = normalizeFetchAudioMetadata(options);
   const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
+  const finalFilename = buildAudioFilename({title, artist, ext: '.m4a'});
   return {
     command: 'yt-dlp',
     tempDir,
@@ -55,7 +58,8 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: process.env,
     progressSource: 'ytdlp-stdout',
-    finalize: (code, {stderrTail = [], spawnFailed = false} = {}) => {
+    outputPaths: [path.join(folder, 'audio', finalFilename)],
+    finalize: (code, {stderrTail = [], spawnFailed = false, task = null} = {}) => {
       try {
         if (spawnFailed) {
           return {ok: false, events: [{kind: 'error', text: `起不了 yt-dlp,确认它已安装并在 PATH 里。${FIXES['yt-dlp']}`}]};
@@ -73,6 +77,7 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
           source: path.join(tempDir, audios[0]),
           folder,
           filename,
+          task,
         });
         return {ok: true, events: [{kind: 'success', text: `音频已就绪: ${installed}`}]};
       } catch (error) {
@@ -103,5 +108,28 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir
     },
     progressSource: 'fd3',
     finalize: null,
+    // Job leases always claim the project itself. Keep output paths explicit in
+    // the spec so callers that need narrower future output claims have one API.
+    outputPaths: kind === 'render'
+      ? [resolveRenderOutputPath({
+        folder,
+        output: options.output ?? null,
+        exif: options.exif,
+        sign: options.sign,
+        dark: options.dark,
+        portrait: options.format === 'portrait',
+        square: options.format === 'square',
+        draft: options.draft,
+        filter: options.filter ? {id: options.filter, ...(options.filterIntensity != null ? {intensity: options.filterIntensity} : {})} : null,
+        filterConfig: readFilterConfig(folder),
+        photoNames: fs.existsSync(folder) ? scanFolderLoose(folder).photos : [],
+      })]
+      : kind === 'still'
+        ? resolveJobs(folder, options.output ?? null, {
+          exif: options.exif, sign: options.sign, dark: options.dark,
+          portrait: options.format === 'portrait', square: options.format === 'square',
+          filter: options.filter ? {id: options.filter, ...(options.filterIntensity != null ? {intensity: options.filterIntensity} : {})} : null,
+        }).jobs.map((job) => job.outPath)
+        : [],
   };
 };
