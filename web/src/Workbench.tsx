@@ -173,7 +173,7 @@ export const Workbench = ({
   useEffect(() => {
     if (jobLock === 'owned' && !job.busy) probeCurrentJob();
   }, [job.busy, jobLock, probeCurrentJob]);
-  const [undoIds, setUndoIds] = useState<string[]>([]);
+  const [undoRecords, setUndoRecords] = useState<Array<{id: string; action: 'rename' | 'delete'}>>([]);
   const [assetBusy, setAssetBusy] = useState(false);
   const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean} | null>(null);
 
@@ -216,7 +216,7 @@ export const Workbench = ({
     const result = await mutateAsset(project.path, item.id, action, stem);
     setAssetBusy(false);
     if (!result.ok) { setDialog({title: '操作未完成', message: result.message}); return false; }
-    if (result.data.undoId) setUndoIds((ids) => [...ids, result.data.undoId!]);
+    if (result.data.undoId) setUndoRecords((records) => [...records, {id: result.data.undoId!, action}]);
     onProjectRefresh();
     return true;
   };
@@ -240,7 +240,7 @@ export const Workbench = ({
     const result = await undoAssetDelete(project.path, undoId);
     setAssetBusy(false);
     if (!result.ok) { setDialog({title: '撤销未完成', message: result.message}); return; }
-    setUndoIds((ids) => ids.filter((id) => id !== undoId));
+    setUndoRecords((records) => records.filter((record) => record.id !== undoId));
     onProjectRefresh();
   };
 
@@ -320,7 +320,7 @@ export const Workbench = ({
         )}
 
         <main className="workbench-main">
-          {undoIds.map((undoId) => <div className="asset-undo" key={undoId}><span>文件已移到项目回收区。</span><button className="link-button" disabled={assetBusy || jobBusy} onClick={() => handleUndo(undoId)}>撤销</button></div>)}
+          {undoRecords.map(({id, action}) => <div className="asset-undo" key={id}><span>{action === 'rename' ? '文件已重命名，可以撤销。' : '文件已移到项目回收区。'}</span><button className="link-button" disabled={assetBusy || jobBusy} onClick={() => handleUndo(id)}>撤销</button></div>)}
           {section === 'materials' && (
             <Materials
               project={project}
