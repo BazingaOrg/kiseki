@@ -16,6 +16,11 @@ import {
   listDescendants,
   parseYtDlpProgress,
 } from './jobs.mjs';
+import {JobValidationError as JobSpecValidationError} from './job-spec.mjs';
+
+test('job-spec 与 jobs 复用同一个 JobValidationError 类身份', () => {
+  assert.equal(JobSpecValidationError, JobValidationError);
+});
 
 // ---- buildJobArgv --------------------------------------------------------
 

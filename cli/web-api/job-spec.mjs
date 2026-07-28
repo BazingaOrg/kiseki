@@ -1,0 +1,122 @@
+/**
+ * 任务描述:把网页选项校验并组装为命令、参数和进度来源。
+ *
+ * 这里不管理子进程或任务状态，方便独立测试；JobValidationError 始终直接
+ * 从 job-argv.mjs 导入，确保 HTTP 层的 instanceof 判断保持同一类身份。
+ */
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+
+import {buildAudioFilename, installDownloadedAudio, sanitizeFilePart} from '../fetch.mjs';
+import {FIXES} from '../dependencies.mjs';
+import {scanFolderLoose} from '../project.mjs';
+import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
+
+export {JobValidationError} from '../job-argv.mjs';
+
+const CLI_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+const TSUZURI_ENTRY = path.join(CLI_DIR, 'tsuzuri.mjs');
+const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
+const YTDLP_PROGRESS_RE = /^\[download\]\s+(\d{1,3}(?:\.\d+)?)%/;
+const YTDLP_ID_RE = /^[A-Za-z0-9_-]{5,64}$/;
+
+/** yt-dlp 下载进度事件的标签。 */
+export const YTDLP_PROGRESS_LABEL = '下载音频';
+
+/**
+ * 把 yt-dlp 的一行 stdout 翻译成契约一的 progress 事件;不是进度行返回 null。
+ * @param {string} line
+ * @returns {{kind: 'progress', label: string, percent: number}|null}
+ */
+export const parseYtDlpProgress = (line) => {
+  const clean = String(line ?? '').replace(ANSI_RE, '').trim();
+  const match = YTDLP_PROGRESS_RE.exec(clean);
+  if (!match) return null;
+  const value = Number.parseFloat(match[1]);
+  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
+  return {kind: 'progress', label: YTDLP_PROGRESS_LABEL, percent: Math.round(value)};
+};
+
+const readOptionalString = (value, field) => {
+  if (value === undefined || value === null || value === '') return '';
+  if (typeof value !== 'string') throw new JobValidationError(field, `${field} 必须是字符串`);
+  return value;
+};
+
+const normalizeFetchAudioMetadata = (options) => {
+  const title = sanitizeFilePart(readOptionalString(options?.title, 'title'));
+  if (!title) throw new JobValidationError('title', 'title 不能为空');
+  const artist = sanitizeFilePart(readOptionalString(options?.artist, 'artist'));
+  return {title, artist};
+};
+
+const buildFetchAudioSpec = ({folder, options, tempParent}) => {
+  const id = options?.id;
+  if (typeof id !== 'string' || !YTDLP_ID_RE.test(id)) {
+    throw new JobValidationError('id', 'id 必须是 yt-dlp 视频 id(字母、数字、- 和 _)');
+  }
+  const {title, artist} = normalizeFetchAudioMetadata(options);
+  const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
+  return {
+    command: 'yt-dlp',
+    tempDir,
+    args: [
+      '-x', '--audio-format', 'm4a', '--no-playlist', '--newline', '--no-color',
+      '-o', path.join(tempDir, '%(title)s.%(ext)s'),
+      `https://www.youtube.com/watch?v=${id}`,
+    ],
+    stdio: ['ignore', 'pipe', 'pipe'],
+    env: process.env,
+    progressSource: 'ytdlp-stdout',
+    finalize: (code, {stderrTail = [], spawnFailed = false} = {}) => {
+      try {
+        if (spawnFailed) {
+          return {ok: false, events: [{kind: 'error', text: `起不了 yt-dlp,确认它已安装并在 PATH 里。${FIXES['yt-dlp']}`}]};
+        }
+        if (code !== 0) {
+          const detail = stderrTail.length > 0 ? `\n${stderrTail.join('\n')}` : '';
+          return {ok: false, events: [{kind: 'error', text: `下载失败(网络、地区限制或 yt-dlp 版本过旧)${detail}`}]};
+        }
+        const audios = scanFolderLoose(tempDir).audios;
+        if (audios.length !== 1) {
+          return {ok: false, events: [{kind: 'error', text: '下载结果不是单个音频文件'}]};
+        }
+        const filename = buildAudioFilename({title, artist, ext: path.extname(audios[0])});
+        const installed = installDownloadedAudio({
+          source: path.join(tempDir, audios[0]),
+          folder,
+          filename,
+        });
+        return {ok: true, events: [{kind: 'success', text: `音频已就绪: ${installed}`}]};
+      } catch (error) {
+        return {ok: false, events: [{kind: 'error', text: error.message}]};
+      } finally {
+        fs.rmSync(tempDir, {recursive: true, force: true});
+      }
+    },
+  };
+};
+
+/**
+ * 按 kind 分派出命令、参数和进度来源。
+ * @param {{kind: string, folder: string, options?: object, tempParent?: string}} params
+ */
+export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir()}) => {
+  if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent});
+
+  const {argv, env} = buildJobInvocation({kind, folder, options});
+  return {
+    command: process.execPath,
+    args: [TSUZURI_ENTRY, ...argv],
+    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+    env: {
+      ...process.env,
+      TSUZURI_JSON_PROGRESS: '1',
+      ...env,
+    },
+    progressSource: 'fd3',
+    finalize: null,
+  };
+};
