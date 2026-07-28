@@ -17,6 +17,7 @@ import type {AssetItem, ProjectResponse} from './types';
 import {Blocked, Section} from './ui';
 import {MediaTimeline} from './MediaTimeline';
 import {useAudioPlayer} from './useAudioPlayer';
+import {useTabs} from './useTabs';
 
 interface ResultsProps {
   project: ProjectResponse;
@@ -36,6 +37,7 @@ const photoTabMeta = (sourceCount: number, outputCount: number) => {
 export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: ResultsProps) => {
   const initialTab = project.output.videos.length > 0 ? 'videos' : project.photos.length > 0 || project.output.stills.length > 0 ? 'photos' : 'music';
   const [tab, setTab] = useState<'videos' | 'music' | 'photos'>(initialTab);
+  const tabsBehavior = useTabs({values: ['videos', 'music', 'photos'] as const, value: tab, onValueChange: setTab, idPrefix: 'results'});
   const audios = project.audios ?? (project.audio ? [project.audio] : []);
   const lyricsFiles = project.lyricsFiles ?? (project.lyricsFile ? [project.lyricsFile] : []);
   const audioAssets = project.assets?.audios ?? fallbackAssetCollection('audio', audios);
@@ -59,16 +61,12 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
 
   return (
     <Section title="成果" titleHidden>
-      <div className="result-tabs" role="tablist" aria-label="成果分类">
+      <div className="result-tabs" {...tabsBehavior.tabListProps} aria-label="成果分类">
         {tabs.map(({key, label, meta, description}) => (
           <button
             key={key}
             className={tab === key ? 'result-tab result-tab-active' : 'result-tab'}
-            onClick={() => setTab(key)}
-            role="tab"
-            aria-selected={tab === key}
-            id={`result-tab-${key}`}
-            aria-controls={`result-panel-${key}`}
+            {...tabsBehavior.getTabProps(key)}
             aria-label={`${label}，${description}`}
           >
             <span className="result-tab-label">{label}</span>
@@ -77,8 +75,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
         ))}
       </div>
 
-      {tab === 'videos' && (
-        <div role="tabpanel" id="result-panel-videos" aria-labelledby="result-tab-videos">
+      <div {...tabsBehavior.getPanelProps('videos')}>
           {capabilities.playVideo.enabled ? (
             <>
               <Player video={currentVideo?.path ?? null} />
@@ -87,11 +84,10 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
           ) : (
             <Blocked capability={capabilities.playVideo} onRemedy={onRemedy} />
           )}
-        </div>
-      )}
+      </div>
 
       {/* audio 始终挂载，切换成果分类不会中断播放或重置进度。 */}
-      <div role="tabpanel" id="result-panel-music" aria-labelledby="result-tab-music" hidden={tab !== 'music'}>
+      <div {...tabsBehavior.getPanelProps('music')}>
         {project.lyricsSource === 'recognized' && <p className="section-meta">本地识别歌词可能不准确</p>}
         <audio {...audioProps} />
         {audioAssets.state === 'ready' && playableAudio ? (
@@ -145,8 +141,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
           ))}
       </div>
 
-      {tab === 'photos' && (
-        <div role="tabpanel" id="result-panel-photos" aria-labelledby="result-tab-photos">
+      <div {...tabsBehavior.getPanelProps('photos')}>
           {capabilities.browsePhotos.enabled ? (
             <>
               <PhotoGrid
@@ -163,8 +158,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
           ) : (
             <Blocked capability={capabilities.browsePhotos} onRemedy={onRemedy} />
           )}
-        </div>
-      )}
+      </div>
     </Section>
   );
 };

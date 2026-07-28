@@ -23,6 +23,7 @@ import {Blocked, CommandHint, Section} from './ui';
 import type {JobRequest} from './useJob';
 import type {useJob} from './useJob';
 import {formatTime} from './useAudioPlayer';
+import {useTabs} from './useTabs';
 
 /** 素材段能起的两种任务。渲染/导出属于「制作」,不在这里。 */
 type MaterialJob = Extract<JobRequest, {kind: 'fetch-audio'} | {kind: 'lyrics'}>;
@@ -420,6 +421,7 @@ export const Materials = ({
           ? 'lyrics'
           : 'photos';
   const [tab, setTab] = useState<'photos' | 'music' | 'lyrics'>(initialTab);
+  const tabsBehavior = useTabs({values: ['photos', 'music', 'lyrics'] as const, value: tab, onValueChange: setTab, idPrefix: 'materials'});
   const tabs = [
     {key: 'photos' as const, label: '照片', meta: photos.length > 0 ? `${photos.length} 张` : '暂无', description: photos.length > 0 ? `${photos.length} 张照片` : '暂无照片'},
     {
@@ -438,16 +440,16 @@ export const Materials = ({
 
   return (
     <Section title="素材" titleHidden>
-      <div className="material-tabs" role="tablist" aria-label="素材分类">
+      <div className="material-tabs" {...tabsBehavior.tabListProps} aria-label="素材分类">
         {tabs.map(({key, label, meta, description}) => (
-          <button key={key} className={tab === key ? 'material-tab material-tab-active' : 'material-tab'} onClick={() => setTab(key)} role="tab" aria-selected={tab === key} id={`material-tab-${key}`} aria-controls={`material-panel-${key}`} aria-label={`${label}，${description}`}>
+          <button key={key} className={tab === key ? 'material-tab material-tab-active' : 'material-tab'} {...tabsBehavior.getTabProps(key)} aria-label={`${label}，${description}`}>
             <span>{label}</span>
             <span className="material-tab-meta" aria-hidden="true">{meta}</span>
           </button>
         ))}
       </div>
 
-      <div role="tabpanel" id="material-panel-photos" aria-labelledby="material-tab-photos" hidden={tab !== 'photos'}>
+      <div {...tabsBehavior.getPanelProps('photos')}>
         {photos.length > 0 ? (
           <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showHeader: false}]} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
         ) : (
@@ -455,7 +457,7 @@ export const Materials = ({
         )}
       </div>
 
-      <div role="tabpanel" id="material-panel-music" aria-labelledby="material-tab-music" hidden={tab !== 'music'}>
+      <div {...tabsBehavior.getPanelProps('music')}>
           {audioAssets.state !== 'empty' && (
             <AssetCollection
               collection={audioAssets}
@@ -481,7 +483,7 @@ export const Materials = ({
             ))}
       </div>
 
-      <div role="tabpanel" id="material-panel-lyrics" aria-labelledby="material-tab-lyrics" hidden={tab !== 'lyrics'}>
+      <div {...tabsBehavior.getPanelProps('lyrics')}>
           {lyricLines > 0 && <p className="section-meta">{project.lyricsSource === 'lrc' ? '来自 .lrc' : '本地识别'}</p>}
           {lyricsAssets.state !== 'empty' && (
             <AssetCollection
