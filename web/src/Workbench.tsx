@@ -33,12 +33,6 @@ const SECTIONS: {key: SectionKey; label: string}[] = [
 const initialSection = (project: ProjectResponse): SectionKey =>
   project.output.videos.length > 0 || project.output.stills.length > 0 ? 'results' : 'materials';
 
-const middleTruncate = (value: string, maxLength = 36) => {
-  if (value.length <= maxLength) return value;
-  const edge = Math.floor((maxLength - 1) / 2);
-  return `${value.slice(0, edge)}…${value.slice(-edge)}`;
-};
-
 interface WorkbenchProps {
   project: ProjectResponse;
   doctor: DoctorState;
@@ -186,7 +180,7 @@ export const Workbench = ({
           {locked ? (
             <span className="folder-switch folder-switch-locked" title={`${project.path}\n启动时已锁定这个素材夹`}>
               <FolderOpen size={15} strokeWidth={1.5} />
-              <span className="folder-switch-name">{middleTruncate(project.path)}</span>
+              <span className="folder-switch-name">{project.path}</span>
             </span>
           ) : (
             <button
@@ -197,7 +191,7 @@ export const Workbench = ({
               aria-describedby={jobBusy ? 'folder-switch-busy' : undefined}
             >
               <FolderOpen size={15} strokeWidth={1.5} />
-              <span className="folder-switch-name">{middleTruncate(project.path)}</span>
+              <span className="folder-switch-name">{project.path}</span>
             </button>
           )}
           <DoctorPanel

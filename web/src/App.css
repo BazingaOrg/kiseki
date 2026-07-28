@@ -305,8 +305,8 @@
 
 .folder-switch-name {
   min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
@@ -1162,6 +1162,12 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   white-space: nowrap;
 }
 
+.media-loading {
+  color: var(--color-secondary-text);
+  font-size: 0.74rem;
+  white-space: nowrap;
+}
+
 .player > .media-buffering,
 .media-error {
   display: block;
@@ -1248,10 +1254,15 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   }
 
   .audio-bar .audio-utility,
-  .audio-bar .audio-volume,
+  .audio-bar .audio-volume {
+    display: none;
+  }
+
+  .audio-bar .media-loading,
   .audio-bar .media-buffering,
   .audio-bar .media-error {
-    display: none;
+    order: 3;
+    flex: 1 0 100%;
   }
 }
 
@@ -1693,6 +1704,26 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 @media (max-width: 640px) {
   .topbar {
     padding-inline: 1.25rem;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 0.65rem;
+  }
+
+  .topbar-actions {
+    gap: 0.45rem;
+    min-width: 0;
+    width: 100%;
+    justify-self: stretch;
+  }
+
+  .folder-switch {
+    max-width: none;
+    min-width: 0;
+    flex: 1 1 0;
+  }
+
+  .folder-switch > svg,
+  .doctor {
+    flex: 0 0 auto;
   }
 
   .workbench-main {

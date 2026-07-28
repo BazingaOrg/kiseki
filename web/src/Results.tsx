@@ -106,6 +106,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
               {state.muted || state.volume === 0 ? <VolumeX aria-hidden="true" size={17} /> : <Volume2 aria-hidden="true" size={17} />}
             </button>
             <input className="media-volume audio-volume" type="range" min={0} max={1} step={0.05} value={state.muted ? 0 : state.volume} onChange={(event) => setVolume(Number(event.target.value))} aria-label="音量" aria-valuetext={`${Math.round((state.muted ? 0 : state.volume) * 100)}%`} />
+            {state.status === 'loading' && <span className="media-loading audio-loading" role="status">正在加载音频</span>}
             {state.status === 'buffering' && <span className="media-buffering audio-buffering" role="status">正在缓冲</span>}
             {state.error && <span className="media-error audio-error" role="alert">{state.error}</span>}
           </div>

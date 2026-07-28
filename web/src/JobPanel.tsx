@@ -87,21 +87,21 @@ export const JobPanel = ({
 
   return (
     <div className="job-panel">
-      <div className="job-status">
+      <div className="job-status" role="status" aria-live="polite">
         {status === 'running' && <Loader2 size={15} className="job-spinner" aria-hidden="true" />}
         <span>{statusLabel}</span>
       </div>
 
       {status === 'running' &&
         (lastProgress ? (
-          <progress className="job-progress" value={lastProgress.percent} max={100} />
+          <progress className="job-progress" value={lastProgress.percent} max={100} aria-label={`${verb}进度`} aria-valuetext={`${lastProgress.percent}%`} />
         ) : (
-          <div className="job-progress job-progress-indeterminate" />
+          <div className="job-progress job-progress-indeterminate" role="progressbar" aria-label={`${verb}进度`} aria-valuetext="正在处理，暂时无法估计进度" />
         ))}
 
       {status === 'running' && note && <p className="hint job-note">{note}</p>}
 
-      {error && <p className="hint hint-error">{error}</p>}
+      {error && <p className="hint hint-error" role="alert">{error}</p>}
 
       {events.length > 0 && (
         <div className="job-log" ref={logRef}>

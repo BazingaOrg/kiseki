@@ -99,7 +99,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         </nav>
       )}
 
-      {error && <p className="hint hint-error">{error}</p>}
+      {error && <p className="hint hint-error" role="alert">{error}</p>}
 
       {dirsResponse && (
         <ul className="folder-list" aria-busy={loading}>
