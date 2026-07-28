@@ -135,9 +135,9 @@
 
 （歌词确认已并入批次 1，此处不再重复。）
 
-- [ ] 修复 320/390/640px 下的顶部运行态布局、路径截断与控件换行。
-- [ ] 抽轻量共享 Tabs 行为，支持 roving `tabIndex`、方向键、Home/End 和正确 ARIA 关联。
-- [ ] 补齐任务、媒体、空状态、错误状态及键盘可达性的反馈。
+- [x] 修复 320/390/640px 下的顶部运行态布局、路径截断与控件换行。
+- [x] 抽轻量共享 Tabs 行为，支持 roving `tabIndex`、方向键、Home/End 和正确 ARIA 关联。
+- [x] 补齐任务、媒体、空状态、错误状态及键盘可达性的反馈。
 
 影响范围：`web/src/App.css`、`web/src/Materials.tsx`、`web/src/Results.tsx`、相关共享 hook/组件及测试。
 
@@ -301,6 +301,18 @@ Python `tomllib` 解析后以 `analyzer/plan.py` 的镜像字段表收窄到同�
 批次 7 待更新：README 中默认视频/still 产物文件名示例，以及 `tsuzuri.json` 的 filter/intensity 配置说明，需明确显式有效滤镜会形成默认输出后缀与逐张组合规则。
 
 批次 3 至此完成。独立 QA 最终验证：targeted 141/141、完整 CLI 438/438（无 skip）、Web 33/33 + typecheck/build、analyzer 150、renderer 9/9 + typecheck，`git diff --check` 通过。
+
+### 批次 4（2026-07-28，完成）
+
+新增 `web/src/useTabs.ts`，只接收 `values`、`value`、`onValueChange` 与 `idPrefix`，不保存选中值；其水平 roving `tabIndex` 支持 Left/Right 循环、Home/End、自动激活与焦点转移，外部 `value` 变化只重渲染属性而不夺焦。`Materials` 与 `Results` 都改为使用该行为，所有 tab/panel 均以双向 id/ARIA 关联；Materials 三个 panel 继续通过 `hidden` 常驻，Results 的三个 panel 也保持在 DOM 中，音频节点因而不会随 Tab 重建。
+
+顶部素材夹路径取消 JavaScript 字符数截断，改由可收缩容器和 CSS ellipsis 处理，完整路径仍保留在 title；窄屏音频加载、缓冲和错误改为控制条下一行显示，不再隐藏。首轮 320px 几何复测发现 folder 按钮自身出现负 x：`topbar-actions` 位于 Grid 的 `auto` 列，其 max-content 宽度向左溢出。修为 `auto minmax(0, 1fr)`，actions 拉伸到可收缩列，folder `flex: 1 1 0`，图标和 doctor 固定自身宽度；未用 transform、负 margin 或隐藏环境入口。
+
+任务状态改为 polite live status，确定/不确定进度均有可读 progress 语义，失败为 alert，日志保持非 live；媒体加载/缓冲为 status、媒体错误为 alert，FolderPicker 请求错误为 alert，既有 projectStale polite status 未改。未触及批次 6 的 motion 规则。
+
+独立 QA：Web 37/37、typecheck、production build 与 `git diff --check` 全部通过。Playwright 在 320/390/639/640/641/800/801px 下确认 folder 始终在 topbar 内、不与 doctor 交叠、doctor 保持边界可达且无横向 overflow；真实键盘 Arrow/Home/End/环绕、唯一 `tabIndex=0`、ARIA 关联和焦点转移均通过。未新增键盘动画，未触碰批次 6。
+
+仍待人工媒体验收：Results 的真实 audio 播放跨 Tab identity 已由浏览器验证；但动态 loading/buffering/error 状态在该次运行中不可达，需在可复现网络/媒体条件下确认其实际播报与窄屏换行。
 
 ## 复审记录
 
