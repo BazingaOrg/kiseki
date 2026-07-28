@@ -1,7 +1,7 @@
 # 项目全面优化执行方案
 
-日期：2026-07-27  
-基线：`d761ac5`（`main` 与 `origin/main`）  
+日期：2026-07-27
+基线：`d761ac5`（`main` 与 `origin/main`）
 状态：批次 0–7 已实施；最终文档/全量 QA 待记录
 
 ## 目标与边界
@@ -216,6 +216,18 @@
 - 性能：记录与基线一致的样本、环境和前后结果；仅报告可重复结论。
 
 浏览器真实媒体播放、成片视觉质量与跨平台弹出行为应由最终人工验收确认，不将构建成功等同于视觉或媒体验收。
+
+### 批次 8：Web Job spec 最小模块拆分
+
+- [x] 将 yt-dlp 进度解析、fetch-audio spec/校验/finalize 与 `buildJobSpec` 纯移动至 `cli/web-api/job-spec.mjs`。
+- [x] 保持 `jobs.mjs` 的状态、spawn、SSE、取消与清理职责，并继续 re-export 既有 spec/进度符号。
+- [x] 锁定 `JobValidationError` 的单一类身份，保留 web server 的 `instanceof` 400 映射。
+
+影响范围：`cli/web-api/jobs.mjs`、新增 `cli/web-api/job-spec.mjs`、`cli/web-api/jobs.test.mjs`。
+
+执行：fast-worker。验证：定向 CLI tests 与 `git diff --check`。
+
+验收：既有 jobs 导入路径不变；fetch-audio 与 CLI job 的 spec、进度和校验语义不变；HTTP 仍将字段校验错误映射为 400。
 
 ## 实施记录
 
@@ -443,3 +455,19 @@ README 中英版压缩为同构的「快速开始、使用、配置与文档、�
 基线 HEAD `8a40d07`，在当前工作树完成最终验证：CLI `460/460`、Analyzer `150`、Renderer `9/9` 加 typecheck、Web `40/40` 加 typecheck 与 production build 全部通过，0 skip / only。浏览器真实媒体播放与成片视觉质量仍由人工验收。
 
 历史段落中的“只读画廊”和 `Cache-Control: private, max-age=86400` 是保留的审计/性能基线文字，不能按现状解读；它们不改写历史记录，当前语义以批次 1、5C 与批次 7 的实现记录为准。
+
+### 批次 8（2026-07-28，实施）
+
+新增 `cli/web-api/job-spec.mjs`，纯移动 yt-dlp 进度解析、fetch-audio 的字段校验/spec/finalize 和 `buildJobSpec`；`jobs.mjs` 仅保留 job 状态、spawn、SSE、取消和清理，并继续从原路径 re-export `buildJobSpec`、`parseYtDlpProgress`、`YTDLP_PROGRESS_LABEL`。
+
+取舍：没有拆分 `fetch.mjs`，也未增加新的抽象或目录迁移。`JobValidationError` 在 `job-spec.mjs` 与 `jobs.mjs` 均直接来自 `job-argv.mjs`；新增 identity 测试锁定该约束，避免 web server 的 `instanceof` 400 映射因重复类定义失效。
+
+验证：`(cd cli && node --test web-api/jobs.test.mjs)` 79/79 通过；`git diff --check` 通过。不在此记录“最终全仓复审通过”。
+
+### 批次 8（2026-07-28，最终验证与独立复审）
+
+基线：HEAD `73f7bac` 加当前工作树。targeted `461`、完整 CLI `461`、Analyzer `150`、Renderer `9` 加 typecheck、Web `40` 加 typecheck 与 production build、`git diff --check` 均通过。
+
+独立复审结论：`job-spec.mjs` 仅承接 spec 组装与 fetch-audio 的纯校验/收尾；`jobs.mjs` 仍独占任务状态、spawn、SSE、取消和清理。原导出路径保持，`JobValidationError` 继续来自同一个 `job-argv.mjs` 类定义，未发现代码缺陷或行为回归。批次 8 的实施项均已勾选完成。
+
+人工验收边界：未做真实浏览器交互、真实 yt-dlp 网络下载或真实媒体渲染；上述项目仍需人工环境验收。
