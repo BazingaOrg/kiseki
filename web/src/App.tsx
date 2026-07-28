@@ -23,9 +23,9 @@ const App = () => {
   // 环境检查与素材夹无关,进页面就查一次。查失败要落到 'unavailable' 而不是
   // 留在 'loading' —— 后者会让 deriveCapabilities 一直挂起依赖判断,
   // 于是一台没装 ffmpeg 的机器上仍然显示"素材齐了，可以开工"
-  const loadDoctor = () => {
+  const loadDoctor = (refresh = false) => {
     setDoctor('loading');
-    fetch('/api/doctor')
+    fetch(refresh ? '/api/doctor?refresh=1' : '/api/doctor')
       .then((res) => {
         if (!res.ok) throw new Error('failed');
         return res.json();
@@ -73,7 +73,7 @@ const App = () => {
     <Workbench
       project={project}
       doctor={doctor}
-      onRecheckDoctor={loadDoctor}
+      onRecheckDoctor={() => loadDoctor(true)}
       onSwitchFolder={() => setProject(null)}
       onProjectRefresh={refreshProject}
       projectStale={projectStale}

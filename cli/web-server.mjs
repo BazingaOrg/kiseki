@@ -12,7 +12,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {listDirs} from './web-api/dirs.mjs';
-import {getDoctor} from './web-api/doctor.mjs';
+import {createDoctorService} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
 import {searchAudioCandidates, searchLyricsCandidates, saveLyrics} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
@@ -147,15 +147,18 @@ const isAllowedPostRoute = (method, pathname) =>
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
- * @param {{spawnImpl?: Function, runImpl?: Function}} [deps]
+ * @param {{spawnImpl?: Function, runImpl?: Function, doctorGet?: Function, thumbDeps?: object, createReadStream?: Function}} [deps]
  *   spawnImpl 供测试注入假的子进程实现,避免单测真的起渲染进程;
  *   runImpl 同理注入 /api/fetch/* 用的异步进程执行器,避免单测真的联网。
+ *   doctorGet 可注入 doctor service,避免路由测试依赖本机的外部命令。
  *   生产环境两个都不传。
  * @returns {{server: import('node:http').Server, token: string}}
  */
-export const createGalleryServer = (root, {spawnImpl, runImpl} = {}) => {
+export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream} = {}) => {
   // 只在测试注入时才传下去,生产环境走 fetch.mjs 的默认实现。
   const fetchDeps = runImpl ? {run: runImpl} : {};
+  // doctor 缓存属于本 server 实例，不能让测试或同进程的第二个 web server 共用。
+  const requestDoctor = doctorGet ?? createDoctorService().getDoctor;
   // 所有非 GET 请求(创建/取消任务)必须带上这个 token(契约二安全前提 3),
   // 与既有的 Host 头校验彼此独立、互不替代,构成双控制。
   const token = crypto.randomBytes(32).toString('hex');
@@ -355,7 +358,9 @@ export const createGalleryServer = (root, {spawnImpl, runImpl} = {}) => {
       return;
     }
     if (url.pathname === '/api/doctor') {
-      sendJson(res, getDoctor());
+      requestDoctor({refresh: url.searchParams.get('refresh') === '1'})
+        .then((result) => sendJson(res, result))
+        .catch(() => sendJson(res, {status: 500, body: {error: '检查环境失败'}}));
       return;
     }
     if (url.pathname === '/api/exif') {

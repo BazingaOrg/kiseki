@@ -8,6 +8,7 @@ import {PassThrough} from 'node:stream';
 import test from 'node:test';
 
 import {createGalleryServer} from './web-server.mjs';
+import {createDoctorService} from './web-api/doctor.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-server-'));
 
@@ -289,6 +290,51 @@ const getJson = (port, pathname, token = null) =>
     req.on('error', reject);
     req.end();
   });
+
+test('GET /api/doctor awaits the instance service, forwards refresh, and maps errors to 500', async () => {
+  const refreshes = [];
+  const doctorGet = ({refresh}) => {
+    refreshes.push(refresh);
+    if (refresh) return Promise.reject(new Error('unexpected'));
+    return Promise.resolve({status: 200, body: {ok: true, checks: []}});
+  };
+  const {server} = createGalleryServer(makeTempRoot(), {doctorGet});
+  const port = await listen(server);
+  try {
+    assert.equal((await getJson(port, '/api/doctor')).status, 200);
+    const failed = await getJson(port, '/api/doctor?refresh=1');
+    assert.equal(failed.status, 500);
+    assert.deepEqual(refreshes, [false, true]);
+  } finally {
+    server.close();
+  }
+});
+
+test('GET /api/doctor keeps missing dependencies as a cached 200 response', async () => {
+  let calls = 0;
+  const doctor = createDoctorService({
+    now: () => 1000,
+    collect: async () => {
+      calls += 1;
+      return [
+        {id: 'node', ok: true, line: 'node v22 可用'},
+        {id: 'uv', ok: false, line: 'uv 未找到', fix: '安装 uv'},
+      ];
+    },
+  });
+  const {server} = createGalleryServer(makeTempRoot(), {doctorGet: doctor.getDoctor});
+  const port = await listen(server);
+  try {
+    const first = await getJson(port, '/api/doctor');
+    const second = await getJson(port, '/api/doctor');
+    assert.equal(first.status, 200);
+    assert.equal(first.body.ok, false);
+    assert.deepEqual(second.body, first.body);
+    assert.equal(calls, 1);
+  } finally {
+    server.close();
+  }
+});
 
 /** 假的异步进程执行器:单测一律不联网、不起 yt-dlp/curl/ffprobe。 */
 const missingYtDlpRun = async () => ({status: null, stdout: '', stderr: ''});

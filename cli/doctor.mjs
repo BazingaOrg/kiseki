@@ -2,7 +2,7 @@
  * tsuzuri doctor — <2s 依赖预检,不联网、不触发 `uv sync`(那可能很慢)。
  */
 
-import {spawnSync} from 'node:child_process';
+import {spawn, spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -44,6 +44,66 @@ const commandCheck = (label, cmd, args, {versionRegex, fix}) => {
   const version = match ? match[1] : text.trim().split('\n')[0];
   return {id: label, ok: true, line: `${label} ${version}`};
 };
+
+const failedCommandCheck = (label, fix, optional = false) => ({
+  id: label,
+  ok: false,
+  ...(optional ? {optional: true} : {}),
+  line: optional ? 'yt-dlp 未安装(可选,仅在 fetch 下载音频时需要)' : `${label} 未找到`,
+  fix,
+});
+
+/**
+ * Web 端的子进程检查。CLI 必须继续使用上方 spawnSync 以保持既有输出与返回
+ * 时机；HTTP 请求则不能让一个卡住的 PATH 包装脚本阻塞整个 Node 事件循环。
+ */
+const commandCheckAsync = (label, cmd, args, {versionRegex, fix, optional = false}, {
+  spawnImpl = spawn,
+  setTimeoutImpl = setTimeout,
+  clearTimeoutImpl = clearTimeout,
+  timeoutMs = PROBE_TIMEOUT_MS,
+} = {}) => new Promise((resolve) => {
+  let child;
+  let settled = false;
+  let stdout = '';
+  let stderr = '';
+  let timer;
+
+  const finish = (result) => {
+    if (settled) return;
+    settled = true;
+    clearTimeoutImpl(timer);
+    resolve(result);
+  };
+  const fail = () => finish(failedCommandCheck(label, fix, optional));
+  const succeed = () => {
+    const text = `${stdout}${stderr}`;
+    const match = versionRegex.exec(text);
+    const version = match ? match[1] : text.trim().split('\n')[0];
+    finish({id: label, ok: true, ...(optional ? {optional: true} : {}), line: optional ? `yt-dlp v${version}` : `${label} ${version}`});
+  };
+
+  try {
+    child = spawnImpl(cmd, args, {stdio: ['ignore', 'pipe', 'pipe']});
+    child.stdout?.on('data', (chunk) => { stdout += chunk; });
+    child.stderr?.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', fail);
+    child.once('close', (code) => {
+      if (code === 0) succeed();
+      else fail();
+    });
+    timer = setTimeoutImpl(() => {
+      try {
+        child.kill();
+      } catch {
+        // 进程已经自行结束时 kill 可能抛错；检查仍按失败返回。
+      }
+      fail();
+    }, timeoutMs);
+  } catch {
+    fail();
+  }
+});
 
 const uvCheck = () =>
   commandCheck('uv', 'uv', ['--version'], {
@@ -102,6 +162,25 @@ export const collectDoctorChecks = ({repo = REPO} = {}) => [
   ytDlpCheck(),
   analyzerEnvCheck(repo),
 ];
+
+/**
+ * Web 专用的异步探测。同步的 node / 文件系统检查保留原判定，三个外部命令并行
+ * 运行，并在返回前按 CLI 的稳定顺序重新组装。
+ */
+export const collectWebDoctorChecks = async ({repo = REPO, ...processOptions} = {}) => {
+  const [uv, ffmpeg, ytDlp] = await Promise.all([
+    commandCheckAsync('uv', 'uv', ['--version'], {versionRegex: /uv (\S+)/, fix: FIXES.uv}, processOptions),
+    commandCheckAsync('ffmpeg', 'ffmpeg', ['-version'], {versionRegex: /ffmpeg version (\S+)/, fix: FIXES.ffmpeg}, processOptions),
+    commandCheckAsync(
+      'yt-dlp',
+      'yt-dlp',
+      ['--version'],
+      {versionRegex: /(.+)/, fix: FIXES['yt-dlp'], optional: true},
+      processOptions,
+    ),
+  ]);
+  return [nodeCheck(), uv, ffmpeg, rendererCheck(repo), ytDlp, analyzerEnvCheck(repo)];
+};
 
 /**
  * @param {{repo?: string, checks?: ReturnType<typeof collectDoctorChecks>}} [options]
