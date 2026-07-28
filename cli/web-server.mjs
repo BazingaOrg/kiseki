@@ -54,14 +54,19 @@ const sendJson = (res, {status, body}) => {
   res.end(payload);
 };
 
-const sendMedia = (res, result) => {
+const sendMedia = (res, result, createReadStream = fs.createReadStream) => {
   if (result.status >= 400) {
     res.writeHead(result.status, {'Content-Type': 'text/plain; charset=utf-8'});
     res.end(result.body);
     return;
   }
   res.writeHead(result.status, result.headers);
-  const stream = fs.createReadStream(result.streamPath, result.streamOptions);
+  // 304 没有消息体，也不应打开文件描述符（缩略图条件请求的关键契约）。
+  if (result.status === 304) {
+    res.end();
+    return;
+  }
+  const stream = createReadStream(result.streamPath, result.streamOptions);
   stream.on('error', () => res.end());
   stream.pipe(res);
 };
@@ -392,13 +397,13 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     if (url.pathname === '/media') {
-      sendMedia(res, resolveMedia(root, url.searchParams.get('path'), req.headers.range));
+      sendMedia(res, resolveMedia(root, url.searchParams.get('path'), req.headers.range), createReadStream);
       return;
     }
     if (url.pathname === '/api/thumb') {
-      resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'))
-        .then((result) => sendMedia(res, result))
-        .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}));
+      resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'), req.headers['if-none-match'], thumbDeps)
+        .then((result) => sendMedia(res, result, createReadStream))
+        .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}, createReadStream));
       return;
     }
     if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname)) {

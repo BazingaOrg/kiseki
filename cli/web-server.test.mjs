@@ -54,6 +54,50 @@ test('allows requests with a legit localhost/127.0.0.1 Host header matching the 
   }
 });
 
+test('/api/thumb 304 writes no body/content-length and never opens a read stream', async () => {
+  const root = makeTempRoot();
+  const image = path.join(root, 'image.jpg');
+  fs.writeFileSync(image, 'source');
+  let opened = 0;
+  const {server} = createGalleryServer(root, {
+    thumbDeps: {
+      cacheDir: path.join(root, 'thumb-cache'),
+      generator: async (_source, destination) => { fs.writeFileSync(destination, 'thumb'); return true; },
+    },
+    createReadStream: (...args) => { opened += 1; return fs.createReadStream(...args); },
+  });
+  const port = await listen(server);
+  const endpoint = `/api/thumb?path=${encodeURIComponent(image)}&w=400`;
+  try {
+    const first = await fetch(`http://127.0.0.1:${port}${endpoint}`);
+    assert.equal(first.status, 200);
+    const etag = first.headers.get('etag');
+    await first.arrayBuffer();
+    assert.equal(opened, 1);
+    const second = await fetch(`http://127.0.0.1:${port}${endpoint}`, {headers: {'If-None-Match': `W/${etag}, "other"`}});
+    assert.equal(second.status, 304);
+    assert.equal(second.headers.get('content-length'), null);
+    assert.equal(await second.text(), '');
+    assert.equal(opened, 1);
+  } finally {
+    server.close();
+  }
+});
+
+test('/api/thumb errors remain errors even when If-None-Match is supplied', async () => {
+  const root = makeTempRoot();
+  const {server} = createGalleryServer(root);
+  const port = await listen(server);
+  try {
+    const missing = await fetch(`http://127.0.0.1:${port}/api/thumb?path=${encodeURIComponent(path.join(root, 'missing.jpg'))}`, {headers: {'If-None-Match': '*'}});
+    const escaped = await fetch(`http://127.0.0.1:${port}/api/thumb?path=${encodeURIComponent('/etc/passwd')}`, {headers: {'If-None-Match': '*'}});
+    assert.equal(missing.status, 404);
+    assert.equal(escaped.status, 403);
+  } finally {
+    server.close();
+  }
+});
+
 // ---- /api/jobs* ------------------------------------------------------------
 
 /** 造一个假的 child_process.ChildProcess,避免测试真的起渲染进程。 */

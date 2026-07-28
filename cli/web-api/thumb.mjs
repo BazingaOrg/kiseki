@@ -1,15 +1,4 @@
-/**
- * GET /api/thumb?path=<abs 照片路径>&w=<宽> —— 缩略图。
- *
- * 为什么需要:照片墙和素材条上的小图原本直接引用原图,一张 44px 的缩略图会拉走
- * 一张 3.4MB 的相机原图,十几张就是几十 MB,页面上是一片迟迟不出来的白框。
- *
- * 为什么用 ffmpeg 而不是 sharp:ffmpeg 已经是 tsuzuri 的硬依赖(doctor 会检查、
- * 渲染成片必用),拿它缩图等于零新增依赖;sharp 要引入一个原生模块,为一个缩略图
- * 功能不值当。代价是每张要 spawn 一次进程(~50ms),所以结果落盘缓存,只付一次。
- *
- * 缓存写在系统临时目录,不写进用户的素材夹 —— 用户没要求我们往他的文件夹里放东西。
- */
+/** GET /api/thumb?path=<abs 照片路径>&w=<宽> —— 缩略图及条件缓存。 */
 import {spawn} from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -19,144 +8,154 @@ import path from 'node:path';
 import {resolveSafePath} from './sandbox.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-// 目录名带上 uid:Linux 上 /tmp 是共享的,固定名会让别的本地用户读到用户照片的
-// 缩略图,或抢先把这个名字建成指向自己目录的软链接
 const CACHE_DIR = path.join(os.tmpdir(), `tsuzuri-thumbs-${process.getuid?.() ?? 'user'}`);
 const DEFAULT_WIDTH = 400;
 const MAX_WIDTH = 1024;
 
-/** 宽度收敛到少数几档,避免每个像素宽度都生成一份缓存。 */
 export const normalizeWidth = (raw) => {
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) return DEFAULT_WIDTH;
   return [128, 256, 400, 640, MAX_WIDTH].find((step) => value <= step) ?? MAX_WIDTH;
 };
 
-/** 缓存键带上 mtime 与大小:原图被替换后自动失效,不必手动清缓存。 */
+const statPart = (stat, nsName, msName) => {
+  if (stat[nsName] !== undefined) return String(stat[nsName]);
+  // 旧 Node/平台没有 *Ns 时仍将毫秒值明确序列化，不能依赖对象字符串化。
+  return String(stat[msName] ?? '');
+};
+
+/** 源身份同时作为缓存键和强 ETag 的输入，不能只看 mtime/大小。 */
+export const sourceIdentity = (filePath, stat, width) => [
+  filePath,
+  String(stat.dev ?? ''),
+  String(stat.ino ?? ''),
+  String(stat.size ?? ''),
+  statPart(stat, 'mtimeNs', 'mtimeMs'),
+  statPart(stat, 'ctimeNs', 'ctimeMs'),
+  String(width),
+].join('\0');
+
 export const cacheKey = (filePath, stat, width) =>
-  crypto
-    .createHash('sha1')
-    .update(`${filePath}\0${stat.mtimeMs}\0${stat.size}\0${width}`)
-    .digest('hex');
+  crypto.createHash('sha1').update(sourceIdentity(filePath, stat, width)).digest('hex');
 
-/**
- * 缓存文件数上限。缓存键含 mtime,原图改一次就多留一份旧的;浏览多个大素材夹
- * 也会一路堆积。系统临时目录最终会回收,但那可能是好几天以后的事,期间磁盘上
- * 就一直躺着几个 GB。
- *
- * 按数量而不是按体积:每张缩略图都是几 KB 到几十 KB,数量是更直观也更省事的度量
- * (不用 stat 每个文件量大小)。
- */
+export const etagFor = (filePath, stat, width) => `"thumb-${cacheKey(filePath, stat, width)}"`;
+
+/** If-None-Match 使用弱比较；缩略图的当前内容身份由 ETag 完整代表。 */
+export const matchesIfNoneMatch = (raw, etag) => {
+  if (!raw) return false;
+  return raw.split(',').some((part) => {
+    const candidate = part.trim();
+    return candidate === '*' || candidate.replace(/^W\//i, '') === etag;
+  });
+};
+
 export const MAX_CACHE_ENTRIES = 2000;
+const CACHE_ENTRY_RE = /^[a-f0-9]{40}\.jpg$/;
 
-/** 超出上限时按最后访问时间淘汰最旧的那批,一次砍到 80%,免得每张都触发修剪。 */
 export const pruneCache = (dir = CACHE_DIR, limit = MAX_CACHE_ENTRIES) => {
   let entries;
   try {
-    entries = fs.readdirSync(dir).filter((name) => name.endsWith('.jpg') && !name.endsWith('.tmp.jpg'));
+    // 只处理本服务以 SHA-1 cache key 命名的产物，绝不顺手删目录里的其他文件。
+    entries = fs.readdirSync(dir).filter((name) => CACHE_ENTRY_RE.test(name));
   } catch {
     return 0;
   }
   if (entries.length <= limit) return 0;
-
   const withTime = [];
   for (const name of entries) {
-    try {
-      withTime.push({name, atime: fs.statSync(path.join(dir, name)).atimeMs});
-    } catch {
-      // 正被别的请求 rename 掉了,跳过
-    }
+    try { withTime.push({name, atime: fs.statSync(path.join(dir, name)).atimeMs}); } catch {}
   }
   withTime.sort((a, b) => a.atime - b.atime);
   const removeCount = withTime.length - Math.floor(limit * 0.8);
   let removed = 0;
   for (const {name} of withTime.slice(0, removeCount)) {
-    try {
-      fs.rmSync(path.join(dir, name), {force: true});
-      removed += 1;
-    } catch {
-      // 删不掉就下次再说
-    }
+    try { fs.rmSync(path.join(dir, name), {force: true}); removed += 1; } catch {}
   }
   return removed;
 };
 
-const runFfmpeg = (source, destination, width) =>
-  new Promise((resolve) => {
-    const child = spawn('ffmpeg', [
-      '-y', '-v', 'error',
-      // 显式带 file: 协议前缀。路径永远以 / 开头,当前拿不到 concat:/http: 之类的
-      // 协议混淆,但那是靠"路径形状"侥幸成立;写死协议才是真的挡住
-      '-i', `file:${source}`,
-      // 比原图更宽时不放大,只缩不放
-      '-vf', `scale='min(${width},iw)':-1`,
-      '-frames:v', '1',
-      '-q:v', '4',
-      destination,
-    ], {stdio: 'ignore'});
-    child.on('error', () => resolve(false));
-    child.on('close', (code) => resolve(code === 0 && fs.existsSync(destination)));
-  });
+const runFfmpeg = (source, destination, width) => new Promise((resolve) => {
+  const child = spawn('ffmpeg', [
+    '-y', '-v', 'error', '-i', `file:${source}`,
+    '-vf', `scale='min(${width},iw)':-1`, '-frames:v', '1', '-q:v', '4', destination,
+  ], {stdio: 'ignore'});
+  child.on('error', () => resolve(false));
+  child.on('close', (code) => resolve(code === 0 && fs.existsSync(destination)));
+});
+
+const readSourceStat = (statSync, filePath) => {
+  try { return statSync(filePath, {bigint: true}); } catch {
+    try { return statSync(filePath); } catch { return null; }
+  }
+};
+
+const headersFor = (etag, contentType, size) => ({
+  'Content-Type': contentType,
+  'Content-Length': String(size),
+  ETag: etag,
+  'Cache-Control': 'private, no-cache',
+});
 
 /**
- * @param {string} root 允许访问的根目录
- * @param {string} requestedPath 照片绝对路径
- * @param {string|null} rawWidth 查询参数 w
- * @returns {Promise<{status: number, body?: string, headers?: object, streamPath?: string}>}
+ * @param {string} root
+ * @param {string} requestedPath
+ * @param {string|null} rawWidth
+ * @param {string|undefined} ifNoneMatch
+ * @param {{cacheDir?: string, statSync?: Function, existsSync?: Function, mkdirSync?: Function, rmSync?: Function, renameSync?: Function, generator?: Function, prune?: Function}} [deps]
  */
-export const resolveThumb = async (root, requestedPath, rawWidth) => {
+export const resolveThumb = async (root, requestedPath, rawWidth, ifNoneMatch, deps = {}) => {
   const safePath = resolveSafePath(root, requestedPath);
   if (!safePath) return {status: 403, body: '路径越界或无效'};
-  let stat;
-  try {
-    stat = fs.statSync(safePath);
-  } catch {
-    return {status: 404, body: '路径不存在'};
-  }
-  if (!stat.isFile()) return {status: 400, body: '不是文件'};
-  if (!IMAGE_EXTS.has(path.extname(safePath).toLowerCase())) {
-    return {status: 400, body: '不是支持的图片格式'};
-  }
+  const statSync = deps.statSync ?? fs.statSync;
+  const existsSync = deps.existsSync ?? fs.existsSync;
+  const mkdirSync = deps.mkdirSync ?? fs.mkdirSync;
+  const rmSync = deps.rmSync ?? fs.rmSync;
+  const renameSync = deps.renameSync ?? fs.renameSync;
+  const cacheDir = deps.cacheDir ?? CACHE_DIR;
+  const generate = deps.generator ?? runFfmpeg;
+  const sourceStat = readSourceStat(statSync, safePath);
+  if (!sourceStat) return {status: 404, body: '路径不存在'};
+  if (!sourceStat.isFile()) return {status: 400, body: '不是文件'};
+  if (!IMAGE_EXTS.has(path.extname(safePath).toLowerCase())) return {status: 400, body: '不是支持的图片格式'};
 
   const width = normalizeWidth(rawWidth);
-  const cached = path.join(CACHE_DIR, `${cacheKey(safePath, stat, width)}.jpg`);
-
-  const serve = (filePath, contentType) => ({
+  const etag = etagFor(safePath, sourceStat, width);
+  if (matchesIfNoneMatch(ifNoneMatch, etag)) {
+    return {status: 304, headers: {ETag: etag, 'Cache-Control': 'private, no-cache'}};
+  }
+  const key = cacheKey(safePath, sourceStat, width);
+  const cached = path.join(cacheDir, `${key}.jpg`);
+  const serve = (filePath, type) => ({
     status: 200,
     streamPath: filePath,
-    headers: {
-      'Content-Type': contentType,
-      'Content-Length': String(fs.statSync(filePath).size),
-      // 缓存键已含 mtime,内容变了 URL 也会变,可以放心长缓存
-      'Cache-Control': 'private, max-age=86400',
-    },
+    headers: headersFor(etag, type, statSync(filePath).size),
   });
+  if (existsSync(cached)) return serve(cached, 'image/jpeg');
 
-  if (fs.existsSync(cached)) return serve(cached, 'image/jpeg');
+  try { mkdirSync(cacheDir, {recursive: true, mode: 0o700}); } catch { return serve(safePath, 'image/jpeg'); }
 
-  try {
-    // 0700:缓存里是用户照片的缩略图,不该让同机的其他用户读到
-    fs.mkdirSync(CACHE_DIR, {recursive: true, mode: 0o700});
-  } catch {
-    return serve(safePath, 'image/jpeg');
+  // 文件在 ffmpeg 期间被替换时，绝不能把新旧内容用旧身份塞进缓存。只重试一次。
+  {
+    const pending = `${cached}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp.jpg`;
+    const ok = await generate(safePath, pending, width);
+    const after = readSourceStat(statSync, safePath);
+    if (!after || sourceIdentity(safePath, after, width) !== sourceIdentity(safePath, sourceStat, width)) {
+      try { rmSync(pending, {force: true}); } catch {}
+      if (!deps._thumbRetry) {
+        // 从新的身份重新开始，ETag/cache key 都必须一起更新。
+        return resolveThumb(root, requestedPath, rawWidth, ifNoneMatch, {...deps, cacheDir, _thumbRetry: true});
+      }
+      return {status: 409, body: '生成缩略图时源文件持续变化'};
+    }
+    if (!ok) {
+      try { rmSync(pending, {force: true}); } catch {}
+      return serve(safePath, 'image/jpeg');
+    }
+    try { renameSync(pending, cached); } catch {
+      try { rmSync(pending, {force: true}); } catch {}
+      return serve(safePath, 'image/jpeg');
+    }
+    (deps.prune ?? pruneCache)(cacheDir);
+    return serve(cached, 'image/jpeg');
   }
-
-  // 先写临时文件再 rename:并发请求同一张图时不会读到写了一半的文件
-  const pending = `${cached}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp.jpg`;
-  const ok = await runFfmpeg(safePath, pending, width);
-  if (!ok) {
-    fs.rmSync(pending, {force: true});
-    // ffmpeg 缺失或解码失败时退回原图 —— 慢,但页面不会开天窗
-    return serve(safePath, 'image/jpeg');
-  }
-  try {
-    fs.renameSync(pending, cached);
-  } catch {
-    fs.rmSync(pending, {force: true});
-    return serve(safePath, 'image/jpeg');
-  }
-  // 只在真正新生成了一张之后才考虑修剪:命中缓存的请求(绝大多数)一次 readdir
-  // 都不用付。
-  pruneCache();
-  return serve(cached, 'image/jpeg');
 };
