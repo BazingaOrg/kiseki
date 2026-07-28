@@ -7,7 +7,7 @@ import readline from 'node:readline';
 import {createPercentProgress} from './progress.mjs';
 import {scanFolderLoose} from './project.mjs';
 
-export const SEARCH_LIMIT = 5;
+export const AUDIO_SEARCH_LIMIT = 10;
 export const YTDLP_PROGRESS_LABEL = '下载音频';
 
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
@@ -36,6 +36,15 @@ export const parseSearchLine = (line) => {
   };
 };
 
+/** 保留 yt-dlp 输出中的首个同 id 结果，随后才限制候选数。 */
+export const parseSearchCandidates = (stdout) => {
+  const seen = new Set();
+  return String(stdout ?? '').split('\n')
+    .map(parseSearchLine)
+    .filter((candidate) => candidate && !seen.has(candidate.id) && seen.add(candidate.id))
+    .slice(0, AUDIO_SEARCH_LIMIT);
+};
+
 export const checkYtDlp = (spawn = spawnSync) => {
   const r = spawn('yt-dlp', ['--version'], {encoding: 'utf8'});
   if (r.error || r.status !== 0) return {ok: false};
@@ -46,7 +55,7 @@ export const searchYtDlp = (query) => {
   const r = spawnSync(
     'yt-dlp',
     [
-      `ytsearch${SEARCH_LIMIT}:${query}`,
+      `ytsearch${AUDIO_SEARCH_LIMIT}:${query}`,
       '--flat-playlist',
       '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
     ],
@@ -55,7 +64,7 @@ export const searchYtDlp = (query) => {
   if (r.error || r.status !== 0) {
     return {ok: false, stderr: (r.stderr ?? '').trim()};
   }
-  const candidates = (r.stdout ?? '').split('\n').map(parseSearchLine).filter(Boolean);
+  const candidates = parseSearchCandidates(r.stdout);
   return {ok: true, candidates};
 };
 

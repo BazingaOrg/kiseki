@@ -7,7 +7,7 @@
  * 补齐动作分两类:搜索(百毫秒)当场做,下载与识别(分钟级)交给任务系统 ——
  * 判据是"会不会让用户盯着转圈"。任务状态由 Workbench 持有,见下面 MaterialsProps 的注记。
  */
-import {useState} from 'react';
+import {useRef, useState} from 'react';
 import type {FormEvent} from 'react';
 import {Search} from 'lucide-react';
 
@@ -71,13 +71,20 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
   const [selected, setSelected] = useState<AudioCandidate | null>(null);
   const [title, setTitle] = useState('');
   const [artist, setArtist] = useState('');
+  const searchGeneration = useRef(0);
+  const queryRef = useRef(query);
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     const q = query.trim();
-    if (!q || searching) return;
+    if (!q) return;
+    const generation = ++searchGeneration.current;
+    setSelected(null);
+    setResult(null);
     setSearching(true);
-    setResult(await searchAudio(q));
+    const outcome = await searchAudio(q);
+    if (generation !== searchGeneration.current || queryRef.current.trim() !== q) return;
+    setResult(outcome);
     setSearching(false);
   };
 
@@ -107,11 +114,18 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
         <input
           className="fetch-input"
           value={query}
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            searchGeneration.current += 1;
+            queryRef.current = event.target.value;
+            setQuery(event.target.value);
+            setResult(null);
+            setSelected(null);
+            setSearching(false);
+          }}
           placeholder="歌名 + 歌手"
           aria-label="搜索关键词"
         />
-        <button className="fetch-button" type="submit" disabled={!query.trim() || searching}>
+        <button className="fetch-button" type="submit" disabled={!query.trim()}>
           <Search size={13} />
           {searching ? '搜索中…' : '搜索'}
         </button>
@@ -125,7 +139,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
           {candidates.map((candidate) => (
             <li key={candidate.id}>
               <button
-                className="fetch-candidate"
+                className={candidate.id === selected?.id ? 'fetch-candidate fetch-candidate-selected' : 'fetch-candidate'}
                 disabled={busy}
                 onClick={() => {
                   setSelected(candidate);
@@ -190,15 +204,24 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
   // 空串 = 让后端从音频 tag / 文件名自己推;搜过一次之后把它推出来的词填回来,
   // 用户就知道刚才是拿什么在搜、改哪里能搜得更准
   const [query, setQuery] = useState('');
+  const searchGeneration = useRef(0);
+  const queryRef = useRef(query);
 
   const search = async () => {
-    if (searching) return;
+    const querySnapshot = queryRef.current;
+    const generation = ++searchGeneration.current;
+    setSelected(null);
+    setResult(null);
     setSearching(true);
     setFailure(null);
-    const outcome = await searchLyrics(project.path, query);
+    const outcome = await searchLyrics(project.path, querySnapshot);
+    if (generation !== searchGeneration.current || queryRef.current !== querySnapshot) return;
     setResult(outcome);
     // 把后端实际用的查询词填回输入框:用户想在推断词基础上微调,不必整句重打
-    if (outcome.ok && !query.trim()) setQuery(outcome.data.query);
+    if (outcome.ok && !querySnapshot.trim()) {
+      queryRef.current = outcome.data.query;
+      setQuery(outcome.data.query);
+    }
     setSearching(false);
   };
 
@@ -221,13 +244,21 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
           className="fetch-input"
           value={query}
           placeholder="留空则按音频信息自动匹配" 
-          onChange={(event) => setQuery(event.target.value)}
+          onChange={(event) => {
+            searchGeneration.current += 1;
+            queryRef.current = event.target.value;
+            setQuery(event.target.value);
+            setResult(null);
+            setSelected(null);
+            setFailure(null);
+            setSearching(false);
+          }}
           onKeyDown={(event) => {
             if (event.key === 'Enter') search();
           }}
           aria-label="歌词搜索关键词"
         />
-        <button className="fetch-button" onClick={search} disabled={searching}>
+        <button className="fetch-button" onClick={search}>
           <Search size={13} />
           {searching ? '找歌词中…' : result ? '再找一次' : '找歌词'}
         </button>
@@ -236,7 +267,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
       {result && !result.ok && <Failure message={result.message} fix={result.fix} />}
       {failure && <Failure message={failure.message} fix={failure.fix} />}
       {candidates?.length === 0 && (
-        <p className="hint">没找到对得上的。音频文件名写成「歌手 - 歌名」通常更容易匹配。</p>
+        <p className="hint">没找到对得上的。音频文件名写成「歌名 - 歌手」通常更容易匹配。</p>
       )}
 
       {candidates && candidates.length > 0 && (

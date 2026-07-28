@@ -610,7 +610,9 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   padding: 0;
   border: 1px solid var(--color-divider);
   border-radius: 5px;
-  overflow: hidden;
+  max-height: min(22rem, 50vh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
   animation: fetch-candidates-in 0.2s ease-out;
 }
 
@@ -1770,6 +1772,10 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
   .workbench-main {
     padding: 2rem 1.25rem 4rem;
+  }
+
+  .fetch-candidates {
+    max-height: 48vh;
   }
 
   .logo-word {

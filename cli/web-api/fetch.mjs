@@ -16,8 +16,10 @@ import path from 'node:path';
 import {FIXES} from '../dependencies.mjs';
 import {
   buildLyricsQuery,
+  canonicalLyricsId,
   durationDelta,
   filterSyncedRecords,
+  limitLyricsCandidates,
   installDownloadedLyrics,
   parseCurlResponse,
   probeAudio,
@@ -25,9 +27,10 @@ import {
 } from '../fetch.mjs';
 import {preferSimplifiedChineseLrc} from '../lrc.mjs';
 import {scanFolderLoose} from '../project.mjs';
-import {checkYtDlp, parseSearchLine, SEARCH_LIMIT} from '../ytdlp.mjs';
+import {AUDIO_SEARCH_LIMIT, checkYtDlp, parseSearchCandidates} from '../ytdlp.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
+import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
@@ -90,12 +93,12 @@ export const checkYtDlpAsync = async (run = runProcess) => {
 /** 复用 parseSearchLine 的行解析,搜索参数与 cli/ytdlp.mjs 的 searchYtDlp 一致。 */
 export const searchYtDlpAsync = async (query, run = runProcess) => {
   const result = await run('yt-dlp', [
-    `ytsearch${SEARCH_LIMIT}:${query}`,
+    `ytsearch${AUDIO_SEARCH_LIMIT}:${query}`,
     '--flat-playlist',
     '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
   ]);
   if (result.status !== 0) return {ok: false, stderr: (result.stderr ?? '').trim()};
-  return {ok: true, candidates: result.stdout.split('\n').map(parseSearchLine).filter(Boolean)};
+  return {ok: true, candidates: parseSearchCandidates(result.stdout)};
 };
 
 /** 复用 probeAudio 的 tag/时长解析(同样靠注入 spawn 把同步调用换成异步取值)。 */
@@ -203,22 +206,26 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
     return {status: 502, body: {error: `歌词搜索失败: ${error.message}`}};
   }
 
-  const synced = filterSyncedRecords(records).slice(0, SEARCH_LIMIT);
+  const synced = limitLyricsCandidates(records);
   return {
     status: 200,
     body: {
       query,
-      candidates: synced.map((record) => ({
-        id: record.id,
-        title: record.trackName,
-        artist: record.artistName,
-        duration: record.duration,
-        delta: durationDelta(record.duration, probe.duration),
-        // filterSyncedRecords 之后一定是带时间轴的,这个字段恒为 true,留着是为了
-        // 前端不必假设过滤规则。不下发 CLI 那句成品文案:那是终端排版,网页拿
-        // delta 自己组织更合适,多一个没人消费的字段只会变成漂移源。
-        synced: true,
-      })),
+      candidates: synced.flatMap((record) => {
+        const id = canonicalLyricsId(record.id);
+        if (id === null) return [];
+        return [{
+          id,
+          title: record.trackName,
+          artist: record.artistName,
+          duration: record.duration,
+          delta: durationDelta(record.duration, probe.duration),
+          // filterSyncedRecords 之后一定是带时间轴的,这个字段恒为 true,留着是为了
+          // 前端不必假设过滤规则。不下发 CLI 那句成品文案:那是终端排版,网页拿
+          // delta 自己组织更合适,多一个没人消费的字段只会变成漂移源。
+          synced: true,
+        }];
+      }),
     },
   };
 };
@@ -228,12 +235,10 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
  * id 是 LRCLIB 记录 id,按 id 重新取一次歌词正文(不在服务端缓存搜索结果),
  * 与 CLI 一样做繁转简,最后复用 installDownloadedLyrics 落到 audio/。
  */
-export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRunning} = {}) => {
+export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRunning, leaseManager = createTaskLeaseManager()} = {}) => {
   const id = body?.id;
-  if (typeof id !== 'number' && typeof id !== 'string') {
-    return {status: 400, body: {error: 'id 必须是 LRCLIB 记录 id', field: 'id'}};
-  }
-  if (!/^\d+$/.test(String(id))) {
+  const requestedId = canonicalLyricsId(id);
+  if (requestedId === null) {
     return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
   }
   const resolved = resolveAudioFolder(root, body?.folder);
@@ -242,17 +247,24 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
 
   let record;
   try {
-    record = await (fetcher ?? createLrclibFetch(run))(`/get/${id}`, {});
+    record = await (fetcher ?? createLrclibFetch(run))(`/get/${requestedId}`, {});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
   if (filterSyncedRecords(record ? [record] : []).length === 0) {
     return {status: 404, body: {error: '这条记录没有同步歌词'}};
   }
+  if (canonicalLyricsId(record.id) !== requestedId) {
+    return {status: 502, body: {error: 'LRCLIB 返回的记录 id 与请求不一致'}};
+  }
 
   const preferred = await preferSimplifiedChineseLrc(record.syncedLyrics);
   const filename = `${path.basename(audio, path.extname(audio))}.lrc`;
+  let lease;
   try {
+    // Search/download above deliberately holds no lease; claim only the final
+    // identity-checked write, immediately before the in-process mutation lock.
+    lease = leaseManager.acquire({kind: 'lyrics-save', resources: [folder]});
     return withProjectMutationLock(folder, () => {
       assertNoRunningJob(isJobRunning);
       const current = resolveAudioFolder(root, body?.folder);
@@ -264,13 +276,20 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
         return {status: 409, body: {error: '音频或歌词在下载期间已变化，请重新搜索'}};
       }
       const file = installDownloadedLyrics({
-        lyrics: preferred.lyrics, folder, filename, existing: existingLrc,
+        lyrics: preferred.lyrics,
+        folder,
+        filename,
+        existing: existingLrc,
+        task: {lease, manager: leaseManager},
       });
       return {status: 200, body: {ok: true, file, converted: preferred.converted}};
     });
   } catch (error) {
+    if (error instanceof ProjectBusyError) return {status: 409, body: {error: '项目已有任务在执行'}};
     if (error?.status === 409) return {status: 409, body: {error: error.message}};
     return {status: 500, body: {error: `保存歌词失败: ${error.message}`}};
+  } finally {
+    if (lease) leaseManager.release(lease);
   }
 };
 

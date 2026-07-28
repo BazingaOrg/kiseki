@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {installDownloadedAudio} from './fetch.mjs';
-import {checkYtDlp, downloadWithYtDlp, parseSearchLine} from './ytdlp.mjs';
+import {AUDIO_SEARCH_LIMIT, checkYtDlp, downloadWithYtDlp, parseSearchCandidates, parseSearchLine} from './ytdlp.mjs';
 
 test('parseSearchLine splits yt-dlp print output and tolerates NA fields', () => {
   assert.deepEqual(parseSearchLine('abc123\t晴天 (官方MV)\t4:29\t周杰倫'), {
@@ -22,6 +22,15 @@ test('parseSearchLine splits yt-dlp print output and tolerates NA fields', () =>
   });
   assert.equal(parseSearchLine(''), null);
   assert.equal(parseSearchLine('only-one-field'), null);
+});
+
+test('parseSearchCandidates 稳定按 id 去重后限制为 10 个候选', () => {
+  const lines = Array.from({length: AUDIO_SEARCH_LIMIT + 2}, (_, index) =>
+    `${index === 3 ? '2' : index}\tSong ${index}\t3:01\tChannel`,
+  );
+  const candidates = parseSearchCandidates(lines.join('\n'));
+  assert.equal(candidates.length, AUDIO_SEARCH_LIMIT);
+  assert.deepEqual(candidates.map(({id}) => id), ['0', '1', '2', '4', '5', '6', '7', '8', '9', '10']);
 });
 
 test('yt-dlp downloads outside the material folder and safely replaces a same-name audio', () => {

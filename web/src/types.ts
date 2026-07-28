@@ -107,6 +107,7 @@ export type DoctorState = DoctorResponse | 'loading' | 'unavailable';
 /**
  * yt-dlp 搜索结果(GET /api/fetch/audio-search)。
  * duration 是 yt-dlp 的 `duration_string`(如 "3:45");按秒给也认,见 candidateDuration。
+ * 服务端按来源顺序以稳定 id 去重后最多返回 10 条；uploader 仅供展示，不参与落盘命名。
  */
 export interface AudioCandidate {
   id: string;
@@ -115,7 +116,7 @@ export interface AudioCandidate {
   uploader: string;
 }
 
-/** LRCLIB 搜索结果(GET /api/fetch/lyrics-search)。delta 是与本地音频的时长差(秒)。 */
+/** LRCLIB 搜索结果(GET /api/fetch/lyrics-search)。delta 是与本地音频的时长差(秒)，列表最多 10 条。 */
 export interface LyricsCandidate {
   id: string | number;
   title: string;

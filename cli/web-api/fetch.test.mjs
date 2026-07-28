@@ -76,14 +76,15 @@ test('checkYtDlpAsync 复用 checkYtDlp 的判定', async () => {
   assert.deepEqual(missing, {ok: false});
 });
 
-test('searchYtDlpAsync 复用 parseSearchLine,跳过畸形行', async () => {
+test('searchYtDlpAsync 复用解析逻辑，稳定去重后限制候选', async () => {
+  const lines = Array.from({length: 12}, (_, index) =>
+    `${index === 3 ? '2' : index}\tSong ${index}\t3:01\tChannel`,
+  );
   const run = fakeRun({
-    'yt-dlp': {status: 0, stdout: 'abc123\tSong\t3:01\tChannel\n\ngarbage-no-tab\n', stderr: ''},
+    'yt-dlp': {status: 0, stdout: `${lines.join('\n')}\n\ngarbage-no-tab\n`, stderr: ''},
   });
   const result = await searchYtDlpAsync('song', run);
-  assert.deepEqual(result.candidates, [
-    {id: 'abc123', title: 'Song', duration: '3:01', uploader: 'Channel'},
-  ]);
+  assert.deepEqual(result.candidates.map(({id}) => id), ['0', '1', '2', '4', '5', '6', '7', '8', '9', '10']);
 });
 
 // ---- GET /api/fetch/lyrics-search ------------------------------------------
@@ -122,7 +123,7 @@ test('lyrics-search:候选按契约形状返回,查询词从文件名推出', as
   assert.equal(result.body.query, 'Song Artist.m4a'.replace('.m4a', ''));
   assert.equal(result.body.candidates.length, 1, '无时间轴的候选必须被 filterSyncedRecords 滤掉');
   assert.deepEqual(result.body.candidates[0], {
-    id: 42,
+    id: '42',
     title: 'Song',
     artist: 'Artist',
     duration: 180,
@@ -130,6 +131,30 @@ test('lyrics-search:候选按契约形状返回,查询词从文件名推出', as
     synced: true,
   });
   assert.deepEqual(queries[0][0], '/search');
+});
+
+test('lyrics-search:过滤后稳定按 id 去重并限制候选', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const records = Array.from({length: 12}, (_, index) => ({
+    ...SYNCED_RECORD,
+    id: index === 3 ? 2 : index,
+    trackName: `Song ${index}`,
+  }));
+  const result = await searchLyricsCandidates(root, folder, {run: fakeRun({}), fetcher: async () => records});
+  assert.deepEqual(result.body.candidates.map(({id}) => id), ['0', '1', '2', '4', '5', '6', '7', '8', '9', '10']);
+});
+
+test('lyrics-search:Web 候选过滤缺失 id，并以 canonical id 下发', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const records = [
+    {...SYNCED_RECORD, id: 42},
+    {...SYNCED_RECORD, id: '42'},
+    {...SYNCED_RECORD, id: undefined, trackName: 'no id'},
+  ];
+  const result = await searchLyricsCandidates(root, folder, {run: fakeRun({}), fetcher: async () => records});
+  assert.deepEqual(result.body.candidates.map(({id}) => id), ['42']);
 });
 
 test('lyrics-search:LRCLIB 出错 → 502 且带上原因', async () => {
@@ -154,7 +179,7 @@ test('lyrics:folder 越界 → 403', async () => {
 test('lyrics:非法 id → 400', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
-  for (const id of ['../etc', {}, '1; rm -rf /', null]) {
+  for (const id of ['../etc', 'abc', '1.2', -1, 1.2, Number.MAX_SAFE_INTEGER + 1, {}, '1; rm -rf /', null]) {
     const result = await saveLyrics(root, {folder, id}, {run: fakeRun({})});
     assert.equal(result.status, 400, `id=${JSON.stringify(id)} 应当被拒绝`);
   }
@@ -196,6 +221,17 @@ test('lyrics:记录没有同步歌词 → 404', async () => {
   const fetcher = async () => ({...SYNCED_RECORD, syncedLyrics: ''});
   const result = await saveLyrics(root, {folder, id: 42}, {run: fakeRun({}), fetcher});
   assert.equal(result.status, 404);
+});
+
+test('lyrics:LRCLIB 返回的 id 与请求不一致 → 502', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const result = await saveLyrics(root, {folder, id: 42}, {
+    run: fakeRun({}),
+    fetcher: async () => ({...SYNCED_RECORD, id: 7}),
+  });
+  assert.equal(result.status, 502);
+  assert.match(result.body.error, /id 与请求不一致/);
 });
 
 // ---- GET /api/fetch/audio-search -------------------------------------------
