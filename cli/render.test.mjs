@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-import {applyRenderVariants, detectParallelism, resolveRenderSettings} from './render.mjs';
+import {applyRenderVariants, detectParallelism, formatRenderDiagnostics, resolveRenderSettings} from './render.mjs';
 
 const timeline = () => ({
   meta: {duration: 10, audio: './song.mp3'},
@@ -147,6 +147,18 @@ test('normal and draft render settings preserve fps while changing transfer and 
     crf: 23,
     jpegQuality: 80,
   });
+});
+
+test('render diagnostics use the final composition and effective concurrency', () => {
+  assert.equal(
+    formatRenderDiagnostics({
+      draft: true,
+      composition: {width: 1280, height: 720, fps: 60, durationInFrames: 1440},
+      renderSettings: {concurrency: 5},
+      speed: 'full',
+    }),
+    '实际渲染配置：草稿；1280×720；60 fps；1440 帧；concurrency 5；速度档位 full',
+  );
 });
 
 test('render concurrency supports explicit integer and percentage escape hatches', () => {

@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
-import {loadStillCanvasConfig, resolveJobs} from './still.mjs';
+import {formatStillDiagnostics, loadStillCanvasConfig, resolveJobs} from './still.mjs';
 
 const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-still-'));
 
@@ -26,6 +26,20 @@ test('still projects the shared strict config and preserves # inside quoted text
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
   }
+});
+
+test('still diagnostics report effective pixels, scale, photo count, and output destination', () => {
+  assert.equal(
+    formatStillDiagnostics({
+      canvas: {width: 1080, height: 1920},
+      scale: 2,
+      jobs: [
+        {outPath: '/tmp/album/output/stills/a.png'},
+        {outPath: '/tmp/album/output/stills/b.png'},
+      ],
+    }),
+    '实际静态导出配置：2160×3840 px；输出倍率 2；2 张；输出 /tmp/album/output/stills',
+  );
 });
 
 test('still fails fast for an invalid shared config instead of falling back to defaults', () => {

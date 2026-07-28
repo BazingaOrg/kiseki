@@ -9,6 +9,7 @@ import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
+import {term} from './term.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
 
 export const detectParallelism = (osModule = os) =>
@@ -45,6 +46,12 @@ export const resolveRenderSettings = (
 
 export const readTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
   validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
+
+/** 渲染前诊断只报告最终 composition 和已解析的设置，不能拿请求参数冒充实际值。 */
+export const formatRenderDiagnostics = ({draft, composition, renderSettings, speed = null}) => {
+  const speedDetail = speed ? `；速度档位 ${speed}` : '';
+  return `实际渲染配置：${draft ? '草稿' : '正式'}；${composition.width}×${composition.height}；${composition.fps} fps；${composition.durationInFrames} 帧；concurrency ${renderSettings.concurrency}${speedDetail}`;
+};
 
 /**
  * 渲染时覆盖 inputProps(timeline.json 本身绝不改写):
@@ -146,6 +153,9 @@ const main = async () => {
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
+    // 后面的 detail 会另起一行；只收束 bundling 的活动 TTY 行，不把整个
+    // progress 生命周期提前 finish，renderMedia 仍复用它进入渲染阶段。
+    progress.endLine();
 
     const composition = await selectComposition({
       serveUrl: bundled.serveUrl,
@@ -154,6 +164,16 @@ const main = async () => {
       logLevel: 'error',
     });
     const totalFrames = composition.durationInFrames;
+    // 这里已拿到最终 composition；紧邻 renderMedia 输出，CLI 和 Web fd3 日志看见
+    // 的都是同一份实际负载，而非原始请求或百分比历史。
+    term.detail(formatRenderDiagnostics({
+      draft: flags.draft,
+      composition,
+      renderSettings,
+      speed: ['saver', 'balanced', 'full'].includes(process.env.TSUZURI_RENDER_SPEED)
+        ? process.env.TSUZURI_RENDER_SPEED
+        : null,
+    }));
 
     await renderMedia({
       serveUrl: bundled.serveUrl,

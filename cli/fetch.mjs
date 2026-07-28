@@ -24,7 +24,7 @@ import {
 import {PICK_BACK, withPrompts} from './prompts.mjs';
 import {AUDIO_DIR, scanFolderLoose} from './project.mjs';
 import {term} from './term.mjs';
-import {checkYtDlp, downloadWithYtDlp, searchYtDlp, SEARCH_LIMIT} from './ytdlp.mjs';
+import {checkYtDlp, downloadWithYtDlpProgress, searchYtDlp, SEARCH_LIMIT} from './ytdlp.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent
@@ -273,9 +273,10 @@ const audioFlow = async (ask, folder, {existing = null} = {}) => {
     }
 
     term.start('下载音频');
-    const result = downloadWithYtDlp(url);
+    const result = await downloadWithYtDlpProgress(url);
     if (!result.ok) {
-      term.error('下载失败(具体原因见上方 yt-dlp 输出)');
+      term.error('下载失败');
+      if (result.stderr) term.detail(result.stderr);
       term.detail('常见原因:网络需要代理、视频地区受限或已下架;可换一个结果或 URL');
       if (!(await ask.confirm('再试一次(可换关键词/URL)?', {
         defaultValue: false, defaultLabel: '结束', alternateKey: 'r', alternateLabel: '重试',
@@ -284,6 +285,7 @@ const audioFlow = async (ask, folder, {existing = null} = {}) => {
     }
 
     try {
+      for (const warning of result.warnings) term.warn(warning);
       term.info(`下载文件: ${result.audio}`);
       const probe = probeAudio(result.source);
       const sourceTitle = sanitizeFilePart(

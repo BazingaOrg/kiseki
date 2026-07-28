@@ -35,6 +35,12 @@ export const loadStillCanvasConfig = (folder) => {
   };
 };
 
+/** 静态导出诊断只使用解析后的画布、倍率和确定的输出目标。 */
+export const formatStillDiagnostics = ({canvas, scale, jobs}) => {
+  const destination = jobs.length === 1 ? jobs[0].outPath : path.dirname(jobs[0].outPath);
+  return `实际静态导出配置：${canvas.width * scale}×${canvas.height * scale} px；输出倍率 ${scale}；${jobs.length} 张；输出 ${destination}`;
+};
+
 const listPhotosInFolder = (folder) => {
   const entries = fs.readdirSync(folder).filter((f) => !f.startsWith('.'));
   return entries
@@ -176,6 +182,8 @@ export const runStill = async (opts) => {
   let skipped = 0;
   let skippedExif = 0;
   let rendered = 0;
+  const stillProgressLabel = (index) =>
+    jobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${jobs.length}`;
 
   term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 黑底' : ''})`);
 
@@ -184,6 +192,8 @@ export const runStill = async (opts) => {
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
+    // 诊断须独占一行；不 finish，后面的批量进度仍沿用稳定的 Rendering still stage。
+    progress.endLine();
 
     const compositionInputProps = {
       src: jobs[0].src,
@@ -197,6 +207,7 @@ export const runStill = async (opts) => {
       filter: resolveJobFilter(jobs[0]),
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error'});
+    term.detail(formatStillDiagnostics({canvas, scale: opts.scale, jobs}));
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
       if (opts.skipExisting && fs.existsSync(job.outPath)) {
@@ -209,8 +220,7 @@ export const runStill = async (opts) => {
         if (!exifProps) {
           skippedExif++;
           progress.println(`└ ${path.basename(job.absPath)}: EXIF 信息不足,已跳过导出`);
-          const label = jobs.length === 1 ? 'Rendering still' : `Rendering still ${i + 1}/${jobs.length}`;
-          progress.update(label, (i + 1) / jobs.length);
+          progress.update(stillProgressLabel(i), (i + 1) / jobs.length, 'Rendering still');
           continue;
         }
       }
@@ -247,17 +257,13 @@ export const runStill = async (opts) => {
         },
       });
 
-      const label =
-        jobs.length === 1
-          ? 'Rendering still'
-          : `Rendering still ${i + 1}/${jobs.length}`;
-      progress.update(label, (i + 1) / jobs.length);
+      progress.update(stillProgressLabel(i), (i + 1) / jobs.length, 'Rendering still');
       progress.println(`→ ${job.outPath}`);
       rendered++;
     }
     if (skipped > 0) progress.println(`└ 跳过 ${skipped} 张已存在(--skip-existing)`);
     if (skippedExif > 0) progress.println(`└ 跳过 ${skippedExif} 张 EXIF 信息不足`);
-    progress.update('Rendering still', 1);
+    progress.update(stillProgressLabel(jobs.length - 1), 1, 'Rendering still');
   } finally {
     progress.finish();
     cleanup();

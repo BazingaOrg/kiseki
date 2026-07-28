@@ -222,7 +222,7 @@ test('interactive render progress uses stable-width bars and percentages', () =>
   assert.equal(
     stdout.output,
     '\r\x1b[2K└ Rendering frames   [█░░░░░░░░░░░░░░░░░░░]   7%' +
-      '\r\x1b[2K└ Rendering frames   [████████░░░░░░░░░░░░]  42%\n' +
+      '\r\x1b[2K└ Rendering frames   [████████░░░░░░░░░░░░]  42%' +
       '\r\x1b[2K└ Encoding video     [████████████████████] 100%\n',
   );
   assert.doesNotMatch(stdout.output, /remaining|\d+s/);

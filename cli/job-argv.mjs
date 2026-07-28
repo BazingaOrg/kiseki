@@ -98,7 +98,8 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
  * (`resolveRenderSettings`)读的就是它,加个 flag 等于让同一件事有两个入口。
  * 值仍然是从白名单枚举映射出来的常量,前端碰不到任意字符串(契约二安全前提 1)。
  *
- * `balanced` 不设值,直接用 CLI 的默认(一半核心)——少一个可能跑偏的来源。
+ * `balanced` 不设并发值,直接用 CLI 的默认(一半核心)——少一个可能跑偏的来源。
+ * 速度档位本身另行透传给渲染前诊断，不参与并发计算。
  */
 const SPEED_ENV = {
   saver: '25%',
@@ -117,7 +118,10 @@ export const buildJobEnv = (options = {}) => {
     throw new JobValidationError('speed', 'speed 必须是 saver、balanced 或 full');
   }
   const concurrencyEnv = SPEED_ENV[speed];
-  return concurrencyEnv === null ? {} : {TSUZURI_CONCURRENCY: concurrencyEnv};
+  return {
+    TSUZURI_RENDER_SPEED: speed,
+    ...(concurrencyEnv === null ? {} : {TSUZURI_CONCURRENCY: concurrencyEnv}),
+  };
 };
 
 /**

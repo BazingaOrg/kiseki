@@ -13,31 +13,16 @@ import {buildAudioFilename, installDownloadedAudio, sanitizeFilePart} from '../f
 import {FIXES} from '../dependencies.mjs';
 import {scanFolderLoose} from '../project.mjs';
 import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
+import {parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from '../ytdlp.mjs';
 
 export {JobValidationError} from '../job-argv.mjs';
 
 const CLI_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const TSUZURI_ENTRY = path.join(CLI_DIR, 'tsuzuri.mjs');
-const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
-const YTDLP_PROGRESS_RE = /^\[download\]\s+(\d{1,3}(?:\.\d+)?)%/;
 const YTDLP_ID_RE = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** yt-dlp 下载进度事件的标签。 */
-export const YTDLP_PROGRESS_LABEL = '下载音频';
-
-/**
- * 把 yt-dlp 的一行 stdout 翻译成契约一的 progress 事件;不是进度行返回 null。
- * @param {string} line
- * @returns {{kind: 'progress', label: string, percent: number}|null}
- */
-export const parseYtDlpProgress = (line) => {
-  const clean = String(line ?? '').replace(ANSI_RE, '').trim();
-  const match = YTDLP_PROGRESS_RE.exec(clean);
-  if (!match) return null;
-  const value = Number.parseFloat(match[1]);
-  if (!Number.isFinite(value) || value < 0 || value > 100) return null;
-  return {kind: 'progress', label: YTDLP_PROGRESS_LABEL, percent: Math.round(value)};
-};
+export {parseYtDlpProgress, YTDLP_PROGRESS_LABEL};
 
 const readOptionalString = (value, field) => {
   if (value === undefined || value === null || value === '') return '';

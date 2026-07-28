@@ -583,7 +583,7 @@ const makeFakeYtDlpChild = () => {
 
 const makeTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
-test('fetch-audio:stdout 的百分比被翻译成契约一的 progress 事件,重复百分比去重', async () => {
+test('fetch-audio:stdout 的百分比被翻译成契约一，任务历史只保留最新 progress 快照', async () => {
   const child = makeFakeYtDlpChild();
   const manager = createJobManager({
     spawnImpl: () => child,
@@ -604,7 +604,7 @@ test('fetch-audio:stdout 的百分比被翻译成契约一的 progress 事件,�
   await new Promise((resolve) => setImmediate(resolve));
 
   const progress = manager.getJob(id).events.filter((event) => event.kind === 'progress');
-  assert.deepEqual(progress.map((event) => event.percent), [0, 42, 100]);
+  assert.deepEqual(progress.map((event) => event.percent), [100]);
   assert.equal(progress[0].label, '下载音频');
   child.emit('exit', 1);
 });
@@ -895,13 +895,15 @@ test('killAll 会删掉 fetch-audio 的下载中转目录', () => {
 
 // --- 渲染速度档位 ----------------------------------------------------------
 
-test('speed 档位映射成 TSUZURI_CONCURRENCY,balanced 不设值', () => {
-  // balanced 不设值是刻意的:直接用 CLI 的默认(一半核心),少一个会跑偏的来源
+test('speed 档位映射成 TSUZURI_CONCURRENCY，并透传诊断标签', () => {
+  // balanced 不设并发值是刻意的:直接用 CLI 的默认(一半核心),少一个会跑偏的来源
   const of = (speed) => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed}}).env.TSUZURI_CONCURRENCY;
   assert.equal(of('saver'), '25%');
   assert.equal(of('full'), '90%');
   assert.equal(of('balanced'), undefined);
   assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.TSUZURI_CONCURRENCY, undefined);
+  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed: 'full'}}).env.TSUZURI_RENDER_SPEED, 'full');
+  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.TSUZURI_RENDER_SPEED, 'balanced');
 });
 
 test('非法 speed 抛 JobValidationError,前端碰不到任意字符串', () => {
@@ -920,11 +922,11 @@ test('speed 不会漏进 argv —— 它只影响环境变量', () => {
   assert.ok(!spec.args.some((arg) => /speed|concurrency|90/.test(arg)), `argv 被污染了: ${spec.args.join(' ')}`);
 });
 
-test('buildJobEnv: saver→25%、full→90%、balanced/未设→{}', () => {
-  assert.deepEqual(buildJobEnv({speed: 'saver'}), {TSUZURI_CONCURRENCY: '25%'});
-  assert.deepEqual(buildJobEnv({speed: 'full'}), {TSUZURI_CONCURRENCY: '90%'});
-  assert.deepEqual(buildJobEnv({speed: 'balanced'}), {});
-  assert.deepEqual(buildJobEnv({}), {});
+test('buildJobEnv: 速度档位透传，saver/full 额外覆盖并发', () => {
+  assert.deepEqual(buildJobEnv({speed: 'saver'}), {TSUZURI_RENDER_SPEED: 'saver', TSUZURI_CONCURRENCY: '25%'});
+  assert.deepEqual(buildJobEnv({speed: 'full'}), {TSUZURI_RENDER_SPEED: 'full', TSUZURI_CONCURRENCY: '90%'});
+  assert.deepEqual(buildJobEnv({speed: 'balanced'}), {TSUZURI_RENDER_SPEED: 'balanced'});
+  assert.deepEqual(buildJobEnv({}), {TSUZURI_RENDER_SPEED: 'balanced'});
 });
 
 test('buildJobEnv: 非法 speed 抛 JobValidationError,field 为 speed', () => {

@@ -108,10 +108,17 @@ export const createJobManager =({
   const jobs = new Map();
   let runningJobId = null;
 
-  /** 记录一条事件并即时推给所有 SSE 订阅者。两种进度来源共用同一个出口。 */
+  /**
+   * 记录一条事件并即时推给所有 SSE 订阅者。progress 是可变快照,历史只留最新
+   * 一条;其余事件是可审阅的任务语义,必须完整保留并按原顺序重放。
+   */
   const emit = (job, event) => {
     job.lastActivityAt = now();
-    job.events.push(event);
+    if (event.kind === 'progress') {
+      job.events = [...job.events.filter((item) => item.kind !== 'progress'), event];
+    } else {
+      job.events.push(event);
+    }
     const chunk = `data: ${JSON.stringify(event)}\n\n`;
     for (const listener of job.listeners) listener(chunk);
   };

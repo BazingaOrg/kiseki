@@ -17,40 +17,47 @@ export const createPercentProgress = ({
   jsonWrite = defaultJsonWrite,
 } = {}) => {
   let label = null;
+  let stage = null;
   let percent = -1;
   let lastPrintedBucket = -1;
+  let hasActiveLine = false;
   const interactive = Boolean(stream.isTTY);
   const jsonEnabled = jsonProgressEnabled(env);
 
   const finishLine = () => {
-    if (interactive && label !== null) stream.write('\n');
+    if (interactive && hasActiveLine) stream.write('\n');
+    hasActiveLine = false;
   };
 
   const currentLine = () =>
     `└ ${label.padEnd(18)} ${formatBar(percent)} ${String(percent).padStart(3)}%`;
 
   return {
-    update(nextLabel, value) {
+    update(nextLabel, value, nextStage = nextLabel) {
       const nextPercent = clampPercent(value);
-      if (nextLabel !== label) {
-        finishLine();
-        label = nextLabel;
-        percent = -1;
+      const stageChanged = nextStage !== stage;
+      const changed = stageChanged || nextLabel !== label || nextPercent !== percent;
+      if (!changed) return;
+
+      if (stageChanged) {
+        stage = nextStage;
         lastPrintedBucket = -1;
       }
-      if (nextPercent === percent) return;
+      label = nextLabel;
       percent = nextPercent;
       if (jsonEnabled) jsonWrite({kind: 'progress', label: nextLabel, percent});
       const line = currentLine();
 
       if (interactive) {
         stream.write(`\r\x1b[2K${line}`);
+        hasActiveLine = true;
         return;
       }
 
-      // Redirected logs stay concise while still exposing deterministic progress.
+      // Redirected logs stay concise while still exposing deterministic stage
+      // milestones. Dynamic labels must not restart this throttle.
       const bucket = percent === 100 ? 4 : Math.floor(percent / 25);
-      if (bucket > lastPrintedBucket) {
+      if (stageChanged || bucket > lastPrintedBucket) {
         stream.write(`${line}\n`);
         lastPrintedBucket = bucket;
       }
@@ -63,9 +70,16 @@ export const createPercentProgress = ({
         stream.write(`${text}\n`);
       }
     },
+    /** 结束当前 TTY 行，但保留阶段状态，供后续进度继续使用。 */
+    endLine() {
+      finishLine();
+    },
     finish() {
       finishLine();
       label = null;
+      stage = null;
+      percent = -1;
+      lastPrintedBucket = -1;
     },
   };
 };
