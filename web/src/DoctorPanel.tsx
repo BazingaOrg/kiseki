@@ -2,9 +2,11 @@
  * 环境依赖面板。doctor 不是与"渲染视频"平级的一个功能,它是横切的前置条件 ——
  * 所以它在顶栏常驻成一个状态点,而不是主菜单里的第 4 项。
  */
+import {useLayoutEffect, useRef} from 'react';
 import {Check, RotateCw, X} from 'lucide-react';
 
 import type {DoctorState} from './types';
+import {useTransitionPresence} from './useTransitionPresence';
 
 interface DoctorPanelProps {
   doctor: DoctorState;
@@ -14,6 +16,8 @@ interface DoctorPanelProps {
 }
 
 export const DoctorPanel = ({doctor, open, onToggle, onRecheck}: DoctorPanelProps) => {
+  const panelPresence = useTransitionPresence(open);
+  const panelRef = useRef<HTMLDivElement>(null);
   const checks = typeof doctor === 'string' ? [] : doctor.checks;
   const missing = checks.filter((check) => !check.ok && !check.optional);
   const status =
@@ -26,6 +30,13 @@ export const DoctorPanel = ({doctor, open, onToggle, onRecheck}: DoctorPanelProp
     doctor === 'unavailable' ? '环境未知' :
     missing.length > 0 ? `缺 ${missing.length} 项依赖` : '环境';
 
+  useLayoutEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    if (open) panel.removeAttribute('inert');
+    else panel.setAttribute('inert', '');
+  }, [open, panelPresence.present]);
+
   return (
     <div className="doctor">
       <button className="doctor-trigger" onClick={onToggle} aria-expanded={open} title="环境依赖">
@@ -33,8 +44,15 @@ export const DoctorPanel = ({doctor, open, onToggle, onRecheck}: DoctorPanelProp
         {label}
       </button>
 
-      {open && (
-        <div className="doctor-panel">
+      {panelPresence.present && (
+        <div
+          key={panelPresence.generation}
+          ref={panelRef}
+          className={`doctor-panel transition-presence${panelPresence.visible ? ' transition-presence-open' : ''}`}
+          aria-hidden={!open}
+          style={{pointerEvents: open ? undefined : 'none'}}
+          onTransitionEnd={panelPresence.onTransitionEnd}
+        >
           {doctor === 'loading' && <p className="hint">正在检查…</p>}
 
           {doctor === 'unavailable' && (

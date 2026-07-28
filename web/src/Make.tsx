@@ -7,7 +7,7 @@
  * 说明原因 —— 沿用 Blocked 组件"禁用必须带理由"的规矩,这里理由是任务占用而非
  * 素材缺失,所以没有直接套 Blocked,而是单独一行提示。
  */
-import {useMemo, useState} from 'react';
+import {useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
 import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
@@ -21,6 +21,7 @@ import type {ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import type {JobOptions} from './useJob';
 import type {useJob} from './useJob';
+import {useTransitionPresence} from './useTransitionPresence';
 
 type Kind = 'render' | 'still';
 
@@ -291,6 +292,15 @@ const ActionCard = ({
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
+  const optionsPresence = useTransitionPresence(expanded);
+  const optionsPanelRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const panel = optionsPanelRef.current;
+    if (!panel) return;
+    if (expanded) panel.removeAttribute('inert');
+    else panel.setAttribute('inert', '');
+  }, [expanded, optionsPresence.present]);
 
   const showJobPanel = isActive && job.status !== 'idle';
   const command = useMemo(
@@ -331,7 +341,18 @@ const ActionCard = ({
                   className={expanded ? 'make-toggle-icon make-toggle-icon-open' : 'make-toggle-icon'}
                 />
               </button>
-              {expanded && <OptionsForm kind={kind} photos={photos} options={options} onChange={setOptions} />}
+              {optionsPresence.present && (
+                <div
+                  key={optionsPresence.generation}
+                  ref={optionsPanelRef}
+                  className={`transition-presence make-form-presence${optionsPresence.visible ? ' transition-presence-open' : ''}`}
+                  aria-hidden={!expanded}
+                  style={{pointerEvents: expanded ? undefined : 'none'}}
+                  onTransitionEnd={optionsPresence.onTransitionEnd}
+                >
+                  <OptionsForm kind={kind} photos={photos} options={options} onChange={setOptions} />
+                </div>
+              )}
               {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
             </div>
             <div className="action-card-footer">
