@@ -3,7 +3,33 @@ import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 
-export const ANALYSIS_CACHE_VERSION = 1;
+export const ANALYSIS_CACHE_VERSION = 2;
+
+const parseRuntimeFingerprint = (fingerprint) => {
+  try {
+    const value = typeof fingerprint === 'string' ? JSON.parse(fingerprint) : fingerprint;
+    if (
+      value?.version !== 1 ||
+      !Number.isInteger(value.beat_features_version) ||
+      value.beat_features_version < 1 ||
+      !['mlx', 'cuda', 'cpu'].includes(value.backend) ||
+      typeof value.model !== 'string' ||
+      value.model.length === 0 ||
+      typeof value.demucs_available !== 'boolean'
+    ) {
+      return null;
+    }
+    return {
+      version: value.version,
+      beat_features_version: value.beat_features_version,
+      backend: value.backend,
+      model: value.model,
+      demucs_available: value.demucs_available,
+    };
+  } catch {
+    return null;
+  }
+};
 
 export const readAnalysisFingerprint = (analyzer, spawn = spawnSync) => {
   const result = spawn(
@@ -12,22 +38,8 @@ export const readAnalysisFingerprint = (analyzer, spawn = spawnSync) => {
     {encoding: 'utf8'},
   );
   if (result.error || result.status !== 0) return null;
-  try {
-    const value = JSON.parse(result.stdout);
-    if (
-      value?.version !== 1 ||
-      !Number.isInteger(value.beat_features_version) ||
-      value.beat_features_version < 1 ||
-      !['mlx', 'cuda', 'cpu'].includes(value.backend) ||
-      typeof value.model !== 'string' ||
-      typeof value.demucs_available !== 'boolean'
-    ) {
-      return null;
-    }
-    return JSON.stringify(value);
-  } catch {
-    return null;
-  }
+  const value = parseRuntimeFingerprint(result.stdout);
+  return value === null ? null : JSON.stringify(value);
 };
 
 const demucsKeyPattern = /^\s*(?:demucs|"demucs"|'demucs')\s*=/;
@@ -52,14 +64,28 @@ export const computeAnalysisHash = (
   {audio, lyrics = null, runtimeFingerprint = null},
 ) => {
   const demucs = readDemucsSetting(folder);
-  if (demucs === null || runtimeFingerprint === null) return null;
+  const runtime = parseRuntimeFingerprint(runtimeFingerprint);
+  if (demucs === null || runtime === null) return null;
+  const runtimeProjection = lyrics
+    ? {
+        version: runtime.version,
+        beat_features_version: runtime.beat_features_version,
+      }
+    : demucs
+      ? runtime
+      : {
+          version: runtime.version,
+          beat_features_version: runtime.beat_features_version,
+          backend: runtime.backend,
+          model: runtime.model,
+        };
   const hash = createHash('sha256');
   hash.update(`analysis-v${ANALYSIS_CACHE_VERSION}\0`);
   for (const file of [audio, lyrics].filter(Boolean).sort()) {
     hash.update(`${file}\0`);
     hash.update(fs.readFileSync(path.join(folder, file)));
   }
-  hash.update(`demucs\0${demucs}\0runtime\0${runtimeFingerprint}`);
+  hash.update(`runtime\0${JSON.stringify(runtimeProjection)}`);
   return hash.digest('hex').slice(0, 16);
 };
 

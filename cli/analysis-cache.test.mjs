@@ -5,6 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {
+  ANALYSIS_CACHE_VERSION,
   computeAnalysisHash,
   hasValidAnalysisCache,
   readAnalysisFingerprint,
@@ -12,7 +13,13 @@ import {
   writeAnalysisManifest,
 } from './analysis-cache.mjs';
 
-const RUNTIME = JSON.stringify({version: 1, beat_features_version: 1, backend: 'mlx', model: 'medium', demucs_available: false});
+const runtime = ({backend = 'mlx', model = 'medium', demucsAvailable = false, beatFeaturesVersion = 1} = {}) => JSON.stringify({
+  version: 1,
+  beat_features_version: beatFeaturesVersion,
+  backend,
+  model,
+  demucs_available: demucsAvailable,
+});
 
 const makeProject = () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-analysis-cache-'));
@@ -30,14 +37,19 @@ const makeProject = () => {
   };
 };
 
-test('analysis hash ignores photos and non-analysis TOML while tracking audio and lyrics', () => {
+test('LRC cache hashes only beat features runtime and LRC/audio contents', () => {
   const project = makeProject();
   try {
-    const inputs = {audio: 'song.mp3', lyrics: 'lyrics.lrc', runtimeFingerprint: RUNTIME};
+    const inputs = {audio: 'song.mp3', lyrics: 'lyrics.lrc', runtimeFingerprint: runtime()};
     const first = computeAnalysisHash(project.folder, inputs);
     fs.writeFileSync(path.join(project.folder, 'new-photo.jpg'), 'photo');
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'photo_scale = 0.9\n');
+    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true\n');
     assert.equal(computeAnalysisHash(project.folder, inputs), first);
+    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = false\nphoto_scale = 0.9\n');
+    assert.equal(computeAnalysisHash(project.folder, inputs), first);
+    assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({backend: 'cpu'})}), first);
+    assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({model: 'small'})}), first);
+    assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({demucsAvailable: true})}), first);
 
     fs.writeFileSync(path.join(project.folder, 'song.mp3'), 'new audio');
     assert.notEqual(computeAnalysisHash(project.folder, inputs), first);
@@ -49,25 +61,32 @@ test('analysis hash ignores photos and non-analysis TOML while tracking audio an
   }
 });
 
-test('analysis hash tracks normalized demucs and the effective analyzer runtime', () => {
+test('no-LRC demucs false ignores availability but tracks backend and model', () => {
   const project = makeProject();
   try {
-    const inputs = {audio: 'song.mp3', runtimeFingerprint: RUNTIME};
+    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = false\n');
+    const inputs = {audio: 'song.mp3', runtimeFingerprint: runtime()};
     const first = computeAnalysisHash(project.folder, inputs);
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true # same\nfps = 30\n');
-    assert.equal(readDemucsSetting(project.folder), true);
+    assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({demucsAvailable: true})}), first);
+    assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({backend: 'cpu'})}), first);
+    assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({model: 'small'})}), first);
+  } finally {
+    fs.rmSync(project.folder, {recursive: true, force: true});
+  }
+});
+
+test('no-LRC enabled demucs tracks availability, backend, and model', () => {
+  const project = makeProject();
+  try {
+    const inputs = {audio: 'song.mp3', runtimeFingerprint: runtime()};
+    const first = computeAnalysisHash(project.folder, inputs);
+    assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({demucsAvailable: true})}), first);
+    assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({backend: 'cpu'})}), first);
+    assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({model: 'small'})}), first);
+    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true\n');
     assert.equal(computeAnalysisHash(project.folder, inputs), first);
     fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = false\n');
     assert.notEqual(computeAnalysisHash(project.folder, inputs), first);
-    assert.notEqual(
-      computeAnalysisHash(project.folder, {
-        ...inputs,
-        runtimeFingerprint: JSON.stringify({
-          version: 1, beat_features_version: 1, backend: 'cpu', model: 'small', demucs_available: true,
-        }),
-      }),
-      computeAnalysisHash(project.folder, inputs),
-    );
   } finally {
     fs.rmSync(project.folder, {recursive: true, force: true});
   }
@@ -78,7 +97,7 @@ test('invalid or duplicate demucs config conservatively disables cache hashing',
   try {
     fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = "yes"\n');
     assert.equal(readDemucsSetting(project.folder), null);
-    assert.equal(computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: RUNTIME}), null);
+    assert.equal(computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: runtime()}), null);
     fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true\ndemucs = false\n');
     assert.equal(readDemucsSetting(project.folder), null);
   } finally {
@@ -89,20 +108,20 @@ test('invalid or duplicate demucs config conservatively disables cache hashing',
 test('manifest requires matching version, hash, and both valid analyzer artifacts', () => {
   const project = makeProject();
   try {
-    const audioHash = computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: RUNTIME});
+    const audioHash = computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: runtime()});
     const args = {...project, audioHash};
     assert.equal(hasValidAnalysisCache(args), false);
     writeAnalysisManifest(args);
     assert.equal(hasValidAnalysisCache(args), true);
     assert.deepEqual(JSON.parse(fs.readFileSync(project.analysisPath, 'utf8')), {
-      version: 1,
+      version: ANALYSIS_CACHE_VERSION,
       audio_hash: audioHash,
     });
 
     fs.writeFileSync(project.lyricsPath, 'broken');
     assert.equal(hasValidAnalysisCache(args), false);
     fs.writeFileSync(project.lyricsPath, '{"version":1}');
-    fs.writeFileSync(project.analysisPath, '{"version":2,"audio_hash":"x"}');
+    fs.writeFileSync(project.analysisPath, '{"version":1,"audio_hash":"' + audioHash + '"}');
     assert.equal(hasValidAnalysisCache(args), false);
   } finally {
     fs.rmSync(project.folder, {recursive: true, force: true});
@@ -121,8 +140,8 @@ test('runtime fingerprint accepts only a complete analyzer response', () => {
   assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 1, stdout: ''})), null);
   assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 0, stdout: '{}'})), null);
   assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 0, stdout: '{"version":1,"backend":"cpu","model":"small","demucs_available":true}'})), null);
-  // Node validates the shape only. The full runtime fingerprint is part of the
-  // analysis hash, so a newer Python feature version invalidates old manifests.
+  assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 0, stdout: '{"version":1,"beat_features_version":1,"backend":"cpu","model":"","demucs_available":true}'})), null);
+  // Node keeps the analyzer response complete, then projects it for each path.
   assert.equal(
     readAnalysisFingerprint('/analyzer', () => ({
       status: 0,
@@ -130,4 +149,27 @@ test('runtime fingerprint accepts only a complete analyzer response', () => {
     })),
     '{"version":1,"beat_features_version":2,"backend":"cpu","model":"small","demucs_available":true}',
   );
+});
+
+test('runtime field validation also disables direct hash computation', () => {
+  const project = makeProject();
+  try {
+    assert.equal(computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: '{"version":1}'}), null);
+  } finally {
+    fs.rmSync(project.folder, {recursive: true, force: true});
+  }
+});
+
+test('runtime serialization is stable before hashing', () => {
+  const project = makeProject();
+  try {
+    const canonical = runtime({demucsAvailable: true});
+    const reordered = '{"model":"medium","demucs_available":true,"backend":"mlx","beat_features_version":1,"version":1}';
+    assert.equal(
+      computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: reordered}),
+      computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: canonical}),
+    );
+  } finally {
+    fs.rmSync(project.folder, {recursive: true, force: true});
+  }
 });
