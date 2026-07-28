@@ -69,7 +69,7 @@ const listOutputFiles = (outputDir, exts) => {
   if (!fs.existsSync(outputDir)) return [];
   try {
     return fs.readdirSync(outputDir, {withFileTypes: true})
-      .filter((entry) => entry.isFile() && exts.has(path.extname(entry.name).toLowerCase()))
+      .filter((entry) => entry.isFile() && !entry.name.startsWith('.tsuzuri-partial-') && exts.has(path.extname(entry.name).toLowerCase()))
       .map((entry) => path.join(outputDir, entry.name))
       .sort();
   } catch {

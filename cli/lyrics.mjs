@@ -12,6 +12,7 @@ import {CliError} from './options.mjs';
 import {copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, resolveProjectPaths, scanFolder} from './project.mjs';
 import {term} from './term.mjs';
 import {runCommand} from './run-command.mjs';
+import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -68,10 +69,23 @@ const printLyricsPreview = (lyrics, options) => {
 
 export const runLyrics = (folderArg) => {
   const folder = path.resolve(folderArg);
+  const inheritedTask = [
+    'TSUZURI_LEASE_TASK_ID',
+    'TSUZURI_LEASE_TASK_TOKEN',
+    'TSUZURI_LEASE_TASK_ROOT',
+  ].some((key) => process.env[key] !== undefined)
+    ? acquireCommandLease({kind: 'lyrics', folder})
+    : null;
   if (!fs.existsSync(folder) || !fs.statSync(folder).isDirectory()) {
     throw new CliError(`不是文件夹: ${folder}`);
   }
 
+  const task = inheritedTask ?? acquireCommandLease({kind: 'lyrics', folder});
+  const originalEnv = Object.fromEntries(
+    [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, task.env);
+  try {
   const {audio, lyrics} = scanFolder(folder, {requirePhotos: false});
   const project = resolveProjectPaths(folder);
   ensureProjectDirs(project);
@@ -96,4 +110,10 @@ export const runLyrics = (folderArg) => {
   const result = JSON.parse(fs.readFileSync(project.lyricsPath, 'utf8'));
   printLyricsPreview(result);
   return 0;
+  } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    if (!task.inherited) createTaskLeaseManager().release(task.lease);
+  }
 };

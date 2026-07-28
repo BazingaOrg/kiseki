@@ -12,12 +12,14 @@ import {
   buildAudioFilename,
   buildLyricsQuery,
   buildNextStepMessage,
+  canonicalLyricsId,
   chooseSingleAudio,
   durationDelta,
   filterSyncedRecords,
   formatDuration,
   formatLyricsCandidate,
   installDownloadedAudio,
+  limitLyricsCandidates,
   installDownloadedLyrics,
   lyricsFlow,
   parseCurlResponse,
@@ -81,6 +83,32 @@ test('filterSyncedRecords drops instrumental and lyrics without a timeline', () 
   assert.deepEqual(filterSyncedRecords(null), []);
 });
 
+test('limitLyricsCandidates 稳定按 id 去重后限制为 10 个候选', () => {
+  const records = Array.from({length: 12}, (_, index) => ({
+    id: index === 3 ? 2 : index,
+    syncedLyrics: '[00:01.00]ok',
+  }));
+  assert.deepEqual(limitLyricsCandidates(records).map(({id}) => id), [0, 1, 2, 4, 5, 6, 7, 8, 9, 10]);
+});
+
+test('LRCLIB id 用 String(id) 去重，缺失 id 的候选彼此保留', () => {
+  const records = [
+    {id: 42, syncedLyrics: '[00:01.00]a'},
+    {id: '42', syncedLyrics: '[00:01.00]b'},
+    {syncedLyrics: '[00:01.00]c'},
+    {syncedLyrics: '[00:01.00]d'},
+  ];
+  assert.equal(canonicalLyricsId(42), '42');
+  assert.equal(canonicalLyricsId(''), null);
+  assert.equal(canonicalLyricsId('abc'), null);
+  assert.equal(canonicalLyricsId('1.2'), null);
+  assert.equal(canonicalLyricsId(-1), null);
+  assert.equal(canonicalLyricsId(1.2), null);
+  assert.equal(canonicalLyricsId(Number.MAX_SAFE_INTEGER + 1), null);
+  assert.equal(canonicalLyricsId(undefined), null);
+  assert.deepEqual(limitLyricsCandidates(records), [records[0], records[2], records[3]]);
+});
+
 test('formatDuration renders m:ss and tolerates unknown values', () => {
   assert.equal(formatDuration(269), '4:29');
   assert.equal(formatDuration(60), '1:00');
@@ -114,9 +142,9 @@ test('LRCLIB falls back to search when an exact record has no synced lyrics', as
   assert.deepEqual(calls.map((c) => c.pathname), ['/get', '/search']);
 });
 
-test('LRCLIB keeps a usable exact synced record without searching again', async () => {
+test('LRCLIB keeps a usable exact synced record with id without searching again', async () => {
   const calls = [];
-  const exact = {syncedLyrics: '[00:01]ok', instrumental: false};
+  const exact = {id: 42, syncedLyrics: '[00:01]ok', instrumental: false};
   const result = await searchLyricsRecords(
     {query: 'Song Artist', title: 'Song', artist: 'Artist', duration: 100},
     async (pathname) => {
@@ -126,6 +154,20 @@ test('LRCLIB keeps a usable exact synced record without searching again', async 
   );
   assert.deepEqual(result, [exact]);
   assert.deepEqual(calls, ['/get']);
+});
+
+test('LRCLIB falls back to search when an exact synced record has no id', async () => {
+  const calls = [];
+  const searchResult = [{id: 7, syncedLyrics: '[00:01]ok'}];
+  const result = await searchLyricsRecords(
+    {query: 'Song Artist', title: 'Song', artist: 'Artist', duration: 100},
+    async (pathname) => {
+      calls.push(pathname);
+      return pathname === '/get' ? {syncedLyrics: '[00:01]ok'} : searchResult;
+    },
+  );
+  assert.deepEqual(result, searchResult);
+  assert.deepEqual(calls, ['/get', '/search']);
 });
 
 test('lyrics preview can return to candidates without repeating the network search', async () => {

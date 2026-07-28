@@ -24,13 +24,16 @@ import {
 import {PICK_BACK, withPrompts} from './prompts.mjs';
 import {AUDIO_DIR, scanFolderLoose} from './project.mjs';
 import {term} from './term.mjs';
-import {checkYtDlp, downloadWithYtDlpProgress, searchYtDlp, SEARCH_LIMIT} from './ytdlp.mjs';
+import {checkYtDlp, downloadWithYtDlpProgress, searchYtDlp} from './ytdlp.mjs';
+import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
+import {installAtomicOutputs} from './atomic-output.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent
 const LRCLIB_UA = 'tsuzuri (https://github.com/tsuzuri)';
 // 歌词与音频时长差超过这个秒数,大概率是不同版本(live/剪辑),时间轴会错位
 export const DURATION_WARN_SECONDS = 3;
+export const LYRICS_SEARCH_LIMIT = 10;
 
 // ---------------------------------------------------------------------------
 // 纯逻辑(fetch.test.mjs 覆盖)
@@ -89,6 +92,26 @@ export const filterSyncedRecords = (records) =>
     (r) => r && typeof r.syncedLyrics === 'string' && r.syncedLyrics.trim() && !r.instrumental,
   );
 
+/** LRCLIB 的 id 只能是十进制整数；数字类型也必须安全且非负。 */
+export const canonicalLyricsId = (id) => {
+  if (typeof id === 'string') return /^\d+$/.test(id) ? id : null;
+  if (typeof id === 'number' && Number.isSafeInteger(id) && id >= 0) return String(id);
+  return null;
+};
+
+/** 保留 LRCLIB 返回顺序中的首个同 id 记录，随后才限制候选数。 */
+export const limitLyricsCandidates = (records) => {
+  const seen = new Set();
+  return filterSyncedRecords(records)
+    .filter((record) => {
+      const id = canonicalLyricsId(record.id);
+      // CLI 直接保存候选里的歌词；没有 provider id 的两条候选不能因 undefined
+      // 被误认为同一条。Web 层会在把候选下发给按 id 保存的 UI 前过滤它们。
+      return id === null || (!seen.has(id) && seen.add(id));
+    })
+    .slice(0, LYRICS_SEARCH_LIMIT);
+};
+
 /** 解析 `curl -w '\n%{http_code}'` 的输出:末行是状态码,其余是 body。 */
 export const parseCurlResponse = (stdout) => {
   const text = String(stdout ?? '');
@@ -110,10 +133,10 @@ export const planOffers = ({audios, lyrics}) => ({
 // ---------------------------------------------------------------------------
 
 /**
- * 先把下载结果复制到素材目录内的隐藏 staging 目录,再替换。
- * 任何一步失败都尽力回滚,保留旧音频。
+ * 以 lease claim 派生的同目录 partial/backup 事务安装下载结果。
+ * 不扫描或创建项目内 `.tsuzuri-fetch-*` 目录。
  */
-const installFetchedFile = ({source = null, contents = null, folder, filename, existing = null}) => {
+const installFetchedFile = ({source = null, contents = null, folder, filename, existing = null, task = null}) => {
   const audioFolder = path.join(folder, AUDIO_DIR);
   const audioFolderExisted = fs.existsSync(audioFolder);
   fs.mkdirSync(audioFolder, {recursive: true});
@@ -124,29 +147,19 @@ const installFetchedFile = ({source = null, contents = null, folder, filename, e
     throw new CliError(`目标文件已存在: ${filename}`);
   }
 
-  const stagingDir = fs.mkdtempSync(path.join(audioFolder, '.tsuzuri-fetch-'));
-  const staged = path.join(stagingDir, filename);
-  const backup = path.join(stagingDir, `previous${path.extname(filename)}`);
-  let installed = false;
-  let backedUp = false;
+  const removePaths = existingPath && !destinationIsExisting ? [existingPath] : [];
   try {
-    if (source) fs.copyFileSync(source, staged);
-    else fs.writeFileSync(staged, contents, 'utf8');
-    if (destinationIsExisting) {
-      fs.renameSync(destination, backup);
-      backedUp = true;
-    }
-    fs.renameSync(staged, destination);
-    installed = true;
-    if (existingPath && !destinationIsExisting) fs.rmSync(existingPath);
-    if (backedUp) fs.rmSync(backup, {force: true});
+    task?.manager.extendOutputClaims(task.lease, [destination, ...removePaths]);
+    const transaction = task ? {
+      prepare: (entries) => task.manager.prepareOutputTransaction(task.lease, entries),
+      markCommitting: () => task.manager.setOutputTransactionPhase(task.lease, 'committing'),
+      markCommitted: () => task.manager.setOutputTransactionPhase(task.lease, 'committed'),
+      rollback: () => task.manager.rollbackOutputTransaction(task.lease),
+      finalize: () => task.manager.finalizeOutputTransaction(task.lease),
+    } : null;
+    installAtomicOutputs({taskId: task?.lease.id, writes: [{finalPath: destination, source, contents}], deletes: removePaths, transaction});
     return path.posix.join(AUDIO_DIR, filename);
-  } catch (error) {
-    if (installed) fs.rmSync(destination, {force: true});
-    if (backedUp && fs.existsSync(backup)) fs.renameSync(backup, destination);
-    throw error;
   } finally {
-    fs.rmSync(stagingDir, {recursive: true, force: true});
     if (!audioFolderExisted && fs.readdirSync(audioFolder).length === 0) {
       fs.rmdirSync(audioFolder);
     }
@@ -218,7 +231,9 @@ export const searchLyricsRecords = async (
       artist_name: artist,
       duration: Math.round(duration),
     });
-    if (filterSyncedRecords(exact ? [exact] : []).length > 0) return [exact];
+    // /get 精确命中的记录之后可能要交给 Web 按 id 再取一次；没有有效 id 的
+    // 响应不能作为可保存的精确结果，继续走关键词搜索。
+    if (filterSyncedRecords(exact ? [exact] : []).length > 0 && canonicalLyricsId(exact.id) !== null) return [exact];
   }
   return await fetcher('/search', {q: query});
 };
@@ -230,7 +245,7 @@ const NETWORK_HINT = '检查网络是否可达 lrclib.net(请求经 curl 发出,
 // ---------------------------------------------------------------------------
 
 /** 音频下载子流程;成功时返回用户确认的文件名/歌曲信息。 */
-const audioFlow = async (ask, folder, {existing = null} = {}) => {
+const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
   const ytdlp = checkYtDlp();
   if (!ytdlp.ok) {
     term.error('未找到 yt-dlp(下载音频需要它,由你自行安装)');
@@ -273,7 +288,7 @@ const audioFlow = async (ask, folder, {existing = null} = {}) => {
     }
 
     term.start('下载音频');
-    const result = await downloadWithYtDlpProgress(url);
+    const result = await downloadWithYtDlpProgress(url, {tempParent: task?.lease.taskRoot});
     if (!result.ok) {
       term.error('下载失败');
       if (result.stderr) term.detail(result.stderr);
@@ -323,7 +338,7 @@ const audioFlow = async (ask, folder, {existing = null} = {}) => {
           continue;
         }
 
-        const installed = installDownloadedAudio({source: result.source, folder, filename, existing});
+        const installed = installDownloadedAudio({source: result.source, folder, filename, existing, task});
         term.success(`音频已就绪: ${installed}`);
         return {audio: installed, title, artist};
       }
@@ -344,6 +359,7 @@ export const lyricsFlow = async (
     confirmedTitle = null,
     confirmedArtist = null,
     fetcher = lrclibFetch,
+    task = null,
   } = {},
 ) => {
   const probe = probeAudio(path.join(folder, audio));
@@ -381,7 +397,7 @@ export const lyricsFlow = async (
       return false;
     }
 
-    const synced = filterSyncedRecords(records).slice(0, SEARCH_LIMIT);
+    const synced = limitLyricsCandidates(records);
     if (synced.length === 0) {
       term.warn(`未找到「${query}」的同步歌词`);
       if (!(await ask.confirm('换个关键词再搜?', {
@@ -430,6 +446,7 @@ export const lyricsFlow = async (
         folder,
         filename: lrcName,
         existing: existingLrc,
+        task,
       });
       term.success(`歌词已保存: ${installed}`);
       term.detail(`可运行 node cli/tsuzuri.mjs lyrics ${folder} 预览完整对轴效果`);
@@ -480,8 +497,21 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
   if (input === process.stdin && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new CliError('fetch 是交互命令,需要在交互终端中运行');
   }
+  const candidateFolder = path.resolve(folderArg);
+  const inheritedTask = [
+    'TSUZURI_LEASE_TASK_ID',
+    'TSUZURI_LEASE_TASK_TOKEN',
+    'TSUZURI_LEASE_TASK_ROOT',
+  ].some((key) => process.env[key] !== undefined)
+    ? acquireCommandLease({kind: 'fetch', folder: candidateFolder})
+    : null;
   const folder = resolveFolder(folderArg);
-
+  const task = inheritedTask ?? acquireCommandLease({kind: 'fetch', folder});
+  const originalEnv = Object.fromEntries(
+    [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, task.env);
+  try {
   await withPrompts(async (ask) => {
     let {audios, lyrics} = scanFolderLoose(folder);
     let downloadedInfo = null;
@@ -495,7 +525,7 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
       if (await ask.confirm(`已有 ${audios[0]},重新下载并替换?`, {
         defaultValue: false, defaultLabel: '保留', alternateKey: 'r', alternateLabel: '重新下载',
       })) {
-        downloadedInfo = await audioFlow(ask, folder, {existing: audios[0]});
+        downloadedInfo = await audioFlow(ask, folder, {existing: audios[0], task});
         if (downloadedInfo && lyrics.length > 0) {
           term.warn('音频已更换,现有 .lrc 时间轴可能不再匹配,建议重新搜索歌词');
         }
@@ -504,7 +534,7 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
       // 显式 fetch 入口默认执行主路径;自动兜底 offerFetch 仍默认跳过(有意不对称)
       defaultValue: true, defaultLabel: '下载', alternateKey: 's', alternateLabel: '跳过',
     })) {
-      downloadedInfo = await audioFlow(ask, folder);
+      downloadedInfo = await audioFlow(ask, folder, {task});
     }
 
     ({audios, lyrics} = scanFolderLoose(folder));
@@ -520,6 +550,7 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
           existingLrc: lyrics[0],
           confirmedTitle: downloadedInfo?.title,
           confirmedArtist: downloadedInfo?.artist,
+          task,
         });
       }
     } else if (await ask.confirm('没有 .lrc,在线搜索同步歌词?', {
@@ -528,6 +559,7 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
       const saved = await lyricsFlow(ask, output, folder, audios[0], {
         confirmedTitle: downloadedInfo?.title,
         confirmedArtist: downloadedInfo?.artist,
+        task,
       });
       if (!saved) term.info('未保存歌词;渲染时会在本机识别人声并生成字幕,不会上传音频');
     }
@@ -535,17 +567,56 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
     if (nextStep) term.info(nextStep);
   }, {input, output});
   return 0;
+  } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    if (!task.inherited) task.manager.release(task.lease);
+  }
 };
 
 /**
  * 渲染 / lyrics 主流程兜底:交互终端下缺什么补什么,备齐则一句话不问。
  * 用户拒绝或失败后直接返回,由随后的 scanFolder 给出既有的清晰报错。
  */
-export const offerFetch = async (folder, {input = process.stdin, output = process.stdout} = {}) => {
+export const offerFetch = async (folder, {input = process.stdin, output = process.stdout, task: existingTask = null} = {}) => {
   if (input === process.stdin && (!process.stdin.isTTY || !process.stdout.isTTY)) return;
+  // Render's web child authenticates before scanning the project. A direct
+  // interactive invocation keeps the short fetch lease lazy when nothing is
+  // missing.
+  const manager = existingTask?.manager ?? createTaskLeaseManager();
+  const inherited = existingTask ? null : [
+    'TSUZURI_LEASE_TASK_ID',
+    'TSUZURI_LEASE_TASK_TOKEN',
+    'TSUZURI_LEASE_TASK_ROOT',
+  ].some((key) => process.env[key] !== undefined)
+    ? manager.attachInheritedLease({
+      expectedFolder: folder,
+      allowedParentKinds: ['render'],
+    })
+    : null;
   const {offerAudio, offerLyrics} = planOffers(scanFolderLoose(folder));
   if (!offerAudio && !offerLyrics) return;
-
+  const task = existingTask ?? (inherited
+    ? {
+      lease: inherited,
+      manager,
+      inherited: true,
+      env: {
+        TSUZURI_LEASE_TASK_ID: inherited.id,
+        TSUZURI_LEASE_TASK_TOKEN: inherited.token,
+        TSUZURI_LEASE_TASK_ROOT: inherited.taskRoot,
+        TMPDIR: path.join(inherited.taskRoot, 'tmp'),
+        TMP: path.join(inherited.taskRoot, 'tmp'),
+        TEMP: path.join(inherited.taskRoot, 'tmp'),
+      },
+    }
+    : acquireCommandLease({kind: 'fetch', folder, manager}));
+  const originalEnv = Object.fromEntries(
+    [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, task.env);
+  try {
   await withPrompts(async (ask) => {
     let downloadedInfo = null;
     if (offerAudio) {
@@ -556,7 +627,7 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
         term.info(`之后可运行 ${formatEquivalentCommand(['fetch', folder])} 补齐`);
         return;
       }
-      downloadedInfo = await audioFlow(ask, folder);
+      downloadedInfo = await audioFlow(ask, folder, {task});
       if (!downloadedInfo) return;
     }
     const {audios, lyrics} = scanFolderLoose(folder);
@@ -568,9 +639,16 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
         const saved = await lyricsFlow(ask, output, folder, audios[0], {
           confirmedTitle: downloadedInfo?.title,
           confirmedArtist: downloadedInfo?.artist,
+          task,
         });
         if (!saved) term.info('未保存歌词;后续渲染会在本机识别人声并生成字幕');
       }
     }
   }, {input, output});
+  } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    if (!existingTask && !task.inherited) manager.release(task.lease);
+  }
 };

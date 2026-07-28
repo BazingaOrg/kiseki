@@ -22,6 +22,7 @@ from pathlib import Path
 from PIL import ExifTags, Image
 
 import term
+from atomic_json import write_json_atomic
 from beat_alloc import allocate_switch_points, dynamic_switch_ideals
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
@@ -92,8 +93,7 @@ def _write_status(path: Path | None, outcome: str) -> None:
     """向 Node CLI 报告 plan 是否真的生成了 timeline；不进入项目产物。"""
     if path is None:
         return
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps({"outcome": outcome}), encoding="utf-8")
+    write_json_atomic(path, {"outcome": outcome})
 
 
 def _is_trim_seconds(value: object) -> bool:
@@ -563,8 +563,7 @@ def main(argv: list[str] | None = None) -> int:
 
     timeline = build_timeline(folder, beats, lyrics, cfg, args.input_hash)
 
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(timeline, ensure_ascii=False, indent=2), encoding="utf-8")
+    write_json_atomic(out, timeline)
     _write_status(args.status_output, "generated")
     n = sum(clip.get("kind") == "photo" for clip in timeline["photos"])
     term.detail(

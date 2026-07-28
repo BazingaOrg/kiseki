@@ -8,11 +8,9 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
-import json
 import statistics
 import subprocess
 import sys
-import tempfile
 import tomllib
 from pathlib import Path
 
@@ -23,6 +21,8 @@ import soundfile as sf
 import term
 from beat_features import BEAT_FEATURES_VERSION
 from lyrics_input import LrcError, parse_lrc
+from atomic_json import write_json_atomic
+from task_temp import temporary_directory
 
 
 def load_audio(audio_path: Path) -> tuple[np.ndarray, int]:
@@ -30,8 +30,8 @@ def load_audio(audio_path: Path) -> tuple[np.ndarray, int]:
     try:
         samples, sr = sf.read(str(audio_path), dtype="float32", always_2d=True)
     except sf.SoundFileError:
-        with tempfile.TemporaryDirectory(prefix="tsuzuri-audio-") as tmp:
-            decoded = Path(tmp) / "decoded.wav"
+        with temporary_directory(prefix="tsuzuri-audio-") as tmp:
+            decoded = tmp / "decoded.wav"
             try:
                 result = subprocess.run(
                     [
@@ -160,8 +160,8 @@ def analyze_lyrics(audio_path: Path) -> dict:
 
     avg_conf = statistics.fmean(s.confidence for s in segments) if segments else 0.0
     if (not segments or avg_conf < LOW_CONFIDENCE) and _demucs_enabled(audio_path):
-        with tempfile.TemporaryDirectory(prefix="tsuzuri-demucs-") as tmp:
-            vocals = _try_demucs(audio_path, Path(tmp))
+        with temporary_directory(prefix="tsuzuri-demucs-") as tmp:
+            vocals = _try_demucs(audio_path, tmp)
             if vocals is not None:
                 language2, segments2, backend2 = transcribe(vocals)
                 avg2 = statistics.fmean(s.confidence for s in segments2) if segments2 else 0.0
@@ -239,8 +239,7 @@ def main(argv: list[str] | None = None) -> int:
             result["audio"] = args.audio.resolve().relative_to(project_root.resolve()).as_posix()
         except ValueError:
             result["audio"] = args.audio.name
-        out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        write_json_atomic(out, result)
         term.detail(
             f"beats: bpm={result['bpm']} beats={len(result['beats'])} "
             f"downbeats={len(result['downbeats'])} first_onset={result['first_strong_onset']}s"
@@ -264,10 +263,7 @@ def main(argv: list[str] | None = None) -> int:
             term.info(f"使用用户歌词: {args.lyrics_file.name}")
         else:
             lyrics = analyze_lyrics(args.audio)
-        lyrics_out.parent.mkdir(parents=True, exist_ok=True)
-        lyrics_out.write_text(
-            json.dumps(lyrics, ensure_ascii=False, indent=2), encoding="utf-8"
-        )
+        write_json_atomic(lyrics_out, lyrics)
         term.detail(f"lyrics: {len(lyrics['segments'])} 行({lyrics['backend']})")
     return 0
 

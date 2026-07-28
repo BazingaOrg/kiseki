@@ -7,7 +7,6 @@
  * -o 可覆盖输出路径,其余选项按素材自动决策。
  */
 
-import {spawnSync} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -24,7 +23,7 @@ import {
 } from './analysis-cache.mjs';
 import {
   computeInputHash, copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, hasExplicitTrimConfig,
-  readFilterConfig, readTrimPreference, resolveProjectPaths, scanFolder,
+  readFilterConfig, readTrimPreference, resolveProjectPaths, scanFolder, scanFolderLoose,
 } from './project.mjs';
 import {runDoctor} from './doctor.mjs';
 import {offerFetch, runFetch} from './fetch.mjs';
@@ -35,67 +34,15 @@ import {runStill} from './still.mjs';
 import {runWeb} from './web.mjs';
 import {term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
-import {FIXES} from './dependencies.mjs';
 import {runCommand} from './run-command.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
-import {resolveFilterOutputSuffix} from './output-naming.mjs';
+import {resolveRenderOutputPath} from './output-naming.mjs';
+import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
-const TARGET_LUFS = -14;
-const TARGET_TP = -1.5;
-
 export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
   validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
-
-const ffmpegQuiet = (args) => spawnSync('ffmpeg', ['-hide_banner', '-nostats', ...args], {encoding: 'utf8'});
-
-const normalizeLoudness = (file) => {
-  const probe = ffmpegQuiet([
-    '-i', file, '-map', 'a:0',
-    '-af', `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:print_format=json`,
-    '-f', 'null', '-',
-  ]);
-  const match = probe.stderr?.match(/\{[\s\S]*?\}/);
-  if (probe.error?.code === 'ENOENT') {
-    term.warn('找不到命令 ffmpeg,已跳过响度检查');
-    term.detail(FIXES.ffmpeg);
-    term.detail('运行 tsuzuri doctor 可一次检查全部依赖');
-    return;
-  }
-  if (probe.error || probe.status !== 0 || !match) {
-    term.warn('响度测量失败,保留原始响度');
-    return;
-  }
-  let m;
-  try {
-    m = JSON.parse(match[0]);
-  } catch {
-    term.warn('响度测量结果无法解析,保留原始响度');
-    return;
-  }
-  const measured = parseFloat(m.input_i);
-  if (Math.abs(measured - TARGET_LUFS) <= 1.0 && parseFloat(m.input_tp) <= -1.0) {
-    term.success('响度已符合目标,无需调整');
-    term.detail(`${measured.toFixed(1)} LUFS,目标 ${TARGET_LUFS} LUFS`);
-    return;
-  }
-  const tmp = `${file}.loudnorm.mp4`;
-  const af =
-    `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:linear=true` +
-    `:measured_I=${m.input_i}:measured_TP=${m.input_tp}` +
-    `:measured_LRA=${m.input_lra}:measured_thresh=${m.input_thresh}` +
-    `:offset=${m.target_offset}`;
-  const enc = ffmpegQuiet(['-y', '-i', file, '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '256k', tmp]);
-  if (enc.error || enc.status !== 0 || !fs.existsSync(tmp)) {
-    fs.rmSync(tmp, {force: true});
-    term.warn('响度归一失败,保留原始响度');
-    return;
-  }
-  fs.renameSync(tmp, file);
-  term.success('响度归一完成');
-  term.detail(`${measured.toFixed(1)} → ${TARGET_LUFS} LUFS(真峰值 ≤ ${TARGET_TP}dB)`);
-};
 
 export const runCommandFromArgv = async (
   argv,
@@ -110,7 +57,14 @@ export const runCommandFromArgv = async (
   if (parsed.command === 'fetch') return runFetch(parsed.folder);
   if (parsed.command === 'lyrics') {
     const lyricsFolder = path.resolve(parsed.folder);
-    if (fs.existsSync(lyricsFolder) && fs.statSync(lyricsFolder).isDirectory()) {
+    const inherited = [
+      'TSUZURI_LEASE_TASK_ID',
+      'TSUZURI_LEASE_TASK_TOKEN',
+      'TSUZURI_LEASE_TASK_ROOT',
+    ].some((key) => process.env[key] !== undefined);
+    // A lyrics web job owns its own lease and must not turn into an implicit
+    // fetch child. Direct interactive use keeps the existing convenience flow.
+    if (!inherited && fs.existsSync(lyricsFolder) && fs.statSync(lyricsFolder).isDirectory()) {
       await offerFetch(lyricsFolder);
     }
     return runLyrics(parsed.folder);
@@ -136,19 +90,30 @@ export const runCommandFromArgv = async (
     throw new CliError(`不是文件夹: ${folder}`);
   }
 
+  // Claim before offerFetch: that interactive helper can download audio or
+  // persist lyrics, so an inherited web lease must be authenticated first.
+  // The loose scan is read-only and lets us compute the exact default output
+  // name even when fetch is about to supply a currently missing audio file.
+  const preflight = scanFolderLoose(folder);
+  const outputPath = resolveRenderOutputPath({
+    folder, output, exif, sign, dark, portrait, square, draft, filter,
+    filterConfig: readFilterConfig(folder), photoNames: preflight.photos,
+  });
+  const project = resolveProjectPaths(folder, outputPath);
+  // An inherited job must prove it owns the exact final output before any
+  // helper can write project state. Direct invocations acquire that same path.
+  const task = acquireCommandLease({kind: 'render', folder, outputPaths: [project.outputPath]});
+  const originalEnv = Object.fromEntries(
+    [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+  );
+  Object.assign(process.env, task.env);
+  try {
   // 交互终端下缺音频/歌词先给下载与在线搜索的机会;备齐或非交互时不打扰
-  await offerFetch(folder);
+  await offerFetch(folder, {task});
   const {photos, audio, lyrics, videos} = scanFolder(folder);
   if (videos.length > 0) {
     term.warn(`发现视频文件,tsuzuri 目前只处理照片,已忽略: ${videos.join(', ')}`);
   }
-  const filterSuffix = resolveFilterOutputSuffix({
-    filter,
-    filterConfig: readFilterConfig(folder),
-    photoNames: photos,
-  });
-  const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}${filterSuffix}`;
-  const project = resolveProjectPaths(folder, output, variantSuffix);
   ensureProjectDirs(project);
   if (copyLegacyMetadata(folder, project.metadataDir)) {
     term.warn('已复制旧版 metadata/ 到 output/metadata/(原目录保留)');
@@ -272,14 +237,14 @@ export const runCommandFromArgv = async (
   if (renderCode !== 0) return renderCode;
   term.success('视频渲染完成');
 
-  if (!draft) {
-    term.start('检查成片响度');
-    normalizeLoudness(outPath);
-  } else {
-    term.detail('草稿模式: 跳过响度归一');
-  }
   term.success(`完成 → ${outPath}`);
   return 0;
+  } finally {
+    for (const [key, value] of Object.entries(originalEnv)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+    if (!task.inherited) createTaskLeaseManager().release(task.lease);
+  }
 };
 
 const reportCliError = (error) => {

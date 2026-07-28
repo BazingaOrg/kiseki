@@ -11,10 +11,12 @@ import {extractFormattedExif} from './exif.mjs';
 import {loadProjectConfig} from './config.mjs';
 import {CliError} from './options.mjs';
 import {bundleRenderer, loadRemotionRenderer, RENDERER} from './bundle.mjs';
+import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {term} from './term.mjs';
-import {resolveFilterOutputSuffix} from './output-naming.mjs';
+import {resolveOutputVariantSuffix} from './output-naming.mjs';
+import {acquireCommandLease} from './task-lease.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const PRESENTATION_SUFFIXES = ['', '-exif', '-sign', '-dark', '-exif-sign', '-exif-dark', '-sign-dark', '-exif-sign-dark'];
@@ -84,12 +86,10 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
       throw new CliError(`不是支持的图片格式: ${resolved}(支持 ${[...IMAGE_EXTS].join(' ')})`);
     }
     const publicDir = path.dirname(resolved);
-    const filterSuffix = resolveFilterOutputSuffix({
-      filter,
-      filterConfig: readFilterConfig(publicDir),
-      photoNames: [path.basename(resolved)],
+    const variantSuffix = resolveOutputVariantSuffix({
+      exif, sign, dark, portrait, square, filter,
+      filterConfig: readFilterConfig(publicDir), photoNames: [path.basename(resolved)],
     });
-    const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${filterSuffix}`;
     const base = path.basename(resolved, path.extname(resolved));
     const filename = `${base}${variantSuffix}.png`;
     let outPath;
@@ -121,12 +121,10 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
     if (photos.length === 0) {
       throw new CliError(`文件夹里没有图片: ${resolved}`);
     }
-    const filterSuffix = resolveFilterOutputSuffix({
-      filter,
-      filterConfig: readFilterConfig(resolved),
-      photoNames: photos.map((photo) => path.basename(photo)),
+    const variantSuffix = resolveOutputVariantSuffix({
+      exif, sign, dark, portrait, square, filter,
+      filterConfig: readFilterConfig(resolved), photoNames: photos.map((photo) => path.basename(photo)),
     });
-    const variantSuffix = `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}${portrait ? '-portrait' : ''}${square ? '-square' : ''}${filterSuffix}`;
     const outDir = output
       ? path.resolve(output)
       : path.join(resolved, 'output', 'stills');
@@ -168,27 +166,42 @@ export const runStill = async (opts) => {
     throw new CliError('渲染器依赖未安装,先执行: cd renderer && npm install');
   }
 
-  const {publicDir, canvasFolder, jobs} = resolveJobs(opts.target, opts.output, opts);
-  const canvas = loadStillCanvasConfig(canvasFolder);
-  const filterConfig = readFilterConfig(canvasFolder);
-  const resolveJobFilter = (job) =>
-    resolveFilterForPhoto({config: filterConfig, cliFilter: opts.filter ?? null, photoName: job.src});
-  if (opts.dark) canvas.background = '#000000';
-  if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
-  if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
-  const {renderStill, selectComposition} = loadRemotionRenderer();
-  const progress = createPercentProgress();
+  let task = null;
+  let originalEnv = null;
+  let progress = null;
   let cleanup = () => {};
   let skipped = 0;
   let skippedExif = 0;
   let rendered = 0;
-  const stillProgressLabel = (index) =>
-    jobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${jobs.length}`;
-
-  term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 黑底' : ''})`);
+  let jobs = null;
+  let activePartial = null;
+  let primaryError = null;
+  let didThrow = false;
 
   try {
-    const bundled = await bundleRenderer(publicDir, {
+    const resolved = resolveJobs(opts.target, opts.output, opts);
+    jobs = resolved.jobs;
+    task = acquireCommandLease({kind: 'still', folder: resolved.canvasFolder, outputPaths: jobs.map((job) => job.outPath)});
+    originalEnv = Object.fromEntries(
+      [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+    );
+    Object.assign(process.env, task.env);
+
+    const canvas = loadStillCanvasConfig(resolved.canvasFolder);
+    const filterConfig = readFilterConfig(resolved.canvasFolder);
+    const resolveJobFilter = (job) =>
+      resolveFilterForPhoto({config: filterConfig, cliFilter: opts.filter ?? null, photoName: job.src});
+    if (opts.dark) canvas.background = '#000000';
+    if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
+    if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
+    const {renderStill, selectComposition} = loadRemotionRenderer();
+    progress = createPercentProgress();
+    const taskId = resolveAtomicTaskId();
+    const stillProgressLabel = (index) =>
+      jobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${jobs.length}`;
+
+    term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 黑底' : ''})`);
+    const bundled = await bundleRenderer(resolved.publicDir, {
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
@@ -239,13 +252,14 @@ export const runStill = async (opts) => {
 
       fs.mkdirSync(path.dirname(job.outPath), {recursive: true});
 
+      activePartial = createPartialOutput(job.outPath, taskId);
       await renderStill({
         serveUrl: bundled.serveUrl,
         // selectComposition 只做一次以复用相同画布元数据;其 resolved props
         // 必须按 job 更新,否则首次选择时的 exif:null 会覆盖动态 inputProps。
         composition: {...composition, props: inputProps},
         inputProps,
-        output: job.outPath,
+        output: activePartial,
         imageFormat: 'png',
         scale: opts.scale,
         overwrite: true,
@@ -257,6 +271,9 @@ export const runStill = async (opts) => {
         },
       });
 
+      commitAtomicOutput(job.outPath, activePartial, {taskId});
+      activePartial = null;
+
       progress.update(stillProgressLabel(i), (i + 1) / jobs.length, 'Rendering still');
       progress.println(`→ ${job.outPath}`);
       rendered++;
@@ -264,9 +281,60 @@ export const runStill = async (opts) => {
     if (skipped > 0) progress.println(`└ 跳过 ${skipped} 张已存在(--skip-existing)`);
     if (skippedExif > 0) progress.println(`└ 跳过 ${skippedExif} 张 EXIF 信息不足`);
     progress.update(stillProgressLabel(jobs.length - 1), 1, 'Rendering still');
+  } catch (error) {
+    didThrow = true;
+    primaryError = error;
+    throw error;
   } finally {
-    progress.finish();
-    cleanup();
+    const cleanupErrors = [];
+    const tryCleanup = (label, action) => {
+      try {
+        action();
+      } catch (error) {
+        cleanupErrors.push(new Error(`still 清理失败(${label}): ${error instanceof Error ? error.message : String(error)}`, {cause: error}));
+      }
+    };
+
+    try {
+      if (activePartial) tryCleanup('删除 partial 输出', () => removePartialOutput(activePartial));
+    } finally {
+      try {
+        if (progress) tryCleanup('结束进度', () => progress.finish());
+      } finally {
+        try {
+          tryCleanup('清理 renderer bundle', cleanup);
+        } finally {
+          try {
+            if (originalEnv) {
+              for (const [key, value] of Object.entries(originalEnv)) {
+                tryCleanup(`恢复环境变量 ${key}`, () => {
+                  if (value === undefined) delete process.env[key]; else process.env[key] = value;
+                });
+              }
+            }
+          } finally {
+            if (task && !task.inherited) {
+              tryCleanup('释放 lease', () => {
+                if (!task.manager.release(task.lease)) throw new Error('lease 未释放');
+              });
+            }
+          }
+        }
+      }
+    }
+
+    if (cleanupErrors.length > 0) {
+      if (didThrow) {
+        if (primaryError && typeof primaryError === 'object') {
+          try { primaryError.cleanupErrors = cleanupErrors; } catch {}
+        }
+        for (const error of cleanupErrors) {
+          try { term.error(error.message); } catch {}
+        }
+      } else {
+        throw new AggregateError(cleanupErrors, 'still 清理失败');
+      }
+    }
   }
 
   if (rendered === 0) {

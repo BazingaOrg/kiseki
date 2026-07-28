@@ -16,7 +16,9 @@ test('assembles photos, audio, lyrics and output listings', () => {
   fs.writeFileSync(path.join(root, 'song.lrc'), '[00:01.00]hello\n[00:02.00]world\n');
   fs.mkdirSync(path.join(root, 'output', 'stills'), {recursive: true});
   fs.writeFileSync(path.join(root, 'output', 'stills', 'a.png'), '');
+  fs.writeFileSync(path.join(root, 'output', 'stills', '.tsuzuri-partial-lease-a.png'), '');
   fs.writeFileSync(path.join(root, 'output', `${path.basename(root)}.mp4`), '');
+  fs.writeFileSync(path.join(root, 'output', '.tsuzuri-partial-lease-video.mp4'), '');
 
   const result = getProject(root, root);
   assert.equal(result.status, 200);

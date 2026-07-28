@@ -1,11 +1,14 @@
 #!/usr/bin/env node
 
+import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
+import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
+import {FIXES} from './dependencies.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
@@ -51,6 +54,51 @@ export const readTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
 export const formatRenderDiagnostics = ({draft, composition, renderSettings, speed = null}) => {
   const speedDetail = speed ? `；速度档位 ${speed}` : '';
   return `实际渲染配置：${draft ? '草稿' : '正式'}；${composition.width}×${composition.height}；${composition.fps} fps；${composition.durationInFrames} 帧；concurrency ${renderSettings.concurrency}${speedDetail}`;
+};
+
+const TARGET_LUFS = -14;
+const TARGET_TP = -1.5;
+const ffmpegQuiet = (args) => spawnSync('ffmpeg', ['-hide_banner', '-nostats', ...args], {encoding: 'utf8'});
+
+const normalizeLoudness = (file) => {
+  const probe = ffmpegQuiet(['-i', file, '-map', 'a:0', '-af', `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:print_format=json`, '-f', 'null', '-']);
+  const match = probe.stderr?.match(/\{[\s\S]*?\}/);
+  if (probe.error?.code === 'ENOENT') {
+    term.warn('找不到命令 ffmpeg,已跳过响度检查');
+    term.detail(FIXES.ffmpeg);
+    term.detail('运行 tsuzuri doctor 可一次检查全部依赖');
+    return;
+  }
+  if (probe.error || probe.status !== 0 || !match) {
+    term.warn('响度测量失败,保留原始响度');
+    return;
+  }
+  let measuredInfo;
+  try { measuredInfo = JSON.parse(match[0]); } catch {
+    term.warn('响度测量结果无法解析,保留原始响度');
+    return;
+  }
+  const measured = parseFloat(measuredInfo.input_i);
+  if (Math.abs(measured - TARGET_LUFS) <= 1.0 && parseFloat(measuredInfo.input_tp) <= -1.0) {
+    term.success('响度已符合目标,无需调整');
+    term.detail(`${measured.toFixed(1)} LUFS,目标 ${TARGET_LUFS} LUFS`);
+    return;
+  }
+  const tmp = `${file}.loudnorm.mp4`;
+  const af = `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:linear=true:measured_I=${measuredInfo.input_i}:measured_TP=${measuredInfo.input_tp}:measured_LRA=${measuredInfo.input_lra}:measured_thresh=${measuredInfo.input_thresh}:offset=${measuredInfo.target_offset}`;
+  const enc = ffmpegQuiet(['-y', '-i', file, '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '256k', tmp]);
+  if (enc.error || enc.status !== 0 || !fs.existsSync(tmp)) {
+    fs.rmSync(tmp, {force: true});
+    term.warn('响度归一失败,保留原始响度');
+    return;
+  }
+  try {
+    fs.renameSync(tmp, file);
+  } finally {
+    fs.rmSync(tmp, {force: true});
+  }
+  term.success('响度归一完成');
+  term.detail(`${measured.toFixed(1)} → ${TARGET_LUFS} LUFS(真峰值 ≤ ${TARGET_TP}dB)`);
 };
 
 /**
@@ -133,6 +181,8 @@ const main = async () => {
 
   const timelinePath = path.resolve(timelineArg);
   const outputPath = path.resolve(outputArg);
+  const taskId = resolveAtomicTaskId();
+  const partialOutputPath = createPartialOutput(outputPath, taskId);
   const publicDir = path.resolve(publicDirArg);
   // 必须在加载 Remotion 前失败：内部入口也可直接调用，不能只依赖主 CLI。
   const timeline = readTimeline(timelinePath);
@@ -149,6 +199,7 @@ const main = async () => {
   });
 
   try {
+    fs.mkdirSync(path.dirname(outputPath), {recursive: true});
     const bundled = await bundleRenderer(publicDir, {
       onProgress: (value) => progress.update('Bundling code', value),
     });
@@ -183,7 +234,7 @@ const main = async () => {
       ...renderSettings,
       audioCodec: 'aac',
       pixelFormat: 'yuv420p',
-      outputLocation: outputPath,
+      outputLocation: partialOutputPath,
       overwrite: true,
       logLevel: 'error',
       // 接管浏览器控制台输出:不再与进行中的进度行挤在同一行
@@ -203,7 +254,14 @@ const main = async () => {
       },
     });
     progress.update('Encoding video', 1);
+    if (!flags.draft) {
+      term.start('检查成片响度');
+      normalizeLoudness(partialOutputPath);
+    }
+    else term.detail('草稿模式: 跳过响度归一');
+    commitAtomicOutput(outputPath, partialOutputPath, {taskId});
   } finally {
+    removePartialOutput(partialOutputPath);
     progress.finish();
     cleanup();
   }
