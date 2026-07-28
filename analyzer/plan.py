@@ -122,6 +122,29 @@ def _non_decimal_integer_key(text: str) -> str | None:
     return None
 
 
+def _literal_string_key(text: str) -> tuple[str, int] | None:
+    """返回首个单引号标量字符串的 bare key 与行号。
+
+    tomllib 解析后会丢失字符串引号形式；这里只镜像产品配置允许的 bare
+    key = scalar 词法边界。值从等号后开始检查，双引号字符串内的 # 不会被
+    当作注释或重新扫描。
+    """
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        match = re.match(r"^\s*([A-Za-z0-9_-]+)\s*=\s*", line)
+        if match and line[match.end() :].startswith("'"):
+            return match.group(1), line_no
+    return None
+
+
+def _numeric_underscore_key(text: str) -> tuple[str, int] | None:
+    """返回首个含下划线的 bare 数字标量的 key 与行号。"""
+    for line_no, line in enumerate(text.splitlines(), start=1):
+        match = re.match(r"^\s*([A-Za-z0-9_-]+)\s*=\s*([+-]?\d[^\s#]*)", line)
+        if match and "_" in match.group(2):
+            return match.group(1), line_no
+    return None
+
+
 def _signature_is_in_folder(value: object, folder: Path) -> bool:
     if not isinstance(value, str):
         return False
@@ -181,6 +204,20 @@ def load_config(folder: Path) -> dict:
     toml_path = folder / "tsuzuri.toml"
     if toml_path.is_file():
         text = toml_path.read_text(encoding="utf-8")
+        literal_string = _literal_string_key(text)
+        if literal_string:
+            key, line_no = literal_string
+            term.error(
+                f"tsuzuri.toml 第 {line_no} 行: {key}: 字符串只允许双引号字符串,请改用 \"...\""
+            )
+            raise SystemExit(1)
+        numeric_underscore = _numeric_underscore_key(text)
+        if numeric_underscore:
+            key, line_no = numeric_underscore
+            term.error(
+                f"tsuzuri.toml 第 {line_no} 行: {key}: 数字不允许下划线,请改用不带下划线的十进制"
+            )
+            raise SystemExit(1)
         try:
             user = tomllib.loads(text)
         except tomllib.TOMLDecodeError as exc:

@@ -53,15 +53,6 @@ const readBasicString = (line, start, lineNo) => {
   return {value: buf, next: i + 1};
 };
 
-/** 读取单引号字面量字符串(不转义),line[start] 必须是开头的 `'`。 */
-const readLiteralString = (line, start, lineNo) => {
-  let i = start + 1;
-  const len = line.length;
-  while (i < len && line[i] !== "'") i++;
-  if (i >= len) throw syntaxError(lineNo, "字符串未闭合(缺少结尾的 ')");
-  return {value: line.slice(start + 1, i), next: i + 1};
-};
-
 // TOML 十进制整数不允许前导零;每个下划线两侧都必须是数字。
 const DEC = String.raw`(?:0|[1-9](?:_?\d)*)`;
 const INT_RE = new RegExp(
@@ -105,6 +96,9 @@ const parseBareNumber = (raw) => {
 const parseBareValue = (raw, lineNo, key) => {
   if (raw === 'true') return {kind: 'bool', value: true};
   if (raw === 'false') return {kind: 'bool', value: false};
+  if (raw.includes('_') && /^[+-]?\d/.test(raw)) {
+    throw syntaxError(lineNo, `${key}: 数字不允许下划线,请改用不带下划线的十进制`);
+  }
   const num = parseBareNumber(raw);
   if (num) return num;
   throw syntaxError(
@@ -150,10 +144,6 @@ export const parseFlatToml = (text) => {
       const {value, next} = readBasicString(line, i, lineNo);
       key = value;
       i = next;
-    } else if (line[i] === "'") {
-      const {value, next} = readLiteralString(line, i, lineNo);
-      key = value;
-      i = next;
     } else {
       const start = i;
       while (i < len && /[A-Za-z0-9_-]/.test(line[i])) i++;
@@ -178,10 +168,7 @@ export const parseFlatToml = (text) => {
       kind = 'string';
       i = result.next;
     } else if (line[i] === "'") {
-      const result = readLiteralString(line, i, lineNo);
-      value = result.value;
-      kind = 'string';
-      i = result.next;
+      throw syntaxError(lineNo, `${key}: 字符串只允许双引号字符串,请改用 "..."`);
     } else {
       const start = i;
       while (i < len && !isWs(line[i]) && line[i] !== '#') i++;

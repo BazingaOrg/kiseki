@@ -187,32 +187,11 @@
       "line": 1
     },
     {
-      "name": "underscored-int",
+      "name": "numeric-underscore-rejected",
       "toml": "width = 1_920\n",
-      "expect": "ok",
-      "config": {
-        "width": 1920,
-        "height": 1080,
-        "fps": 60,
-        "background": "#FFFFFF",
-        "photo_scale": 0.8,
-        "transition": "album",
-        "album_fade": 0.4,
-        "crossfade": 0.6,
-        "min_gap": 2.0,
-        "flash_min_gap": 0.8,
-        "flash_avg_threshold": 2.0,
-        "trim_avg_threshold": 10.0,
-        "trim_target_avg": 8.0,
-        "pacing": "dynamic",
-        "trim": "auto",
-        "subtitles": true,
-        "chapters": true,
-        "demucs": true,
-        "intro": true,
-        "outro_text": "",
-        "signature": ""
-      }
+      "expect": "error",
+      "key": "width",
+      "line": 1
     },
     {
       "name": "hex-integer-rejected",
@@ -222,32 +201,11 @@
       "line": 1
     },
     {
-      "name": "literal-string",
+      "name": "single-quoted-string-rejected",
       "toml": "background = '#000000'\n",
-      "expect": "ok",
-      "config": {
-        "width": 1920,
-        "height": 1080,
-        "fps": 60,
-        "background": "#000000",
-        "photo_scale": 0.8,
-        "transition": "album",
-        "album_fade": 0.4,
-        "crossfade": 0.6,
-        "min_gap": 2.0,
-        "flash_min_gap": 0.8,
-        "flash_avg_threshold": 2.0,
-        "trim_avg_threshold": 10.0,
-        "trim_target_avg": 8.0,
-        "pacing": "dynamic",
-        "trim": "auto",
-        "subtitles": true,
-        "chapters": true,
-        "demucs": true,
-        "intro": true,
-        "outro_text": "",
-        "signature": ""
-      }
+      "expect": "error",
+      "key": "background",
+      "line": 1
     },
     {
       "name": "trim-seconds",

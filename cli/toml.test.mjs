@@ -12,11 +12,16 @@ const captureError = (fn) => {
   throw new Error('expected function to throw');
 };
 
-test('accepts signed and underscored integers', () => {
-  const {values} = parseFlatToml('a = 1_920\nb = -5\nc = +7\n');
-  assert.equal(values.a, 1920);
+test('accepts signed integers', () => {
+  const {values} = parseFlatToml('b = -5\nc = +7\n');
   assert.equal(values.b, -5);
   assert.equal(values.c, 7);
+});
+
+test('rejects numeric underscores with the key and line guidance', () => {
+  const err = captureError(() => parseFlatToml('width = 1_920\n'));
+  assert.match(err.message, /width: 数字不允许下划线/);
+  assert.equal(err.line, 1);
 });
 
 test('accepts hex, octal, and binary integers', () => {
@@ -36,9 +41,10 @@ test('accepts floats with exponents', () => {
   assert.equal(values.a, 1500);
 });
 
-test('accepts literal strings without escaping', () => {
-  const {values} = parseFlatToml("a = 'no \\n escape'\n");
-  assert.equal(values.a, 'no \\n escape');
+test('rejects literal strings with the key and line guidance', () => {
+  const err = captureError(() => parseFlatToml("a = 'no \\n escape'\n"));
+  assert.match(err.message, /a: 字符串只允许双引号字符串/);
+  assert.equal(err.line, 1);
 });
 
 test('accepts basic strings with escapes', () => {

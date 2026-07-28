@@ -18,7 +18,7 @@ FIXTURE = json.loads(
 
 
 @pytest.mark.parametrize("case", FIXTURE["cases"], ids=lambda case: case["name"])
-def test_config_cases_match_node_contract(tmp_path: Path, case: dict):
+def test_config_cases_match_node_contract(tmp_path: Path, case: dict, capsys: pytest.CaptureFixture[str]):
     (tmp_path / "tsuzuri.toml").write_text(case["toml"], encoding="utf-8")
     for file in case.get("files", []):
         (tmp_path / file["name"]).write_text(file["content"], encoding="utf-8")
@@ -26,6 +26,10 @@ def test_config_cases_match_node_contract(tmp_path: Path, case: dict):
     if case["expect"] == "error":
         with pytest.raises(SystemExit):
             plan.load_config(tmp_path)
+        if case["name"] in {"single-quoted-string-rejected", "numeric-underscore-rejected"}:
+            output = capsys.readouterr().err
+            assert case["key"] in output
+            assert f"第 {case['line']} 行" in output
         return
 
     config = plan.load_config(tmp_path)
