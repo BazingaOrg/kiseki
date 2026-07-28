@@ -147,10 +147,10 @@
 
 ### 批次 5：doctor、缓存、缩略图与测量驱动性能优化
 
-- [ ] 将 Web doctor 改为异步并行、短 TTL 的状态检查；CLI doctor 保持原同步语义。
-- [ ] 按实际 LRC/demucs 执行路径计算分析缓存运行时指纹。
-- [ ] 调整缩略图响应为 ETag + `private, no-cache`，验证原地替换后的浏览器复核。
-- [ ] 对字体、Lightbox、EXIF、timeline 扫描和 riso 按基线结果选择少量高收益改动。
+- [x] 将 Web doctor 改为异步并行、短 TTL 的状态检查；CLI doctor 保持原同步语义。
+- [x] 按实际 LRC/demucs 执行路径计算分析缓存运行时指纹。
+- [x] 调整缩略图响应为 ETag + `private, no-cache`，验证原地替换后的浏览器复核。
+- [x] 对字体、Lightbox、EXIF、timeline 扫描和 riso 按基线结果选择少量高收益改动。
 
 影响范围：`cli/doctor.mjs`、`cli/web-server.mjs`、`cli/analysis-cache.mjs`、`cli/web-api/thumb.mjs`、`web/src/media.ts`、Renderer 或 Lightbox（仅在数据支持时）。
 
@@ -313,6 +313,62 @@ Python `tomllib` 解析后以 `analyzer/plan.py` 的镜像字段表收窄到同�
 独立 QA：Web 37/37、typecheck、production build 与 `git diff --check` 全部通过。Playwright 在 320/390/639/640/641/800/801px 下确认 folder 始终在 topbar 内、不与 doctor 交叠、doctor 保持边界可达且无横向 overflow；真实键盘 Arrow/Home/End/环绕、唯一 `tabIndex=0`、ARIA 关联和焦点转移均通过。未新增键盘动画，未触碰批次 6。
 
 仍待人工媒体验收：Results 的真实 audio 播放跨 Tab identity 已由浏览器验证；但动态 loading/buffering/error 状态在该次运行中不可达，需在可复现网络/媒体条件下确认其实际播报与窄屏换行。
+
+### 批次 5（2026-07-28，实施前基线）
+
+环境：HEAD `9ad8b14`；Node `22.18`、npm `10.9.3`、uv `0.11.28`、ffmpeg `8.1.2`、yt-dlp `2026.07.04`；Mac16,1，10 核。
+
+构建与样本：字体总计 `40,587,056B`；Web production build `296K`（`index` `1006B`、CSS `36592B`、JS `259304B`），Vite `831ms`。fixture 为 5 个文件、`237397B`，仅可作 smoke，不能代表真实媒体负载。targeted 测试 `29` 项通过。
+
+doctor：连续 5 次为 `209.52` / `209.36` / `206.34` / `209.72` / `210.71ms`，且 Web 调用仍为同步阻塞。
+
+分析缓存：现有所有运行时路径均包含 `backend`、`model`、`demucs_available`；这些字段变化均为 miss，`invalid => null`。
+
+缩略图：响应为 `200`、`Cache-Control: private, max-age=86400`，没有 ETag/304；原地替换后仍返回 `200`。
+
+5D 的昂贵候选项（字体、Lightbox、EXIF、timeline 扫描、riso）暂不在本基线样本上判断；须以真实样本和预先定义的阈值补齐基准后，才选择高收益改动。
+
+### 批次 5A（2026-07-28，Web doctor）
+
+Web 的 `uv`、`ffmpeg`、`yt-dlp` 探测改为无 shell 的异步并行 `spawn`；每项独立 2 秒超时，超时会终止子进程并返回与缺失/非零退出相同的既有失败项。node、renderer 与 analyzer 仍为同步本地检查，结果在全部完成后严格按 CLI 原有六项顺序组装；`collectDoctorChecks` 与 `runDoctor` 未改，CLI 输出、顺序和退出码保持原语义。
+
+`/api/doctor` 现在由 server 实例持有的 service 提供：完整成功探测完成后缓存 5 秒，同期请求共享同一个 promise；缺依赖仍为可缓存的 200，内部异常由路由转为 500 且不缓存。`refresh=1` 清除已完成缓存但会加入已有 in-flight；前端“重新检查”带该参数，首屏请求保持普通路径。新增注入式测试覆盖并行/固定顺序、超时 kill、single-flight、TTL、refresh 及异常不缓存；全量数字待独立 QA。
+
+独立 QA：targeted `39/39`；完整 CLI `444/444`（无 skip）；Web `37/37`、typecheck、production build 与 `git diff --check` 全部通过。补测覆盖 spawn `error`、非零 `close`、timeout kill、single-flight、TTL、refresh、缺依赖仍为 200 且缓存、异常不缓存及实例缓存隔离。真实异步请求五次为 `202.78` / `170.26` / `190.07` / `178.20` / `208.51ms`，平均 `189.96ms`；同步基线平均 `209.13ms`。service 首次 `185.72ms`，立即重复 `0ms`（collector `1` 次）。wall time 只有小幅改善，核心收益是外部命令不再阻塞 event loop，以及并发请求的 single-flight 合并。
+
+### 批次 5B（2026-07-28，analysis cache runtime 指纹）
+
+分析缓存 contract 升为 v2。Node 保留 Python 报告的完整能力信息，但在稳定哈希前按实际输入投影：有 LRC 时仅包含 analyzer schema/beat feature 版本；无 LRC 且 `demucs = false` 时包含 backend/model 而不包含 demucs availability；无 LRC 且 demucs 开启或默认时包含完整运行时字段。音频与 LRC 内容仍参与哈希，`lyrics` 命令未纳入；无效或重复 demucs、运行时命令失败或字段非法时返回 `null`，保守跳过缓存。v1 manifest 会自然 miss 后以 v2 重建，无迁移或兼容读取。
+
+测试覆盖 LRC/no-LRC 各路径的命中与失效、LRC 内容变动、无效 demucs/运行时与 v1 manifest miss；并补测无 LRC 时相同 audio/runtime 的显式 `demucs = false` 与默认/`true` 哈希不同，确保实际执行路径不会复用。独立 QA：analysis-cache `8/8`、完整 CLI `451/451`（无 skip）、analyzer `150`，`git diff --check` 通过。v1 manifest 以一次 miss 自然重建为 v2，无迁移或兼容读取。
+
+### 批次 5C（2026-07-28，thumbnail ETag）
+
+缩略图身份以 canonical path、dev、ino、size、高精度 mtime/ctime 与归一化宽度共同哈希，同时作为落盘缓存键和强 ETag；旧平台没有纳秒字段时稳定回退到毫秒字段。响应改为 `private, no-cache`，支持 `If-None-Match` 的列表、弱标签及 `*`，命中时仅返回 ETag/缓存控制的 304，不创建读取流。
+
+生成期间在完成后再次 stat；身份变化会清除本次临时文件并从新身份重试一次，连续变化明确返回 409，避免缓存错图。ffmpeg 失败仍回退原图，但复用同一源身份 ETag。已加入可注入 stat/generator/stream 的单测覆盖。
+
+独立 QA：targeted `41/41`、完整 CLI `459/459`（无 skip）、Web `37/37` + typecheck + production build，以及 `git diff --check` 全部通过。真实 HTTP 验证为首次 `200 → 304`，同路径替换后返回新 ETag 的 `200 → 304`，响应缓存控制为 `private, no-cache`；临时 fixture 已清理。首次并行 runner 出现一次 deserialize 偶发，单独完整重跑后清零，判定为测试运行环境偶发而非产品失败。
+
+### 批次 5D（2026-07-28，性能候选测量与取舍）
+
+本项无源码改动。三套字体分别为 `1887192B`、`13574352B`、`25125512B`，合计 `40587056B`；均由语言回退实际引用，没有安全候选可删。
+
+repo 仅有 3 张 JPEG，且均无 EXIF；Lightbox/EXIF 缺少真实负载证据。对这 3 张的 EXIF 测量 median 为 `0.16–0.29ms`，总计约 `0.68ms`，仅能视为 smoke，不作优化依据。
+
+timeline 等价筛选 100 / 500 / 2000 条目的 median 为 `0.074` / `0.326` / `1.306ms`；500 条目未达 `1ms`，且没有 render wall time `>= 5` 的证据，故不改。
+
+合法 1s、60 frames 的 riso 测量：base `2.88s`、riso `2.91s`，增加 `1.0%`；RSS median 分别为 `477927552` / `478041976`，增加 `0.024%`，p95 增加 `0.35%`，均未跨阈值，故不改。临时目录已清理。
+
+批次 5 的四项均已完成；最终全量 QA 待后续记录。
+
+### 批次 5（2026-07-28，最终 QA）
+
+最终全量 QA 通过：CLI `459/459`，无 fail / skip / todo；analyzer `150`；renderer `9/9` 加 typecheck；Web `37/37` 加 typecheck 与 production build；`git diff --check` 通过。测试未新增 skip / only / todo，保留的仅为既有平台条件。
+
+工作区 12 项改动均为预期的 5A–5C 实现与本计划记录，没有临时垃圾。根目录执行 `npm test` 的 `ENOENT` 是根目录没有 `package.json`，不是测试失败；正确的 CLI 测试命令在 `cli/` 目录执行。
+
+批次 5 完成，未提交。
 
 ## 复审记录
 
