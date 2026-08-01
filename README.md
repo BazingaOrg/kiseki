@@ -37,6 +37,12 @@ node cli/tsuzuri.mjs help
 
 `web` 首次使用需构建前端：`npm --prefix web install && npm --prefix web run build`。网页可查看和制作素材，也可改名或删除资产；写入受启动时的素材根目录、服务 token、冲突与任务检查保护，删除先移入回收区并仅提供进程内撤销。详见[项目状态](docs/tsuzuri-status.md)。
 
+## 架构
+
+本地工作台和 CLI 共享受控任务运行时；在线备料只写入素材项目边界，分析与渲染始终在本机完成。
+
+![tsuzuri 本地媒体工作台架构](docs/assets/architecture/architecture.png)
+
 ## 配置与文档
 
 - [配置参考](docs/config.md)：严格的 `tsuzuri.toml` 21 键契约

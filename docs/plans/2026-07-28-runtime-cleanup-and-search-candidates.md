@@ -83,6 +83,58 @@
 
 状态：已实施，待用户 QA。本节只追加实际变更、偏离原因、静态审查问题和用户 QA 结果；不得改写上方“原始计划”或既有批次内容。
 
+### 0B2：claim 路径身份复核（进行中，待静态检查）
+
+- 目标：将文件系统操作路径与不访问文件系统的稳定 claim key 分离；v2 manifest/claim 持久化 key，并让 v1 遗留 claim 在 owner 未证实死亡时继续阻塞，在已死时仅按 taskId + stable key 精确恢复。
+- 涉及：`cli/task-lease.mjs`、`cli/atomic-output.mjs`、相邻测试及会忽略 `release() === false` 的 direct/Web 调用方。保持现有 search 工作区改动不变。
+- 风险：迁移时若将 v1 误当成 v2 或接受目录/链接 final，可能错误并发写入或破坏用户文件；因此未知、缺失、重复、畸形记录一律 busy，输出最终目标在任何 mutation 前要求是 regular file 或不存在。
+- 验收边界：只做 `node --check` 与 `git diff --check`；不运行测试、构建、浏览器、网络、真实进程终止或 registry 清理。用户后续验证跨平台路径别名、v1 stale recovery、原子事务 crash window 与 release 失败传播。
+
+### 0B2 实施与复核（已实施，待用户 QA）
+
+- `identityVersion: 2` manifest 保留 acquire-time 的 filesystem `resources`/输出 artifact 路径，并额外持久化平行 `claimKeys`；v2 claim 持久化 `resourcePath` 与 `claimKey`。stable key 只对 lexical absolute path 做平台规则归一：Linux 保留大小写，Darwin 全路径 NFC+lowercase，Windows 分隔符标准化后 NFC+lowercase，不读取文件系统。
+- output artifact 仍只在 acquire 时 realpath 已存在的父路径，并保留未解析的 final basename；existing final 若不是普通文件（含目录、special 或 symlink）在 lease/atomic mutation 前拒绝。partial 也必须为普通文件。
+- v1 claim 不会被 v2 忽略：live/unknown 继续 busy；dead owner 的 legacy 恢复按 task id + stable key 扫描，并要求每个 required claim 恰有一份可解析记录，否则 fail-closed。v2/legacy 混写同一 manifest 同样 busy。已提交事务仍走既有保留 final、清 partial/backup 路径。
+- direct CLI 与 Web mutation/save caller 不再静默丢弃 `release()` 的 false，而是使当前成功流程失败；未扩大到无成功响应的其他路径。
+- 增加了相邻 static tests：Darwin 非存在路径、NFC/NFD/parent symlink、Linux/Windows case 以及 directory final。受本轮边界限制，未运行这些或既有 tests。
+- 静态检查：`node --check`（修改的 8 个生产/测试 JS 模块）与 `git diff --check` 均通过。未运行测试、build、browser、network、kill 或 registry mutation。
+- 复核根因：旧 claim identity 把 filesystem realpath/case folding 混入 claim hash，导致不存在路径和跨平台 spelling 的 key 不稳定；部分 release 调用忽略 false，可能把残留 claim 后的操作报告为成功。用户 QA 需覆盖 Darwin mixed-case create/finalize/release、NFC/NFD 和 ancestor spelling、Windows/ Linux case、final symlink/dir/special、v1 live/dead/duplicate/missing、committed crash recovery 和 release-failure 响应。
+
+### 0B2 复核修正（已实施，待用户 QA）
+
+- v2 acquire 与 extend output claim 现在均在任何 v2 manifest/claim 写入前扫描 legacy claim JSON；命中 requested stable key 的 v1 task 只有 owner 已证实死亡、每个 required key 恰好一份可解析 legacy claim 时才恢复。live、unknown、duplicate、missing、malformed 与 v1/v2 混写均 busy。恢复沿用已提交事务保留 final、清理本 task partial/backup 与 exact legacy claim/task 的路径。
+- manifest 的 resources、pending resources、outputs、transaction entries 与 inherited attach 均按持久化 stable key 判断归属；验证后使用 manifest 保存的 operation path，不再把重新 realpath 的 spelling 当作唯一合法值。v2 pending claim key 同时在 acquisition/extension intent 中验证，stable-key 重复拒绝。
+- release 先预检全部 required claim，之后才清理 artifact/删除 claim；CLI finally 只在已成功返回的路径将 release failure 变成失败，原始异常和非成功返回不被覆盖。save-lyrics 将成功后的 release failure 转为结构化 500，原有失败响应保持。
+- 追加未运行测试覆盖 legacy live block、dead committed recovery、Darwin lexical key、Linux/Windows case 与 atomic directory/symlink mutation guard。仍未运行 tests/build/browser/network/kill/registry mutation；本轮仅可报告静态语法和 diff 检查。
+
+### 0B2 第三轮复核修正（已实施，待用户 QA）
+
+- 根因：仅扫描 legacy claim 文件会让“manifest 已声明但 claim 缺失”的 v1 task 在 v2 创建前不可见；持久化路径的 string equality 也会把大小写/NFC 变化与真实 symlink redirect 混为一谈。
+- 修正：v2 写入前同时扫描 legacy tasks manifest 与全部 claim JSON；命中 requested stable key 的 manifest 要求每个 declared key 具唯一、同 task 且 stable-key 一致的 old claim，否则 busy。owner live/unknown 保持 busy，dead 才复用 exact recovery。
+- 每次 manifest/release/recovery 验证都重新 canonicalize stored project、artifact-resolve stored output，并只比较 stable key；通过后仍使用持久 operation path。release 在任何 artifact/claim/task mutation 前预检 durable 与 pending claim 集合。
+- 本轮只做 `node --check` 和 `git diff --check`；未运行测试或其他禁止的验证。新增 fixture 覆盖仍需由后续 test run 确认。
+
+### 0B2 第四轮复核修正（已实施，待用户 QA）
+
+- legacy pre-scan 现以完整 declared set（resources、pendingClaims、pendingOutputClaims）验证 task manifest 与旧 claim 的 1:1 对应；requested key 的 orphan legacy claim 同样 fail-closed，不能因缺少 manifest 而隐形。
+- 修正 v2 fixture 使用 `stableClaimKey` 与其 hash，而非依赖 raw path 恰好等价。新增未运行 fixture 覆盖 requested pending legacy claim 与 orphan claim 均在 v2 写入前阻断。
+- 仅执行静态语法及 diff 检查；未运行 tests、registry/service 或其他运行态操作。
+
+### 0B2 第五轮复核修正（已实施，待用户 QA）
+
+- legacy recovery 前建立跨全部 verified legacy manifest/claim 的 stable-key 索引；requested key 若被多个 task 声明或有多份 old claim，任何 recovery/delete 前直接 busy。新增两个 dead legacy task 同 key 的未运行 fixture，断言 task/claim 均保留。
+- stable-key 大小写折叠只适用于 Darwin 与 Windows；AIX、FreeBSD 与其他平台保持 case-sensitive，并新增未运行断言。
+
+### 0B2 第六轮复核修正（已实施，待用户 QA）
+
+- 修正 transitive legacy conflict：requested key 命中的可恢复 task 会先对其完整 declared key 集合做全局唯一 task/claim 对应预检；任何输出 key 连接到另一 task 都在 recovery 前 busy，不扩展或部分清理。
+- 新增未运行 A(X,Y)/B(Y) fixture，断言 request X 时两 task、claims 与 Y final 保留。仅静态 syntax/diff 检查。
+
+### 2A 事务恢复复核修正（已实施，待用户 QA）
+
+- `prepared` 是仅持久化 intent 的阶段，不再与 `committing` 共用回滚：stale recovery 保留当前所有 final（含外部写入），只删除本 task partial；prepared 阶段出现 backup 视为不可能状态并 fail-closed。`committing` 与 `committed` 语义不变。
+- 新增未运行 fixture 覆盖 prepared 后外部 final 出现及原 final 外部消失均不被恢复逻辑重写。仅完成静态检查。
+
 ### 1A：视频/still 正式产物的同目录原子提交（已实施，未运行验证）
 
 - 新增 `cli/atomic-output.mjs`：partial 命名固定为同目录隐藏 `.tsuzuri-partial-<taskId>-<name>.<ext>`，保留真实扩展；任务 ID 优先使用 lease 环境，直接调用回退随机 ID。提交只使用同目录 rename；覆盖既有 final 时先 rename 到唯一隐藏 backup，替换失败则 rollback 旧 final，成功后删除 backup，不使用 copy fallback。
@@ -167,3 +219,9 @@
 - 歌曲与歌词候选均为最多 10 条；稳定 provider ID 去重，缺失 ID 不做猜测性合并。
 - final static review：PASS。发现并修复的根因包括 direct interactive render 对已持有 task 的 reattach、TERM 后 root 已死时漏掉已验证 descendants 的 KILL、spawn PID/start probe 与登记竞态、Windows taskkill 缺少 canonical identity/liveness gate，以及 jobs 单测固定假 PID 却落到真实 task lease/runtime registry。
 - QA 未运行 tests、build、browser、render、network 或真实 signals；用户负责双服务/刷新观察、取消与正常退出、SIGKILL 后 stale cleanup、Unix/Windows 后代、原子输出、回收站/旧 staging 保留，以及歌曲/歌词 10 条候选和重搜交互验收。
+
+### 2026-08-01 真实回归与 fixture 迁移（不改写上述历史结论）
+
+- 后续稳定性批次将原先会落入真实 runtime registry、PID 或 IPC 的 lease/atomic/lifecycle 测试迁移为隔离 fixture；生产 lease、executor identity、claim、TERM→wait→KILL→close/reap 与 fail-closed 协议未放宽。
+- 自动化真实回归通过：CLI 连续两次 `556 / 556` 且无 ProjectBusy/IPC；Analyzer `152`；Renderer `9` 与 typecheck；Web `45`、typecheck 与 production build；`git diff --check` 通过。仓库没有 lint 脚本。
+- 这补充的是自动化回归证据，不取代本计划保留给用户的真实媒体、浏览器、网络、信号/进程树和跨平台 QA。

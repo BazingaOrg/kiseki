@@ -37,6 +37,12 @@ The default video is `osaka-trip/output/osaka-trip.mp4`; stills default to `outp
 
 Build the web frontend before its first use: `npm --prefix web install && npm --prefix web run build`. The page can view and make material, and rename or delete assets. Writes are protected by the startup material root, server token, conflict and job checks; deletion first moves an item to trash and undo is available only within the running process. See [project status](docs/tsuzuri-status.md).
 
+## Architecture
+
+The local workbench and CLI share one controlled task runtime; optional online preparation stops at the media project boundary, while analysis and rendering stay local.
+
+![tsuzuri local media workbench architecture](docs/assets/architecture/architecture.png)
+
 ## Configuration and documentation
 
 - [Configuration reference](docs/config.md): the strict 21-key `tsuzuri.toml` contract
