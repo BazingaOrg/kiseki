@@ -5,7 +5,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {installDownloadedAudio} from './fetch.mjs';
-import {AUDIO_SEARCH_LIMIT, checkYtDlp, downloadWithYtDlp, parseSearchCandidates, parseSearchLine} from './ytdlp.mjs';
+import {AUDIO_PROVIDER_LIMIT, AUDIO_SEARCH_LIMIT, checkYtDlp, downloadWithYtDlp, normalizeSearchQuery, parseSearchCandidates, parseSearchLine, searchYtDlp} from './ytdlp.mjs';
+
+test('search normalization only trims and collapses whitespace', () => {
+  assert.equal(normalizeSearchQuery('  晴天   + 周杰伦 · live  '), '晴天 + 周杰伦 · live');
+});
 
 test('parseSearchLine splits yt-dlp print output and tolerates NA fields', () => {
   assert.deepEqual(parseSearchLine('abc123\t晴天 (官方MV)\t4:29\t周杰倫'), {
@@ -31,6 +35,18 @@ test('parseSearchCandidates 稳定按 id 去重后限制为 10 个候选', () =>
   const candidates = parseSearchCandidates(lines.join('\n'));
   assert.equal(candidates.length, AUDIO_SEARCH_LIMIT);
   assert.deepEqual(candidates.map(({id}) => id), ['0', '1', '2', '4', '5', '6', '7', '8', '9', '10']);
+});
+
+test('sync search asks the provider for 20 before stable dedupe/slice to 10', () => {
+  let args;
+  const result = searchYtDlp('  晴天   周杰伦  ', {
+    spawn: (_command, received) => {
+      args = received;
+      return {status: 0, stdout: Array.from({length: 12}, (_, index) => `${index}\tSong\t3:01\tChannel`).join('\n')};
+    },
+  });
+  assert.equal(args[0], `ytsearch${AUDIO_PROVIDER_LIMIT}:晴天 周杰伦`);
+  assert.equal(result.candidates.length, AUDIO_SEARCH_LIMIT);
 });
 
 test('yt-dlp downloads outside the material folder and safely replaces a same-name audio', () => {

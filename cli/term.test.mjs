@@ -19,6 +19,7 @@ import {parseArgs} from './options.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {computeInputHash, copyLegacyJson, ensureProjectDirs, resolveProjectPaths} from './project.mjs';
 import {createTerminal, dim, paint, promptPrefix} from './term.mjs';
+import {runCommandFromArgv} from './tsuzuri.mjs';
 
 const stream = (isTTY) => ({
   isTTY,
@@ -26,6 +27,27 @@ const stream = (isTTY) => ({
   write(chunk) {
     this.output += chunk;
   },
+});
+
+test('lyrics --replace skips the optional fetch offer without changing the normal lyrics path', async () => {
+  const folder = mkdtempSync(join(tmpdir(), 'tsuzuri-lyrics-entry-'));
+  try {
+    const fetchCalls = [];
+    const lyricsCalls = [];
+    const options = {
+      offerFetchImpl: async (target) => { fetchCalls.push(target); },
+      runLyricsImpl: (target, settings) => { lyricsCalls.push({target, settings}); return 0; },
+    };
+    await runCommandFromArgv(['lyrics', folder], options);
+    await runCommandFromArgv(['lyrics', folder, '--replace'], options);
+    assert.deepEqual(fetchCalls, [folder]);
+    assert.deepEqual(lyricsCalls, [
+      {target: folder, settings: {replace: false}},
+      {target: folder, settings: {replace: true}},
+    ]);
+  } finally {
+    rmSync(folder, {recursive: true, force: true});
+  }
 });
 
 test('TTY uses matching colors and writes warnings/errors to stderr', () => {

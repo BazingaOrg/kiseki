@@ -7,11 +7,15 @@ import readline from 'node:readline';
 import {createPercentProgress} from './progress.mjs';
 import {scanFolderLoose} from './project.mjs';
 
+export const AUDIO_PROVIDER_LIMIT = 20;
 export const AUDIO_SEARCH_LIMIT = 10;
 export const YTDLP_PROGRESS_LABEL = '下载音频';
 
 const ANSI_RE = /\x1b\[[0-9;?]*[ -/]*[@-~]/g;
 const YTDLP_PROGRESS_RE = /^\[download\]\s+(\d{1,3}(?:\.\d+)?)%/;
+
+/** Search text keeps its characters and order; only surrounding/repeated whitespace is normalized. */
+export const normalizeSearchQuery = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
 
 /** 把 yt-dlp 的下载行抹平成 CLI/Web 共用的 progress 契约。 */
 export const parseYtDlpProgress = (line) => {
@@ -51,11 +55,12 @@ export const checkYtDlp = (spawn = spawnSync) => {
   return {ok: true, version: (r.stdout ?? '').trim()};
 };
 
-export const searchYtDlp = (query) => {
-  const r = spawnSync(
+export const searchYtDlp = (query, {spawn = spawnSync} = {}) => {
+  const normalized = normalizeSearchQuery(query);
+  const r = spawn(
     'yt-dlp',
     [
-      `ytsearch${AUDIO_SEARCH_LIMIT}:${query}`,
+      `ytsearch${AUDIO_PROVIDER_LIMIT}:${normalized}`,
       '--flat-playlist',
       '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
     ],

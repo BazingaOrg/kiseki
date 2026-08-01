@@ -222,7 +222,7 @@ const lrclibFetch = (pathname, params) => {
 
 /** 精确记录必须真的含同步歌词;否则继续用关键词宽松搜索。 */
 export const searchLyricsRecords = async (
-  {query, title, artist, duration, customized = false},
+  {query, title, artist, duration, customized = false, requireValidId = false},
   fetcher = lrclibFetch,
 ) => {
   if (!customized && title && artist && duration) {
@@ -231,9 +231,8 @@ export const searchLyricsRecords = async (
       artist_name: artist,
       duration: Math.round(duration),
     });
-    // /get 精确命中的记录之后可能要交给 Web 按 id 再取一次；没有有效 id 的
-    // 响应不能作为可保存的精确结果，继续走关键词搜索。
-    if (filterSyncedRecords(exact ? [exact] : []).length > 0 && canonicalLyricsId(exact.id) !== null) return [exact];
+    const usable = filterSyncedRecords(exact ? [exact] : []).length > 0;
+    if (usable && (!requireValidId || canonicalLyricsId(exact.id) !== null)) return [exact];
   }
   return await fetcher('/search', {q: query});
 };
@@ -493,7 +492,10 @@ export const chooseSingleAudio = async (ask, folder, audios) => {
 };
 
 /** `tsuzuri fetch <folder>`:显式备料入口,任何状态可进,覆盖需确认。 */
-export const runFetch = async (folderArg, {input = process.stdin, output = process.stdout} = {}) => {
+export const runFetch = async (
+  folderArg,
+  {input = process.stdin, output = process.stdout, leaseManager = createTaskLeaseManager()} = {},
+) => {
   if (input === process.stdin && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new CliError('fetch 是交互命令,需要在交互终端中运行');
   }
@@ -503,14 +505,15 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
     'TSUZURI_LEASE_TASK_TOKEN',
     'TSUZURI_LEASE_TASK_ROOT',
   ].some((key) => process.env[key] !== undefined)
-    ? acquireCommandLease({kind: 'fetch', folder: candidateFolder})
+    ? acquireCommandLease({kind: 'fetch', folder: candidateFolder, manager: leaseManager})
     : null;
   const folder = resolveFolder(folderArg);
-  const task = inheritedTask ?? acquireCommandLease({kind: 'fetch', folder});
+  const task = inheritedTask ?? acquireCommandLease({kind: 'fetch', folder, manager: leaseManager});
   const originalEnv = Object.fromEntries(
     [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
   );
   Object.assign(process.env, task.env);
+  let succeeded = false;
   try {
   await withPrompts(async (ask) => {
     let {audios, lyrics} = scanFolderLoose(folder);
@@ -566,12 +569,13 @@ export const runFetch = async (folderArg, {input = process.stdin, output = proce
     const nextStep = buildNextStepMessage(folder, scanFolderLoose(folder));
     if (nextStep) term.info(nextStep);
   }, {input, output});
+  succeeded = true;
   return 0;
   } finally {
     for (const [key, value] of Object.entries(originalEnv)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
-    if (!task.inherited) task.manager.release(task.lease);
+    if (!task.inherited && !task.manager.release(task.lease) && succeeded) throw new Error('任务 lease 释放失败');
   }
 };
 
@@ -616,6 +620,7 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
     [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
   );
   Object.assign(process.env, task.env);
+  let succeeded = false;
   try {
   await withPrompts(async (ask) => {
     let downloadedInfo = null;
@@ -645,10 +650,11 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
       }
     }
   }, {input, output});
+  succeeded = true;
   } finally {
     for (const [key, value] of Object.entries(originalEnv)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
-    if (!existingTask && !task.inherited) manager.release(task.lease);
+    if (!existingTask && !task.inherited && !manager.release(task.lease) && succeeded) throw new Error('任务 lease 释放失败');
   }
 };

@@ -7,6 +7,7 @@ import {PassThrough} from 'node:stream';
 import test from 'node:test';
 
 import {AUDIO_DIR} from '../project.mjs';
+import {createTaskLeaseManager} from '../task-lease.mjs';
 import {
   checkYtDlpAsync,
   runProcess,
@@ -17,6 +18,10 @@ import {
 } from './fetch.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-fetch-'));
+const saveLyricsWithIsolatedLease = (root, body, options) => saveLyrics(root, body, {
+  ...options,
+  leaseManager: createTaskLeaseManager({registryRoot: path.join(root, '.runtime')}),
+});
 
 /** 造一个"有唯一音频"的素材夹,免得端点在前置检查就返回 400。 */
 const makeFolderWithAudio = (root, name = 'trip') => {
@@ -87,6 +92,15 @@ test('searchYtDlpAsync 复用解析逻辑，稳定去重后限制候选', async 
   assert.deepEqual(result.candidates.map(({id}) => id), ['0', '1', '2', '4', '5', '6', '7', '8', '9', '10']);
 });
 
+test('searchYtDlpAsync normalizes whitespace and asks the provider for 20', async () => {
+  let args;
+  await searchYtDlpAsync('  晴天   + 周杰伦  ', async (_command, received) => {
+    args = received;
+    return {status: 0, stdout: '', stderr: ''};
+  });
+  assert.equal(args[0], 'ytsearch20:晴天 + 周杰伦');
+});
+
 // ---- GET /api/fetch/lyrics-search ------------------------------------------
 
 test('lyrics-search:folder 越界 → 403', async () => {
@@ -145,6 +159,20 @@ test('lyrics-search:过滤后稳定按 id 去重并限制候选', async () => {
   assert.deepEqual(result.body.candidates.map(({id}) => id), ['0', '1', '2', '4', '5', '6', '7', '8', '9', '10']);
 });
 
+test('lyrics-search:筛掉前十中的无效、纯文本和器乐记录后仍从后续有效记录补满十条', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const rejected = Array.from({length: 10}, (_, index) => ({
+    ...SYNCED_RECORD,
+    id: index % 3 === 0 ? undefined : index,
+    instrumental: index % 3 === 1,
+    syncedLyrics: index % 3 === 2 ? '' : SYNCED_RECORD.syncedLyrics,
+  }));
+  const valid = Array.from({length: 10}, (_, index) => ({...SYNCED_RECORD, id: index + 100}));
+  const result = await searchLyricsCandidates(root, folder, {run: fakeRun({}), fetcher: async () => [...rejected, ...valid]});
+  assert.deepEqual(result.body.candidates.map(({id}) => id), valid.map(({id}) => String(id)));
+});
+
 test('lyrics-search:Web 候选过滤缺失 id，并以 canonical id 下发', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
@@ -155,6 +183,38 @@ test('lyrics-search:Web 候选过滤缺失 id，并以 canonical id 下发', asy
   ];
   const result = await searchLyricsCandidates(root, folder, {run: fakeRun({}), fetcher: async () => records});
   assert.deepEqual(result.body.candidates.map(({id}) => id), ['42']);
+});
+
+test('lyrics-search:comparable local durations sort by delta while missing durations stay last', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const run = fakeRun({
+    ffprobe: {status: 0, stdout: JSON.stringify({format: {duration: '180'}}), stderr: ''},
+  });
+  const records = [
+    {...SYNCED_RECORD, id: 1, duration: 200},
+    {...SYNCED_RECORD, id: 2, duration: 181},
+    {...SYNCED_RECORD, id: 3, duration: null},
+    {...SYNCED_RECORD, id: 4, duration: 179},
+  ];
+  const result = await searchLyricsCandidates(root, folder, {run, fetcher: async () => records, query: 'manual'});
+  assert.deepEqual(result.body.candidates.map(({id}) => id), ['2', '4', '1', '3']);
+});
+
+test('lyrics-search:equal duration deltas retain provider order, and missing local duration does not reorder', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const records = [
+    {...SYNCED_RECORD, id: 1, duration: 182},
+    {...SYNCED_RECORD, id: 2, duration: 178},
+    {...SYNCED_RECORD, id: 3, duration: null},
+  ];
+  const durationRun = fakeRun({ffprobe: {status: 0, stdout: JSON.stringify({format: {duration: '180'}}), stderr: ''}});
+  const matched = await searchLyricsCandidates(root, folder, {run: durationRun, fetcher: async () => records, query: 'manual'});
+  assert.deepEqual(matched.body.candidates.map(({id}) => id), ['1', '2', '3']);
+
+  const unknown = await searchLyricsCandidates(root, folder, {run: fakeRun({}), fetcher: async () => records, query: 'manual'});
+  assert.deepEqual(unknown.body.candidates.map(({id}) => id), ['1', '2', '3']);
 });
 
 test('lyrics-search:LRCLIB 出错 → 502 且带上原因', async () => {
@@ -172,7 +232,7 @@ test('lyrics-search:LRCLIB 出错 → 502 且带上原因', async () => {
 
 test('lyrics:folder 越界 → 403', async () => {
   const root = makeTempRoot();
-  const result = await saveLyrics(root, {folder: path.join(root, '..'), id: 1}, {run: fakeRun({})});
+  const result = await saveLyricsWithIsolatedLease(root, {folder: path.join(root, '..'), id: 1}, {run: fakeRun({})});
   assert.equal(result.status, 403);
 });
 
@@ -180,7 +240,7 @@ test('lyrics:非法 id → 400', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
   for (const id of ['../etc', 'abc', '1.2', -1, 1.2, Number.MAX_SAFE_INTEGER + 1, {}, '1; rm -rf /', null]) {
-    const result = await saveLyrics(root, {folder, id}, {run: fakeRun({})});
+    const result = await saveLyricsWithIsolatedLease(root, {folder, id}, {run: fakeRun({})});
     assert.equal(result.status, 400, `id=${JSON.stringify(id)} 应当被拒绝`);
   }
 });
@@ -192,7 +252,7 @@ test('lyrics:落盘到 audio/,文件名跟随音频名', async () => {
     assert.equal(pathname, '/get/42');
     return SYNCED_RECORD;
   };
-  const result = await saveLyrics(root, {folder, id: 42}, {run: fakeRun({}), fetcher});
+  const result = await saveLyricsWithIsolatedLease(root, {folder, id: 42}, {run: fakeRun({}), fetcher});
   assert.equal(result.status, 200);
   assert.equal(result.body.file, path.posix.join(AUDIO_DIR, 'Song - Artist.lrc'));
   assert.ok(fs.existsSync(path.join(folder, AUDIO_DIR, 'Song - Artist.lrc')));
@@ -209,7 +269,7 @@ test('lyrics:root 路径含符号链接时仍能保存(回归:TOCTOU 复查曾�
     assert.equal(pathname, '/get/42');
     return SYNCED_RECORD;
   };
-  const result = await saveLyrics(linkRoot, {folder, id: 42}, {run: fakeRun({}), fetcher});
+  const result = await saveLyricsWithIsolatedLease(linkRoot, {folder, id: 42}, {run: fakeRun({}), fetcher});
   assert.equal(result.status, 200);
   assert.equal(result.body.file, path.posix.join(AUDIO_DIR, 'Song - Artist.lrc'));
   assert.ok(fs.existsSync(path.join(folder, AUDIO_DIR, 'Song - Artist.lrc')));
@@ -219,14 +279,14 @@ test('lyrics:记录没有同步歌词 → 404', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
   const fetcher = async () => ({...SYNCED_RECORD, syncedLyrics: ''});
-  const result = await saveLyrics(root, {folder, id: 42}, {run: fakeRun({}), fetcher});
+  const result = await saveLyricsWithIsolatedLease(root, {folder, id: 42}, {run: fakeRun({}), fetcher});
   assert.equal(result.status, 404);
 });
 
 test('lyrics:LRCLIB 返回的 id 与请求不一致 → 502', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
-  const result = await saveLyrics(root, {folder, id: 42}, {
+  const result = await saveLyricsWithIsolatedLease(root, {folder, id: 42}, {
     run: fakeRun({}),
     fetcher: async () => ({...SYNCED_RECORD, id: 7}),
   });
@@ -293,6 +353,21 @@ test('lyrics-search:q 覆盖自动推断的查询词', async () => {
   assert.equal(result.body.query, 'Yellow Coldplay', '前后空白要去掉');
 });
 
+test('lyrics-search:手输关键词折叠内部空白后传给 LRCLIB', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const calls = [];
+  await searchLyricsCandidates(root, folder, {
+    run: fakeRun({}),
+    query: '  Yellow   + Coldplay · live  ',
+    fetcher: async (pathname, params) => {
+      calls.push({pathname, params});
+      return [];
+    },
+  });
+  assert.deepEqual(calls, [{pathname: '/search', params: {q: 'Yellow + Coldplay · live'}}]);
+});
+
 test('lyrics-search:空白的 q 退回自动推断', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
@@ -329,4 +404,29 @@ test('lyrics-search:tag 齐全时,手输关键词必须走 /search 而不是 /ge
   paths.length = 0;
   await searchLyricsCandidates(root, folder, {run: tagged, fetcher});
   assert.equal(paths[0], '/get', '没有手输关键词时仍应先试精确查询');
+});
+
+test('lyrics-search:tag 齐全时 /get 的传输或协议错误直接报错，不能回退 /search', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const tagged = fakeRun({
+    ffprobe: {
+      status: 0,
+      stdout: JSON.stringify({format: {duration: '180', tags: {title: 'Song', artist: 'Artist'}}}),
+      stderr: '',
+    },
+  });
+  for (const error of [new Error('connect ECONNREFUSED'), new SyntaxError('Unexpected token')]) {
+    const paths = [];
+    const result = await searchLyricsCandidates(root, folder, {
+      run: tagged,
+      fetcher: async (pathname) => {
+        paths.push(pathname);
+        throw error;
+      },
+    });
+    assert.equal(result.status, 502);
+    assert.match(result.body.error, new RegExp(error.message));
+    assert.deepEqual(paths, ['/get']);
+  }
 });

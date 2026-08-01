@@ -181,17 +181,41 @@ test('未知 options 字段被忽略', () => {
 
 // ---- createJobManager -----------------------------------------------------
 
-/** 造一个假的 child_process.ChildProcess,足够 jobs.mjs 使用的接口都给到。 */
-const makeFakeChild = ({autoCloseOnExit = true, pid = 12345} = {}) => {
+const TEST_EXECUTOR_START = 'Mon Jan  1 00:00:00 2024';
+const activeFakePids = new Set();
+const fakeLeaseRoots = new Set();
+const testProcessTable = () => [...activeFakePids]
+  .map((pid) => `${pid} 1 ${TEST_EXECUTOR_START}`)
+  .join('\n');
+
+/** 真实的 still 输入：buildJobSpec 会扫描素材目录，不能再靠不存在的 /tmp/x。 */
+const makeStillFixture = () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-still-fixture-'));
+  fs.writeFileSync(path.join(folder, 'photo.jpg'), 'fixture');
+  return folder;
+};
+const STILL_FIXTURE = makeStillFixture();
+
+test.after(() => {
+  for (const root of fakeLeaseRoots) fs.rmSync(root, {recursive: true, force: true});
+  fs.rmSync(STILL_FIXTURE, {recursive: true, force: true});
+});
+
+/** 造一个假的 child_process.ChildProcess，并建模 exit 后才会被 close/reap。 */
+const makeFakeChild = ({autoCloseOnExit = true, pid = 12345, stdioCount = 4} = {}) => {
   const child = new EventEmitter();
   child.pid = pid;
-  const fd3 = new PassThrough();
-  child.stdio = [null, new PassThrough(), new PassThrough(), fd3];
+  if (Number.isInteger(pid) && pid > 0) activeFakePids.add(pid);
+  child.stdio = [null, new PassThrough(), new PassThrough()];
+  if (stdioCount > 3) child.stdio.push(new PassThrough());
   child.kill = () => {};
   const emit = child.emit.bind(child);
   child.emit = (event, ...args) => {
     const result = emit(event, ...args);
-    if (event === 'exit' && autoCloseOnExit) emit('close', ...args);
+    if (event === 'exit' || event === 'close') {
+      activeFakePids.delete(pid);
+      if (autoCloseOnExit) emit('close', ...args);
+    }
     return result;
   };
   return child;
@@ -200,15 +224,17 @@ const makeFakeChild = ({autoCloseOnExit = true, pid = 12345} = {}) => {
 const makeCanonicalLeaseManager = ({onRelease = () => {}} = {}) => {
   let nextId = 0;
   const transactions = new Map();
+  const leaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fake-lease-'));
+  fakeLeaseRoots.add(leaseRoot);
   return {
     acquire: ({resources = []} = {}) => {
       const id = `fake-lease-${++nextId}`;
-      const taskRoot = path.join(os.tmpdir(), id);
+      const taskRoot = path.join(leaseRoot, id);
       fs.mkdirSync(taskRoot, {recursive: true});
       return {id, token: 'token', taskRoot, resources};
     },
     markSpawnIntent: () => {},
-    registerExecutor: (_lease, executor) => ({pid: executor.pid, start: 'Mon Jan  1 00:00:00 2024'}),
+    registerExecutor: (_lease, executor) => ({pid: executor.pid, start: TEST_EXECUTOR_START}),
     extendOutputClaims: () => {},
     prepareOutputTransaction: (lease, entries) => transactions.set(lease.id, entries),
     setOutputTransactionPhase: () => {},
@@ -239,8 +265,18 @@ const makeCanonicalLeaseManager = ({onRelease = () => {}} = {}) => {
 
 const createJobManager = (deps = {}) => createJobManagerActual({
   leaseManager: makeCanonicalLeaseManager(),
+  readProcessTable: testProcessTable,
   ...deps,
 });
+
+const assertGracefulTerminationSignals = (signals, pid) => {
+  assert.deepEqual(signals, [
+    [-pid, 'SIGSTOP'],
+    [-pid, 'SIGTERM'],
+    [pid, 'SIGTERM'],
+    [-pid, 'SIGCONT'],
+  ]);
+};
 
 const writeNdjson = (fd3, events) => {
   for (const event of events) fd3.write(JSON.stringify(event) + '\n');
@@ -315,19 +351,21 @@ test('exit 后仍保持 running，直到 stdio close/reap 才发送唯一终态'
 test('cancel 进入 stopping；Windows 只使用 taskkill /T 路径', async () => {
   const child = makeFakeChild();
   const taskkillCalls = [];
+  let alive = true;
   const manager = createJobManager({
     spawnImpl: () => child,
     platform: 'win32',
     leaseManager: makeCanonicalLeaseManager(),
     taskkillImpl: async (pid, force) => taskkillCalls.push([pid, force]),
-    executorLivenessImpl: () => 'alive',
-    forceKillAfterMs: 1,
+    executorLivenessImpl: () => alive ? 'alive' : 'dead',
+    forceKillAfterMs: 100,
   });
   const {id} = manager.createJob({kind: 'render', folder: '/f'});
   assert.equal(manager.cancelJob(id), true);
   assert.equal(manager.getJob(id).status, 'stopping');
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(taskkillCalls, [[12345, false]]);
+  alive = false;
   child.emit('close', null);
   assert.equal(manager.getJob(id).status, 'cancelled');
 });
@@ -350,7 +388,7 @@ test('cancelJob:调用 killImpl(-pid, SIGTERM),退出后 status 为 cancelled', 
 
   const ok = manager.cancelJob(id);
   assert.equal(ok, true);
-  assert.deepEqual(killCalls, [[-12345, 'SIGTERM']]);
+  assertGracefulTerminationSignals(killCalls, 12345);
 
   child.emit('exit', null);
   await new Promise((resolve) => setImmediate(resolve));
@@ -475,13 +513,13 @@ test('cancel escalates to SIGKILL when the child ignores SIGTERM', async () => {
     spawnImpl: () => child,
     killImpl: (pid, signal) => signals.push([pid, signal]),
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   manager.cancelJob(id);
-  assert.deepEqual(signals, [[-12345, 'SIGTERM']]);
+  assertGracefulTerminationSignals(signals, 12345);
 
   // 子进程装死不退出 —— 没有兜底的话 runningJobId 永不释放,之后每个任务都 409
   await new Promise((resolve) => setTimeout(resolve, 8100));
-  assert.deepEqual(signals[1], [-12345, 'SIGKILL']);
+  assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
 
 test('取消后 child close 且未快照到后代时可直接完成，不补盲目的 SIGKILL', async () => {
@@ -491,30 +529,31 @@ test('取消后 child close 且未快照到后代时可直接完成，不补盲�
     spawnImpl: () => child,
     killImpl: (pid, signal) => signals.push([pid, signal]),
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   manager.cancelJob(id);
   child.emit('exit', null);
   assert.equal(manager.getJob(id).status, 'cancelled');
   await new Promise((resolve) => setTimeout(resolve, 3200));
-  assert.deepEqual(signals, [[-12345, 'SIGTERM']]);
+  assertGracefulTerminationSignals(signals, 12345);
 });
 
 test('取消时 child close 不是终态：已快照后代仍存活则保留 lease 并等待/强杀', async () => {
   const child = makeFakeChild({autoCloseOnExit: false});
   const signals = [];
-  const processTable = '12346 12345 Mon Jan  1 00:00:00 2024\n';
+  const processTable = `12345 1 ${TEST_EXECUTOR_START}\n12346 12345 ${TEST_EXECUTOR_START}\n`;
   const manager = createJobManager({
     spawnImpl: () => child,
     killImpl: (pid, signal) => signals.push([pid, signal]),
     readProcessTable: () => processTable,
     forceKillAfterMs: 1,
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   manager.cancelJob(id);
   child.emit('exit', null);
   child.emit('close', null);
   assert.equal(manager.getJob(id).status, 'stopping');
-  await new Promise((resolve) => setTimeout(resolve, 10));
+  // pollTermination 每 50ms 复核一次；force timer 只负责发 SIGKILL。
+  await new Promise((resolve) => setTimeout(resolve, 70));
   assert.ok(signals.some(([pid, signal]) => pid === 12346 && signal === 'SIGKILL'));
   assert.equal(manager.getJob(id).status, 'failed');
 });
@@ -527,11 +566,11 @@ test('重复取消与 shutdown 共用同一个终止流程，不重复发送 TER
     killImpl: (pid, signal) => signals.push([pid, signal]),
     forceKillAfterMs: 1000,
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   assert.equal(manager.cancelJob(id), true);
   assert.equal(manager.cancelJob(id), false);
   void manager.killAll({deadlineMs: 1});
-  assert.deepEqual(signals.filter(([, signal]) => signal === 'SIGTERM'), [[-12345, 'SIGTERM']]);
+  assert.deepEqual(signals.filter(([, signal]) => signal === 'SIGTERM'), [[-12345, 'SIGTERM'], [12345, 'SIGTERM']]);
 });
 
 test('spawn 后父进程登记 executor 失败且身份不可证实时保留 lease', () => {
@@ -548,22 +587,24 @@ test('spawn 后父进程登记 executor 失败且身份不可证实时保留 lea
     spawnImpl: () => child, leaseManager, killImpl: () => {},
     readProcessTable: () => `${process.pid} 1 ${new Date().toString()}\n`,
   });
-  assert.throws(() => manager.createJob({kind: 'still', folder: '/tmp/x', options: {}}), /identity 不匹配/);
+  assert.throws(() => manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}}), /identity 不匹配/);
   assert.equal(manager.getJob(lease.id).status, 'failed');
   assert.equal(releases, 0, '已 spawn 的 child 未确认退出前不能直接释放 lease');
 });
 
 test('Windows 终止不读取 ps 快照，taskkill 成功后仍要求 child close 与平台判活', async () => {
   const child = makeFakeChild({autoCloseOnExit: false});
+  let alive = true;
   const manager = createJobManager({
     spawnImpl: () => child, leaseManager: makeCanonicalLeaseManager(), platform: 'win32',
     readProcessTable: () => { throw new Error('Windows must not call ps'); },
-    taskkillImpl: async () => {}, executorLivenessImpl: () => 'alive', forceKillAfterMs: 20,
+    taskkillImpl: async () => {}, executorLivenessImpl: () => alive ? 'alive' : 'dead', forceKillAfterMs: 100,
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   manager.cancelJob(id);
+  alive = false;
   child.emit('close', null);
-  await new Promise((resolve) => setImmediate(resolve));
+  await new Promise((resolve) => setTimeout(resolve, 60));
   assert.equal(manager.getJob(id).status, 'cancelled');
 });
 
@@ -578,7 +619,7 @@ test('Windows does not taskkill an executor with unknown liveness and retains it
     taskkillImpl: async (pid, force) => taskkillCalls.push([pid, force]),
     executorLivenessImpl: () => 'unknown',
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   manager.cancelJob(id);
   await new Promise((resolve) => setImmediate(resolve));
   assert.deepEqual(taskkillCalls, []);
@@ -593,7 +634,7 @@ test('正常结束的任务不该收到任何信号', async () => {
     spawnImpl: () => child,
     killImpl: (pid, signal) => signals.push([pid, signal]),
   });
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   child.emit('exit', 0);
   await new Promise((resolve) => setTimeout(resolve, 3200));
   assert.deepEqual(signals, [], '没取消过的任务不该被杀');
@@ -601,19 +642,19 @@ test('正常结束的任务不该收到任何信号', async () => {
 });
 
 test('a spawn failure releases the concurrency lock instead of wedging it', () => {
-  const child = makeFakeChild({pid: undefined});
+  const child = makeFakeChild({pid: null});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
-  const first = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const first = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   // 没有 pid 说明 spawn 根本没创建进程,可直接释放并发锁。
   assert.equal(manager.getJob(first.id).status, 'failed');
-  const second = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const second = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   assert.ok(second.id, '第一个任务失败后应当能再起一个,而不是一直 409');
 });
 
 test('a spawn failure notifies subscribers with an end frame', () => {
-  const child = makeFakeChild({pid: undefined});
+  const child = makeFakeChild({pid: null});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
-  const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+  const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   const chunks = [];
   manager.subscribeEvents(id, (chunk) => chunks.push(chunk));
   assert.ok(chunks.some((chunk) => chunk.startsWith('event: end\n')), '订阅者不该干等一个永远不来的结束');
@@ -633,22 +674,25 @@ test('positive pid with an unknown start probe may use the child self-registrati
     release: () => true,
   };
   const manager = createJobManager({spawnImpl: () => child, leaseManager});
-  assert.ok(manager.createJob({kind: 'still', folder: '/tmp/x', options: {}}).id);
+  assert.ok(manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}}).id);
   assert.deepEqual(received, {pid: 987654321, start: null});
 });
 
-test('killAll signals every running job so Ctrl+C leaves no orphans', () => {
+test('killAll escalates every running job so Ctrl+C leaves no orphans', async () => {
   const child = makeFakeChild();
   const signals = [];
   const manager = createJobManager({
     spawnImpl: () => child,
     killImpl: (pid, signal) => signals.push([pid, signal]),
   });
-  manager.createJob({kind: 'render', folder: '/tmp/x', options: {}});
-  manager.killAll();
-  // detached 的子进程收不到终端的 SIGINT,不显式杀就会变成孤儿继续渲染。
-  // Ctrl+C 后进程马上就走,没有等它体面退出的余地,所以两刀一起发。
-  assert.deepEqual(signals, [[-12345, 'SIGTERM'], [-12345, 'SIGKILL']]);
+  manager.createJob({kind: 'render', folder: STILL_FIXTURE, options: {}});
+  const resultPromise = manager.killAll({deadlineMs: 1});
+  // killAll 的 deadline 定时器会 unref；测试自己保持事件循环，等待关闭期限真正推进。
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const result = await resultPromise;
+  assert.equal(result.clean, false);
+  assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGTERM'));
+  assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
 
 // ---- 批 C:kind 泛化 -------------------------------------------------------
@@ -690,6 +734,8 @@ test('parseYtDlpProgress:畸形行一律返回 null', () => {
 
 test('buildJobArgv:lyrics 只有 folder,多余选项一律不影响 argv', () => {
   assert.deepEqual(buildJobArgv({kind: 'lyrics', folder: '/f'}), ['lyrics', '/f']);
+  assert.deepEqual(buildJobArgv({kind: 'lyrics', folder: '/f', options: {replace: true}}), ['lyrics', '/f', '--replace']);
+  assert.throws(() => buildJobArgv({kind: 'lyrics', folder: '/f', options: {replace: 'yes'}}), /replace 必须是布尔值/);
   assert.deepEqual(
     buildJobArgv({kind: 'lyrics', folder: '/f', options: {format: 'bogus', scale: 99}}),
     ['lyrics', '/f'],
@@ -718,8 +764,8 @@ test('buildJobSpec:render/still 的命令组装不回归', () => {
   assert.deepEqual(render.args.slice(-2), ['/f', '--draft']);
   assert.deepEqual(render.stdio, ['ignore', 'pipe', 'pipe', 'pipe']);
   assert.equal(render.progressSource, 'fd3');
-  const still = buildJobSpec({kind: 'still', folder: '/f'});
-  assert.deepEqual(still.args.slice(-2), ['still', '/f']);
+  const still = buildJobSpec({kind: 'still', folder: STILL_FIXTURE});
+  assert.deepEqual(still.args.slice(-2), ['still', STILL_FIXTURE]);
 });
 
 test('buildJobSpec claims the same canonical variant outputs the child CLI will write', () => {
@@ -781,13 +827,7 @@ test('buildJobSpec:fetch-audio 非法字段被拒绝,且不留临时目录', () 
 });
 
 /** 只有三路 stdio 的假子进程:yt-dlp 不认识 fd 3,进度写在 stdout 上。 */
-const makeFakeYtDlpChild = () => {
-  const child = new EventEmitter();
-  child.pid = 4321;
-  child.stdio = [null, new PassThrough(), new PassThrough()];
-  child.kill = () => {};
-  return child;
-};
+const makeFakeYtDlpChild = () => makeFakeChild({pid: 4321, stdioCount: 3});
 
 const makeTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
@@ -887,10 +927,13 @@ test('fetch-audio:目标已存在时判 failed,不静默覆盖已有音频', asy
 
 test('新 kind 同样受并发锁、取消与 killAll 约束', async () => {
   const folder = makeTempDir('tsuzuri-jobdest-');
-  const child = makeFakeYtDlpChild();
+  let child;
   const signals = [];
   const manager = createJobManager({
-    spawnImpl: () => child,
+    spawnImpl: () => {
+      child = makeFakeYtDlpChild();
+      return child;
+    },
     killImpl: (pid, signal) => signals.push([pid, signal]),
     tempParent: makeTempDir('tsuzuri-jobrun-'),
   });
@@ -898,15 +941,19 @@ test('新 kind 同样受并发锁、取消与 killAll 约束', async () => {
   assert.deepEqual(manager.createJob({kind: 'lyrics', folder}), {error: 'busy'});
 
   assert.equal(manager.cancelJob(id), true);
-  assert.deepEqual(signals, [[-4321, 'SIGTERM']]);
+  assertGracefulTerminationSignals(signals, 4321);
   child.emit('exit', null);
   await new Promise((resolve) => setImmediate(resolve));
   assert.equal(manager.getJob(id).status, 'cancelled');
 
   // 锁已释放,新任务能起来;killAll 对新 kind 同样生效(SIGTERM + SIGKILL 两刀)
   manager.createJob({kind: 'lyrics', folder});
-  manager.killAll();
-  assert.deepEqual(signals.slice(1), [[-4321, 'SIGTERM'], [-4321, 'SIGKILL']]);
+  const resultPromise = manager.killAll({deadlineMs: 1});
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const result = await resultPromise;
+  assert.equal(result.clean, false);
+  assert.ok(signals.slice(4).some(([pid, signal]) => pid === -4321 && signal === 'SIGTERM'));
+  assert.ok(signals.slice(4).some(([pid, signal]) => pid === -4321 && signal === 'SIGKILL'));
 });
 
 test('lyrics 任务仍然读 fd 3(泛化没有把原路径改漏)', async () => {
@@ -922,7 +969,7 @@ test('lyrics 任务仍然读 fd 3(泛化没有把原路径改漏)', async () => 
 test('fetch-audio:spawn 失败(没装 yt-dlp)释放并发锁并清掉临时目录', () => {
   const tempParent = makeTempDir('tsuzuri-jobrun-');
   const folder = makeTempDir('tsuzuri-jobdest-');
-  const child = makeFakeYtDlpChild();
+  const child = makeFakeChild({pid: null, stdioCount: 3});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}, tempParent});
   const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
   child.emit('error', new Error('ENOENT'));
@@ -948,7 +995,7 @@ test('fetch-audio 失败时带上 yt-dlp 的真实报错,而不是一句放之�
 });
 
 test('yt-dlp 起不来时不该报成"网络或地区限制"', async () => {
-  const child = makeFakeChild();
+  const child = makeFakeChild({pid: null});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-'));
   const {id} = manager.createJob({
@@ -967,7 +1014,7 @@ test('CLI 入口路径必须真实存在', () => {
   // 子进程起手就 Cannot find module 退出 1,stderr 被丢、fd 3 无事件,
   // 前端只看到一句"失败了"——从网页起任务这个功能整个是坏的。
   for (const kind of ['render', 'still', 'lyrics']) {
-    const spec = buildJobSpec({kind, folder: '/tmp/x', options: {}});
+    const spec = buildJobSpec({kind, folder: STILL_FIXTURE, options: {}});
     assert.equal(spec.command, process.execPath);
     assert.ok(fs.existsSync(spec.args[0]), `${kind} 的入口不存在: ${spec.args[0]}`);
     assert.ok(spec.args[0].endsWith(path.join('cli', 'tsuzuri.mjs')), `路径可疑: ${spec.args[0]}`);
@@ -988,31 +1035,36 @@ test('listDescendants 对畸形输出与环不炸', () => {
   assert.deepEqual(listDescendants(7, () => '    7     7').sort(), []);
 });
 
-test('取消时先快照后代,并立刻逐个 SIGKILL', async () => {
+test('取消时冻结并快照后代，再逐个发送 SIGTERM', async () => {
   // 两个时机都是实测逼出来的:
   // 1. 快照必须在树还完整时做 —— render.mjs 一死,chromium 就被 reparent 到
   //    launchd,从我们的 pid 再也走不到它们。
-  // 2. 后代必须立刻杀,不能等宽限期 —— 实测等 3 秒之后快照里的 pid 全部 ESRCH,
+  // 2. 后代必须立刻冻结并纳入 TERM 范围,不能等宽限期 —— 实测等 3 秒之后快照里的 pid 全部 ESRCH,
   //    却又有 13 个新的 chromium 在跑,快照就此失效。
   const child = makeFakeChild();
   const signals = [];
   const manager = createJobManager({
     spawnImpl: () => child,
     killImpl: (pid, signal) => signals.push([pid, signal]),
-    readProcessTable: () => ['12345     1', '55555 12345', '66666 55555'].join('\n'),
+    forceKillAfterMs: 1,
+    readProcessTable: () => [
+      `12345 1 ${TEST_EXECUTOR_START}`,
+      `55555 12345 ${TEST_EXECUTOR_START}`,
+      `66666 55555 ${TEST_EXECUTOR_START}`,
+    ].join('\n'),
   });
   const {id} = manager.createJob({kind: 'render', folder: '/tmp/x', options: {}});
   manager.cancelJob(id);
-  // SIGTERM 给自家那个壳留体面,后代同一时刻就下手
-  assert.deepEqual(signals[0], [-12345, 'SIGTERM']);
+  // 先冻结可见树，再 TERM 自家进程组；后代不会在快照和 TERM 之间 reparent。
+  assert.deepEqual(signals[0], [-12345, 'SIGSTOP']);
   assert.deepEqual(
-    signals.slice(1).map(([pid]) => pid).sort(),
+    signals.filter(([pid, signal]) => signal === 'SIGTERM' && pid > 0 && pid !== 12345).map(([pid]) => pid).sort(),
     [55555, 66666],
-    'detach 出去的孙进程必须立刻被逐个杀掉',
+    'detach 出去的孙进程必须立刻被逐个纳入终止范围',
   );
 
   child.emit('exit', null);
-  await new Promise((resolve) => setTimeout(resolve, 3200));
+  await new Promise((resolve) => setTimeout(resolve, 70));
   // 宽限期过后仍对整个进程组补一刀,兜住扛过 SIGTERM 的自家进程
   assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
@@ -1047,7 +1099,7 @@ test('lyrics 这类长时间静默的任务不该被停滞看门狗误杀', asyn
   // whisper 会先安静好几分钟再一次性吐结果,挂上看门狗必然误杀
   const child = makeFakeChild();
   const manager = createJobManager(fastStallDeps({spawnImpl: () => child}));
-  const {id} = manager.createJob({kind: 'lyrics', folder: '/tmp/x'});
+  const {id} = manager.createJob({kind: 'lyrics', folder: STILL_FIXTURE});
 
   await new Promise((resolve) => setTimeout(resolve, 200));
   assert.equal(manager.getJob(id).status, 'running', '静默不等于卡死');
@@ -1076,7 +1128,7 @@ test('任务表只保留最近若干条,不无限攒 events', async () => {
   const manager = createJobManager({spawnImpl: makeFakeChild, killImpl: () => {}});
   const ids = [];
   for (let i = 0; i < 25; i += 1) {
-    const {id} = manager.createJob({kind: 'still', folder: '/tmp/x', options: {}});
+    const {id} = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
     ids.push(id);
     // 立刻结束,好让下一个能起来(makeFakeChild 每次都是新实例,直接发 exit)
     manager.cancelJob(id);
@@ -1087,18 +1139,20 @@ test('任务表只保留最近若干条,不无限攒 events', async () => {
   assert.ok(alive.length > 0, '不该把记录全清光');
 });
 
-test('killAll 会删掉 fetch-audio 的下载中转目录', () => {
-  // Ctrl+C 之后进程立刻就走,'exit' 回调没机会跑,finalize 里的 rmSync 也就不执行 ——
-  // 这里是清掉 /tmp/tsuzuri-fetch-* 的唯一机会。
+test('killAll 无法确认进程树退出时保留 fetch-audio task lease', async () => {
   const child = makeFakeYtDlpChild();
   const tempParent = makeTempDir('tsuzuri-killall-');
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}, tempParent});
   const folder = makeTempDir('tsuzuri-killalldest-');
   manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
 
-  assert.equal(fs.readdirSync(tempParent).length, 1, '下载中转目录应当已建好');
-  manager.killAll();
-  assert.deepEqual(fs.readdirSync(tempParent), [], 'killAll 之后不该留下中转目录');
+  // 下载 staging 位于 task lease，而非可由调用方观察的系统临时目录。
+  assert.deepEqual(fs.readdirSync(tempParent), []);
+  const resultPromise = manager.killAll({deadlineMs: 1});
+  // killAll 的 deadline 定时器会 unref；测试自己保持事件循环，等待关闭期限真正推进。
+  await new Promise((resolve) => setTimeout(resolve, 5));
+  const result = await resultPromise;
+  assert.equal(result.clean, false, '未确认子进程退出时必须保留 lease，不能抢先删除 staging');
 });
 
 // --- 渲染速度档位 ----------------------------------------------------------
@@ -1148,7 +1202,7 @@ test('buildJobEnv: 非法 speed 抛 JobValidationError,field 为 speed', () => {
 test('buildJobInvocation 的 argv 与 buildJobSpec 实际 args 尾部逐项相等(防止两边分叉)', () => {
   const cases = [
     {kind: 'render', folder: '/f', options: {draft: true, format: 'square', speed: 'full'}},
-    {kind: 'still', folder: '/f', options: {scale: 4, exif: true}},
+    {kind: 'still', folder: STILL_FIXTURE, options: {scale: 4, exif: true}},
     {kind: 'lyrics', folder: '/f', options: {}},
   ];
   for (const {kind, folder, options} of cases) {

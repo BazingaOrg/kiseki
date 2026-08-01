@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {renamePerPhotoConfig, resolveProjectPaths, scanFolderLoose} from '../project.mjs';
+import {isRecognizedLyricsManageable} from '../recognized-lyrics.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -14,8 +15,10 @@ const locks = new Set();
 const undoRecords = new Map();
 
 export class AssetMutationError extends Error {
-  constructor(status, message) { super(message); this.status = status; }
+  constructor(status, message, details = null, cause = null) { super(message, cause ? {cause} : undefined); this.status = status; this.details = details; }
 }
+
+const recoveryFailure = (record, message, cause) => new AssetMutationError(409, message, {recoveryUndoId: record.id, recoveryRequired: true}, cause);
 
 const inside = (root, target) => target === root || target.startsWith(root + path.sep);
 const stem = (file) => path.basename(file, path.extname(file));
@@ -70,6 +73,20 @@ const assertManageable = (folder, asset) => {
   if (asset.kind === 'lyrics') throw new AssetMutationError(409, '歌词文件此批只读；音频操作仅联动同 stem 歌词');
 };
 
+const resolveMetadataFile = (folder, target, required) => {
+  if (!pathExists(target)) {
+    if (required) throw new AssetMutationError(409, '识别结果不存在或已变化');
+    return null;
+  }
+  try {
+    const stat = fs.lstatSync(target);
+    const parent = path.dirname(target);
+    if (!stat.isFile() || stat.isSymbolicLink() || fs.lstatSync(parent).isSymbolicLink()
+      || fs.realpathSync(target) !== target || fs.realpathSync(parent) !== parent || !inside(folder, target)) throw new Error('unsafe');
+  } catch { throw new AssetMutationError(409, '识别结果路径不安全或已变化'); }
+  return target;
+};
+
 const invalidateDerived = (folder, operationDir, kind) => {
   if (kind !== 'photo' && kind !== 'audio') return [];
   const paths = resolveProjectPaths(folder);
@@ -90,6 +107,80 @@ const invalidateDerived = (folder, operationDir, kind) => {
 const rollbackForwardMoves = (moves) => {
   for (const {from, to} of [...moves].reverse()) {
     try { if (fs.existsSync(to) && !fs.existsSync(from)) move(to, from); } catch {}
+  }
+};
+
+const canonicalRegularFile = (target, root) => {
+  const parent = path.dirname(target);
+  const stat = fs.lstatSync(target);
+  const parentStat = fs.lstatSync(parent);
+  if (!inside(root, target) || !inside(root, parent) || !stat.isFile() || stat.isSymbolicLink()
+    || !parentStat.isDirectory() || parentStat.isSymbolicLink()
+    || fs.realpathSync(target) !== target || fs.realpathSync(parent) !== parent) throw new Error('unsafe file');
+};
+
+const canonicalParent = (target, root) => {
+  const parent = path.dirname(target);
+  const stat = fs.lstatSync(parent);
+  if (!inside(root, target) || !inside(root, parent) || !stat.isDirectory() || stat.isSymbolicLink() || fs.realpathSync(parent) !== parent) {
+    throw new Error('unsafe parent');
+  }
+};
+
+/** Preflight every entry before moving any one of them. */
+const preflightRestore = (record) => {
+  const folder = fs.realpathSync(record.folder);
+  if (folder !== record.folder) throw new Error('project drift');
+  assertCanonicalDirectory(record.operationDir, folder, '回收记录路径已变化');
+  return record.files.map((change) => {
+    const source = change.to;
+    const destination = change.from;
+    const sourceRoot = change.storedInOperation ? record.operationDir : folder;
+    if (!inside(sourceRoot, source) || !inside(folder, destination)) throw new Error('path drift');
+    const sourceExists = pathExists(source);
+    const destinationExists = pathExists(destination);
+    if (sourceExists === destinationExists) throw new Error('mixed state');
+    if (sourceExists) {
+      canonicalRegularFile(source, sourceRoot);
+      canonicalParent(destination, folder);
+      return {change, source, destination, move: true};
+    }
+    canonicalRegularFile(destination, folder);
+    canonicalParent(source, sourceRoot);
+    return {change, source, destination, move: false};
+  });
+};
+
+const recordReady = (record) => {
+  try {
+    const entries = preflightRestore(record);
+    return entries.every((entry) => entry.move);
+  } catch { return false; }
+};
+
+const restoreClearAfterLeaseFailure = (record) => {
+  const moved = [];
+  try {
+    const entries = preflightRestore(record);
+    for (const entry of entries) {
+      if (entry.move) { move(entry.source, entry.destination); moved.push(entry); }
+    }
+    for (const entry of entries) canonicalRegularFile(entry.destination, record.folder);
+    record.restored = true;
+    record.recoveryState = 'cleanup-pending';
+    removeOperationDir(record);
+    undoRecords.delete(record.id);
+  } catch (primary) {
+    const compensation = [];
+    for (const entry of [...moved].reverse()) {
+      try {
+        if (pathExists(entry.destination) && !pathExists(entry.source)) move(entry.destination, entry.source);
+        else throw new Error('compensation drift');
+      } catch (error) { compensation.push(error); }
+    }
+    record.restored = false;
+    record.recoveryState = recordReady(record) ? 'ready' : 'recovery-required';
+    throw recoveryFailure(record, 'lease 释放失败，清除恢复未完成', new AggregateError([primary, ...compensation]));
   }
 };
 
@@ -223,14 +314,40 @@ const removeOperationDir = (record) => {
 
 const withMutationLease = (folder, task, leaseManager = createTaskLeaseManager()) => {
   let lease;
+  let released = false;
+  let retainLease = false;
   try {
     lease = leaseManager.acquire({kind: 'asset-mutation', resources: [folder]});
-    return withProjectMutationLock(folder, task);
+    return withProjectMutationLock(folder, () => {
+      const result = task(fs.realpathSync(folder));
+      let releaseError = null;
+      let releaseOk = false;
+      try { releaseOk = leaseManager.release(lease); released = releaseOk; } catch (error) { releaseError = error; }
+      if (!releaseOk) {
+        try { result?.rollbackLeaseFailure?.(); } catch (rollbackError) {
+          if (rollbackError instanceof AssetMutationError && rollbackError.details?.recoveryUndoId) {
+            const recoveryRecord = result?.recoveryRecord;
+            if (recoveryRecord && recoveryRecord.id === rollbackError.details.recoveryUndoId) {
+              recoveryRecord.recoveryLease = {lease, leaseManager, folder: fs.realpathSync(folder)};
+              retainLease = true;
+            }
+            if (releaseError) {
+              rollbackError.cause ??= releaseError;
+              rollbackError.errors = [releaseError, rollbackError.cause].filter(Boolean);
+            }
+            throw rollbackError;
+          }
+          throw new AggregateError([releaseError, rollbackError].filter(Boolean), 'lease 释放失败，且无法回滚清除结果');
+        }
+        throw releaseError ?? new Error('任务 lease 释放失败');
+      }
+      return result?.data ?? result;
+    });
   } catch (error) {
     if (error instanceof ProjectBusyError) throw new AssetMutationError(409, '项目已有任务在执行');
     throw error;
   } finally {
-    if (lease) leaseManager.release(lease);
+    if (lease && !released && !retainLease) { try { leaseManager.release(lease); } catch {} }
   }
 };
 
@@ -309,45 +426,78 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
   return {undoId: id};
 }, leaseManager);
 
-export const undoAssetDelete = ({folder, undoId, isJobRunning, leaseManager}) => withMutationLease(folder, (canonicalFolder) => {
+export const clearRecognizedLyrics = ({folder, isJobRunning, leaseManager}) => withMutationLease(folder, (canonicalFolder) => {
   folder = canonicalFolder;
+  assertNoRunningJob(isJobRunning);
+  // Re-read at mutation time: any LRC appearing after the preview makes this a
+  // source change, so fail closed rather than deleting recognized metadata.
+  const lrcFiles = scanFolderLoose(folder).lyrics;
+  if (lrcFiles.length !== 0) throw new AssetMutationError(409, '检测到 LRC 歌词，不能清除本地识别结果');
+  const paths = resolveProjectPaths(folder);
+  const lyrics = resolveMetadataFile(folder, paths.lyricsPath, true);
+  if (!isRecognizedLyricsManageable({lyricsPath: lyrics, lrcFiles})) throw new AssetMutationError(409, '识别结果不存在或已变化');
+  const files = [lyrics, resolveMetadataFile(folder, paths.timelinePath, false)].filter(Boolean);
+  const id = crypto.randomUUID();
+  const operationDir = createOperationDir(folder, id);
+  const changes = files.map((from) => ({from, to: operationPath(operationDir, 'files', path.relative(folder, from))}));
+  const record = {id, action: 'clear-recognized-lyrics', folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived: [], config: null, recoveryState: 'moving'};
+  undoRecords.set(id, record);
+  const moved = [];
+  try {
+    for (const change of changes) {
+      if (fs.existsSync(change.to)) throw new AssetMutationError(409, '回收目标已存在');
+      fs.mkdirSync(path.dirname(change.to), {recursive: true});
+    }
+    writeManifest({folder, operationDir, id, action: 'clear-recognized-lyrics', files: changes, derived: []});
+    for (const change of changes) { move(change.from, change.to); moved.push(change); }
+  } catch (error) {
+    const restoreErrors = [];
+    for (const change of [...moved].reverse()) {
+      try { if (fs.existsSync(change.to) && !fs.existsSync(change.from)) move(change.to, change.from); else throw new Error('clear restore drift'); } catch (restoreError) { restoreErrors.push(restoreError); }
+    }
+    record.restored = false;
+    record.recoveryState = restoreErrors.length ? 'recovery-required' : 'cleanup-pending';
+    if (restoreErrors.length) throw recoveryFailure(record, '清除失败且恢复未完成', new AggregateError([error, ...restoreErrors]));
+    record.restored = true;
+    try { removeOperationDir(record); undoRecords.delete(id); } catch (cleanupError) { throw recoveryFailure(record, '清除失败，回收记录保留以便恢复', new AggregateError([error, cleanupError])); }
+    throw error;
+  }
+  record.recoveryState = 'ready';
+  return {
+    data: {undoId: id},
+    recoveryRecord: record,
+    rollbackLeaseFailure: () => {
+      restoreClearAfterLeaseFailure(record);
+    },
+  };
+}, leaseManager);
+
+const undoAssetDeleteCore = ({folder, undoId, isJobRunning, retainRecord = false}) => {
   assertNoRunningJob(isJobRunning);
   if (typeof undoId !== 'string' || !/^[0-9a-f-]{36}$/i.test(undoId)) throw new AssetMutationError(400, 'undoId 无效');
   const record = undoRecords.get(undoId);
   if (!record || record.folder !== folder) throw new AssetMutationError(404, '撤销记录不存在（服务重启后不可撤销）');
-  if (record.restored) {
-    try { removeOperationDir(record); } catch (error) {
-      if (error instanceof AssetMutationError) throw error;
-      throw new AssetMutationError(500, '文件已恢复，但回收记录尚未清理');
-    }
-    undoRecords.delete(undoId);
-    return {restored: 0};
+  if (record.recoveryState === 'cleanup-pending' || record.restored) {
+    try { removeOperationDir(record); if (!retainRecord) undoRecords.delete(undoId); return {restored: 0}; }
+    catch (error) { throw recoveryFailure(record, '文件已恢复，但回收记录尚未清理', error); }
   }
-  if (record.action !== 'rename' && record.action !== 'delete') throw new AssetMutationError(409, '回收记录或目标路径已变化');
+  if (record.action !== 'rename' && record.action !== 'delete' && record.action !== 'clear-recognized-lyrics') throw new AssetMutationError(409, '回收记录或目标路径已变化');
   const files = record.files.map((change) => {
     if (typeof change.storedInOperation !== 'boolean' || (record.action === 'rename' ? change.storedInOperation : !change.storedInOperation)) {
       throw new AssetMutationError(409, '回收记录或目标路径已变化');
     }
     return change;
   });
-  const changes = [
-    ...files,
-    ...record.derived.map(({source, destination}) => ({from: source, to: destination, storedInOperation: true})),
-  ];
+  const changes = [...files, ...record.derived.map(({source, destination}) => ({from: source, to: destination, storedInOperation: true}))];
+  const restoreRecord = {...record, files: changes};
+  let entries;
+  try { entries = preflightRestore(restoreRecord); } catch (error) {
+    throw recoveryFailure(record, '回收记录或目标路径已变化', error);
+  }
   for (const change of changes) {
     // Rename files remain in the project under their new names; only deleted files,
     // derived metadata, and config backups are stored in the operation directory.
-    const source = change.to;
-    const target = change.from;
-    const sourceRoot = change.storedInOperation ? record.operationDir : folder;
-    if (!inside(sourceRoot, source) || !inside(folder, target) || fs.existsSync(target)) throw new AssetMutationError(409, '原位置已被占用，不能撤销');
-    try {
-      const sourceStat = fs.lstatSync(source);
-      const sourceParent = path.dirname(source);
-      const targetParent = path.dirname(target);
-      if (!sourceStat.isFile() || sourceStat.isSymbolicLink() || fs.lstatSync(sourceParent).isSymbolicLink() || fs.lstatSync(targetParent).isSymbolicLink()) throw new Error('link');
-      if (fs.realpathSync(source) !== source || fs.realpathSync(sourceParent) !== sourceParent || fs.realpathSync(targetParent) !== targetParent) throw new Error('drift');
-    } catch { throw new AssetMutationError(409, '回收记录或目标路径已变化'); }
+    if (!entries.find((entry) => entry.change === change)?.move) continue;
   }
   if (record.config) {
     const backupPath = record.config.backupPath;
@@ -356,16 +506,52 @@ export const undoAssetDelete = ({folder, undoId, isJobRunning, leaseManager}) =>
       if (fs.realpathSync(backupPath) !== backupPath || fs.realpathSync(path.dirname(backupPath)) !== path.dirname(backupPath) || fs.realpathSync(record.config.jsonPath) !== record.config.jsonPath || fs.realpathSync(path.dirname(record.config.jsonPath)) !== path.dirname(record.config.jsonPath)) throw new Error('drift');
     } catch { throw new AssetMutationError(409, '回收记录或目标路径已变化'); }
   }
-  const reverse = changes.map(({from, to}) => ({from: to, to: from}));
+  const reverse = entries.filter((entry) => entry.move).map(({source, destination}) => ({from: source, to: destination}));
   try {
     for (const change of reverse) move(change.from, change.to);
     if (record.config) restoreConfig(record.config);
   } catch (error) { rollbackForwardMoves(reverse); throw error; }
   record.restored = true;
+  record.recoveryState = 'cleanup-pending';
   try { removeOperationDir(record); } catch (error) {
-    if (error instanceof AssetMutationError) throw error;
-    throw new AssetMutationError(500, '文件已恢复，但回收记录尚未清理');
+    throw recoveryFailure(record, '文件已恢复，但回收记录尚未清理', error);
   }
-  undoRecords.delete(undoId);
+  if (!retainRecord) undoRecords.delete(undoId);
   return {restored: reverse.length};
-}, leaseManager);
+};
+
+export const undoAssetDelete = ({folder, undoId, isJobRunning, leaseManager}) => {
+  const recoveryRecord = typeof undoId === 'string' ? undoRecords.get(undoId) : null;
+  if (!recoveryRecord?.recoveryLease) {
+    return withMutationLease(folder, (canonicalFolder) => undoAssetDeleteCore({folder: canonicalFolder, undoId, isJobRunning}), leaseManager);
+  }
+  const held = recoveryRecord.recoveryLease;
+  let canonicalFolder;
+  try { canonicalFolder = fs.realpathSync(folder); }
+  catch (error) { throw recoveryFailure(recoveryRecord, '恢复租约已失效，回收记录已保留', error); }
+  if (held.folder !== canonicalFolder || !held.lease || !held.leaseManager) throw recoveryFailure(recoveryRecord, '恢复租约已失效，回收记录已保留');
+  let ownsHeldLease = false;
+  try { ownsHeldLease = held.leaseManager.verifyLeaseOwnership?.(held.lease) === true; }
+  catch (error) { throw recoveryFailure(recoveryRecord, '恢复租约验证失败，回收记录已保留', error); }
+  if (!ownsHeldLease) {
+    // A stale task root may still exist, but it is not authority to mutate.
+    // Discard only this in-memory handle and acquire a new project lease below.
+    recoveryRecord.recoveryLease = null;
+    try {
+      return withMutationLease(folder, (canonicalFolder) => undoAssetDeleteCore({folder: canonicalFolder, undoId, isJobRunning}), leaseManager);
+    } catch (error) {
+      if (error instanceof AssetMutationError) throw recoveryFailure(recoveryRecord, error.message, error);
+      throw error;
+    }
+  }
+  return withProjectMutationLock(canonicalFolder, (lockedFolder) => {
+    if (lockedFolder !== held.folder || recoveryRecord !== undoRecords.get(undoId)) throw recoveryFailure(recoveryRecord, '恢复租约已失效，回收记录已保留');
+    const result = undoAssetDeleteCore({folder: lockedFolder, undoId, isJobRunning, retainRecord: true});
+    let released = false;
+    try { released = held.leaseManager.release(held.lease) === true; } catch {}
+    if (!released) throw recoveryFailure(recoveryRecord, '恢复完成，但租约释放失败，回收记录已保留');
+    recoveryRecord.recoveryLease = null;
+    undoRecords.delete(undoId);
+    return result;
+  });
+};

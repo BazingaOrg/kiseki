@@ -10,6 +10,7 @@ import path from 'node:path';
 
 import {readFilterConfig, resolveProjectPaths, scanFolderLoose} from '../project.mjs';
 import {parseLrc} from '../lrc.mjs';
+import {readUsableRecognizedLyrics} from '../recognized-lyrics.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
@@ -115,10 +116,10 @@ export const getProject = (root, requestedPath) => {
       lyricsEntries = null;
     }
   }
-  if (lyricsEntries === null && lyrics.length <= 1) {
+  if (lyricsEntries === null && lyrics.length === 0) {
     try {
-      const recognized = JSON.parse(fs.readFileSync(lyricsPath, 'utf8'));
-      const segments = Array.isArray(recognized?.segments) ? recognized.segments : [];
+      const recognized = readUsableRecognizedLyrics(lyricsPath);
+      const segments = recognized?.segments ?? [];
       const normalized = segments
         .filter((segment) => typeof segment?.start === 'number' && typeof segment?.text === 'string')
         .map((segment) => ({
@@ -206,6 +207,7 @@ export const getProject = (root, requestedPath) => {
       },
       lyrics: lyricsEntries,
       lyricsSource,
+      recognizedLyricsManageable: lyricsSource === 'recognized' && lyrics.length === 0,
       recognizedLyricsPath: existsFile(lyricsPath) ? lyricsPath : null,
       timelinePath: existsFile(timelinePath) ? timelinePath : null,
       unsupportedVideos,

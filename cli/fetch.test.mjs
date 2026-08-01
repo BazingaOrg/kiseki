@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import {PICK_BACK} from './prompts.mjs';
 import {term} from './term.mjs';
+import {createTaskLeaseManager} from './task-lease.mjs';
 
 import {
   buildAudioFilename,
@@ -31,6 +32,7 @@ import {
 } from './fetch.mjs';
 
 const runFetchWithAnswers = async (folder, answers) => {
+  const leaseManager = createTaskLeaseManager({registryRoot: path.join(folder, '.runtime')});
   const input = new PassThrough();
   const output = new PassThrough();
   let text = '';
@@ -41,7 +43,7 @@ const runFetchWithAnswers = async (folder, answers) => {
   const originals = Object.fromEntries(silenced.map((k) => [k, term[k]]));
   for (const k of silenced) term[k] = () => {};
   try {
-    const pending = runFetch(folder, {input, output});
+    const pending = runFetch(folder, {input, output, leaseManager});
     for (const answer of answers) {
       input.write(`${answer}\n`);
       await new Promise((resolve) => setImmediate(resolve));
@@ -156,11 +158,25 @@ test('LRCLIB keeps a usable exact synced record with id without searching again'
   assert.deepEqual(calls, ['/get']);
 });
 
-test('LRCLIB falls back to search when an exact synced record has no id', async () => {
+test('CLI keeps a synced exact record without a provider id', async () => {
+  const calls = [];
+  const exact = {syncedLyrics: '[00:01]ok'};
+  const result = await searchLyricsRecords(
+    {query: 'Song Artist', title: 'Song', artist: 'Artist', duration: 100},
+    async (pathname) => {
+      calls.push(pathname);
+      return exact;
+    },
+  );
+  assert.deepEqual(result, [exact]);
+  assert.deepEqual(calls, ['/get']);
+});
+
+test('Web mode falls back when an exact synced record has no id', async () => {
   const calls = [];
   const searchResult = [{id: 7, syncedLyrics: '[00:01]ok'}];
   const result = await searchLyricsRecords(
-    {query: 'Song Artist', title: 'Song', artist: 'Artist', duration: 100},
+    {query: 'Song Artist', title: 'Song', artist: 'Artist', duration: 100, requireValidId: true},
     async (pathname) => {
       calls.push(pathname);
       return pathname === '/get' ? {syncedLyrics: '[00:01]ok'} : searchResult;

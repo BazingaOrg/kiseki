@@ -4,6 +4,17 @@ import path from 'node:path';
 
 const partialPrefix = '.tsuzuri-partial-';
 
+const regularFileOrMissing = (file) => {
+  try {
+    const stat = fs.lstatSync(file);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('输出目标必须是普通文件');
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
+};
+
 export const resolveAtomicTaskId = ({env = process.env, randomUUID = crypto.randomUUID} = {}) => {
   const inherited = env.TSUZURI_LEASE_TASK_ID || env.TSUZURI_TASK_ID;
   return String(inherited || randomUUID()).replace(/[^A-Za-z0-9_-]/g, '_');
@@ -45,11 +56,12 @@ export const commitAtomicOutput = (finalPath, partialPath, {taskId = resolveAtom
   if (path.dirname(finalResolved) !== path.dirname(partialResolved)) {
     throw new Error('原子输出 partial 必须与正式文件位于同一目录');
   }
-  if (!fs.existsSync(partialResolved)) throw new Error(`找不到 partial 输出: ${partialResolved}`);
+  if (!regularFileOrMissing(partialResolved)) throw new Error(`找不到 partial 输出: ${partialResolved}`);
+  regularFileOrMissing(finalResolved);
 
   let backup = null;
   try {
-    if (fs.existsSync(finalResolved)) {
+    if (regularFileOrMissing(finalResolved)) {
       backup = backupPath;
       fs.renameSync(finalResolved, backup);
     }
@@ -98,6 +110,7 @@ export const installAtomicOutputs = ({taskId = resolveAtomicTaskId(), writes, de
   }
   let phase = 'staging';
   try {
+    for (const entry of entries) regularFileOrMissing(entry.finalPath);
     for (const entry of entries) {
       if (entry.delete) continue;
       fs.mkdirSync(path.dirname(entry.finalPath), {recursive: true});

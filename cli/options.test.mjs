@@ -94,7 +94,8 @@ test('extra arguments after doctor are a usage error', () => {
 });
 
 test('a leading `lyrics` token routes to the lyrics command', () => {
-  assert.deepEqual(parseArgs(['lyrics', 'album']), {command: 'lyrics', folder: 'album'});
+  assert.deepEqual(parseArgs(['lyrics', 'album']), {command: 'lyrics', folder: 'album', replace: false});
+  assert.deepEqual(parseArgs(['lyrics', 'album', '--replace']), {command: 'lyrics', folder: 'album', replace: true});
 });
 
 test('lyrics without a folder is a usage error', () => {

@@ -9,6 +9,7 @@ import test from 'node:test';
 
 import {createGalleryServer} from './web-server.mjs';
 import {createDoctorService} from './web-api/doctor.mjs';
+import {createTaskLeaseManager} from './task-lease.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-server-'));
 
@@ -31,7 +32,7 @@ const requestWithHost = (port, hostHeader) =>
   });
 
 test('rejects a request whose Host header does not match localhost/127.0.0.1:<port>(防 DNS rebinding)', async () => {
-  const {server} = createGalleryServer(makeTempRoot());
+  const {server} = createTestGalleryServer(makeTempRoot());
   const port = await listen(server);
   try {
     const status = await requestWithHost(port, 'evil.example.com');
@@ -42,7 +43,7 @@ test('rejects a request whose Host header does not match localhost/127.0.0.1:<po
 });
 
 test('allows requests with a legit localhost/127.0.0.1 Host header matching the listening port', async () => {
-  const {server} = createGalleryServer(makeTempRoot());
+  const {server} = createTestGalleryServer(makeTempRoot());
   const port = await listen(server);
   try {
     const viaLocalhost = await requestWithHost(port, `localhost:${port}`);
@@ -59,7 +60,7 @@ test('/api/thumb 304 writes no body/content-length and never opens a read stream
   const image = path.join(root, 'image.jpg');
   fs.writeFileSync(image, 'source');
   let opened = 0;
-  const {server} = createGalleryServer(root, {
+  const {server} = createTestGalleryServer(root, {
     thumbDeps: {
       cacheDir: path.join(root, 'thumb-cache'),
       generator: async (_source, destination) => { fs.writeFileSync(destination, 'thumb'); return true; },
@@ -86,7 +87,7 @@ test('/api/thumb 304 writes no body/content-length and never opens a read stream
 
 test('/api/thumb errors remain errors even when If-None-Match is supplied', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root);
+  const {server} = createTestGalleryServer(root);
   const port = await listen(server);
   try {
     const missing = await fetch(`http://127.0.0.1:${port}/api/thumb?path=${encodeURIComponent(path.join(root, 'missing.jpg'))}`, {headers: {'If-None-Match': '*'}});
@@ -100,6 +101,8 @@ test('/api/thumb errors remain errors even when If-None-Match is supplied', asyn
 
 // ---- /api/jobs* ------------------------------------------------------------
 
+const TEST_EXECUTOR_START = 'Mon Jan  1 00:00:00 2024';
+
 /** 造一个假的 child_process.ChildProcess,避免测试真的起渲染进程。 */
 const makeFakeChild = () => {
   const child = new EventEmitter();
@@ -108,6 +111,31 @@ const makeFakeChild = () => {
   child.kill = () => {};
   return child;
 };
+
+/** HTTP 路由测试不应碰真实任务 lease 或宿主进程表。 */
+const makeJobManagerDeps = () => {
+  let nextId = 0;
+  return {
+    leaseManager: {
+      acquire: () => {
+        const taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-job-'));
+        return {id: `web-job-${++nextId}`, token: 'test-token', taskRoot};
+      },
+      markSpawnIntent: () => {},
+      registerExecutor: (_lease, executor) => ({pid: executor.pid, start: TEST_EXECUTOR_START}),
+      release: (lease) => { fs.rmSync(lease.taskRoot, {recursive: true, force: true}); return true; },
+    },
+    readProcessTable: () => `999 1 ${TEST_EXECUTOR_START}\n`,
+  };
+};
+
+const createTestGalleryServer = (root, deps = {}) => createGalleryServer(root, {
+  ...deps,
+  jobManagerDeps: makeJobManagerDeps(),
+  assetMutationDeps: {
+    leaseManager: createTaskLeaseManager({registryRoot: path.join(root, '.test-runtime', 'asset-leases')}),
+  },
+});
 
 const postJson = (port, pathname, body, headers = {}) =>
   new Promise((resolve, reject) => {
@@ -130,9 +158,32 @@ const postJson = (port, pathname, body, headers = {}) =>
     req.end(payload);
   });
 
+test('asset recovery HTTP exposes only its opaque retry id and required flag', async () => {
+  const root = makeTempRoot();
+  const metadata = path.join(root, 'output', 'metadata');
+  fs.mkdirSync(metadata, {recursive: true});
+  fs.writeFileSync(path.join(metadata, 'lyrics.json'), JSON.stringify({segments: [{text: 'line', start: 0}]}));
+  fs.writeFileSync(path.join(metadata, 'timeline.json'), '{}');
+  const {server, token} = createTestGalleryServer(root);
+  const port = await listen(server);
+  try {
+    const cleared = await postJson(port, '/api/assets/recognized-lyrics/clear', {folder: root}, {'X-Tsuzuri-Token': token});
+    assert.equal(cleared.status, 200);
+    const operation = path.join(root, '.tsuzuri-trash', cleared.body.undoId);
+    const bad = path.join(operation, 'files', 'output', 'metadata', 'timeline.json');
+    fs.rmSync(bad);
+    fs.mkdirSync(bad);
+    const undone = await postJson(port, '/api/assets/undo', {folder: root, undoId: cleared.body.undoId}, {'X-Tsuzuri-Token': token});
+    assert.equal(undone.status, 409);
+    assert.equal(undone.body.recoveryUndoId, cleared.body.undoId);
+    assert.equal(undone.body.recoveryRequired, true);
+    assert.equal(JSON.stringify(undone.body).includes(root), false);
+  } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
+});
+
 test('缺 token 的 POST /api/jobs → 403', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const res = await postJson(port, '/api/jobs', {kind: 'render', folder: root});
@@ -144,7 +195,7 @@ test('缺 token 的 POST /api/jobs → 403', async () => {
 
 test('错误 token 的 POST /api/jobs → 403', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const res = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': 'wrong'});
@@ -156,7 +207,7 @@ test('错误 token 的 POST /api/jobs → 403', async () => {
 
 test('带正确 token 的合法请求 → 201 并带 id;folder 越界时(带正确 token)→ 403', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const ok = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
@@ -177,7 +228,7 @@ test('带正确 token 的合法请求 → 201 并带 id;folder 越界时(带正�
 
 test('并发第二个 POST /api/jobs → 409', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const first = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
@@ -191,7 +242,7 @@ test('并发第二个 POST /api/jobs → 409', async () => {
 
 test('非法 options → 400 并带 field', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const res = await postJson(
@@ -214,7 +265,7 @@ test('SSE:客户端断开后 unsubscribe 被调用,server 保持健康(job 仍 r
     spawnedChild = makeFakeChild();
     return spawnedChild;
   };
-  const {server, token} = createGalleryServer(root, {spawnImpl});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl});
   const port = await listen(server);
   try {
     const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
@@ -256,7 +307,7 @@ test('SSE:客户端断开后 unsubscribe 被调用,server 保持健康(job 仍 r
 
 test('空闲时 GET /api/jobs/current → 200 且 job 为 null', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const res = await new Promise((resolve, reject) => {
@@ -280,7 +331,7 @@ test('空闲时 GET /api/jobs/current → 200 且 job 为 null', async () => {
 
 test('创建任务后 GET /api/jobs/current → 返回该任务的 id/kind/folder', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
@@ -310,7 +361,7 @@ test('创建任务后 GET /api/jobs/current → 返回该任务的 id/kind/folde
 
 test('POST /api/jobs/current → 405(不在 isAllowedPostRoute 白名单,落入全局 405 拦截)', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
     const res = await postJson(port, '/api/jobs/current', {});
@@ -342,7 +393,7 @@ test('GET /api/doctor awaits the instance service, forwards refresh, and maps er
     if (refresh) return Promise.reject(new Error('unexpected'));
     return Promise.resolve({status: 200, body: {ok: true, checks: []}});
   };
-  const {server} = createGalleryServer(makeTempRoot(), {doctorGet});
+  const {server} = createTestGalleryServer(makeTempRoot(), {doctorGet});
   const port = await listen(server);
   try {
     assert.equal((await getJson(port, '/api/doctor')).status, 200);
@@ -366,7 +417,7 @@ test('GET /api/doctor keeps missing dependencies as a cached 200 response', asyn
       ];
     },
   });
-  const {server} = createGalleryServer(makeTempRoot(), {doctorGet: doctor.getDoctor});
+  const {server} = createTestGalleryServer(makeTempRoot(), {doctorGet: doctor.getDoctor});
   const port = await listen(server);
   try {
     const first = await getJson(port, '/api/doctor');
@@ -385,7 +436,7 @@ const missingYtDlpRun = async () => ({status: null, stdout: '', stderr: ''});
 
 test('GET /api/fetch/lyrics-search:folder 越界 → 403', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     const outside = encodeURIComponent(path.join(root, '..', '..'));
@@ -398,7 +449,7 @@ test('GET /api/fetch/lyrics-search:folder 越界 → 403', async () => {
 
 test('GET /api/fetch/audio-search:缺 yt-dlp → 503 并带安装提示', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     const res = await getJson(port, '/api/fetch/audio-search?q=song', token);
@@ -411,7 +462,7 @@ test('GET /api/fetch/audio-search:缺 yt-dlp → 503 并带安装提示', async 
 
 test('POST /api/fetch/lyrics:缺 token / 错 token → 403(在碰文件系统之前)', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     const missing = await postJson(port, '/api/fetch/lyrics', {folder: root, id: 1});
@@ -425,7 +476,7 @@ test('POST /api/fetch/lyrics:缺 token / 错 token → 403(在碰文件系统之
 
 test('POST /api/fetch/lyrics:带正确 token 但 folder 越界 → 403', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     const res = await postJson(
@@ -442,7 +493,7 @@ test('POST /api/fetch/lyrics:带正确 token 但 folder 越界 → 403', async (
 
 test('GET /api/fetch/lyrics 不是 SPA 路由,回 405 而不是页面', async () => {
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     const status = await new Promise((resolve, reject) => {
@@ -464,7 +515,7 @@ test('GET /api/fetch/lyrics 不是 SPA 路由,回 405 而不是页面', async ()
 
 test('POST /api/jobs 接受 fetch-audio 与 lyrics 两个新 kind,非法字段仍走 400', async () => {
   const root = makeTempRoot();
-  const {server, token} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     const bad = await postJson(
@@ -488,7 +539,7 @@ test('GET /api/fetch/* 也要 token:这两条会 spawn 外部进程', async () =
   // 一个恶意页面循环请求就能无限起 yt-dlp 把机器拖垮(响应因 CORS 读不到,
   // 但进程和文件描述符是实打实被耗掉的)。
   const root = makeTempRoot();
-  const {server} = createGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
+  const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
   try {
     assert.equal((await getJson(port, '/api/fetch/audio-search?q=song')).status, 403);

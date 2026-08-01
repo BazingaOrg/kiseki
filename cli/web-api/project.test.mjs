@@ -87,7 +87,7 @@ const writeRecognized = (root, segments) => {
   fs.writeFileSync(path.join(metadataDir, 'lyrics.json'), JSON.stringify({segments}));
 };
 
-test('an empty .lrc does not mask lyrics that were already recognized', () => {
+test('any physical .lrc masks recognized management even when it has no timed lines', () => {
   const root = makeTempRoot();
   fs.writeFileSync(path.join(root, 'music.mp3'), '');
   // 只有元数据标签、没有一行带时间的歌词 —— parseLrc 会回 [] 而不是抛错
@@ -95,8 +95,8 @@ test('an empty .lrc does not mask lyrics that were already recognized', () => {
   writeRecognized(root, [{start: 1.5, text: 'recognized line', confidence: 0.9}]);
 
   const {body} = getProject(root, root);
-  assert.equal(body.lyricsSource, 'recognized', '空 .lrc 不该占住歌词来源');
-  assert.deepEqual(body.lyrics, [{time: 1.5, text: 'recognized line', confidence: 0.9}]);
+  assert.equal(body.lyricsSource, null);
+  assert.equal(body.recognizedLyricsManageable, false);
 });
 
 test('recognized segments are sorted by time', () => {
@@ -111,6 +111,15 @@ test('recognized segments are sorted by time', () => {
 
   const {body} = getProject(root, root);
   assert.deepEqual(body.lyrics.map((line) => line.text), ['first', 'second', 'third']);
+});
+
+test('legacy recognized segment without end remains manageable', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  writeRecognized(root, [{start: 1, text: 'legacy'}]);
+  const {body} = getProject(root, root);
+  assert.equal(body.lyricsSource, 'recognized');
+  assert.equal(body.recognizedLyricsManageable, true);
 });
 
 test('a recognition result whose segments are all malformed counts as no lyrics', () => {

@@ -19,9 +19,13 @@ const TRIM_VALUES = ['auto', 'full'];
  * @returns {string[]}
  */
 export const buildJobArgv = ({kind, folder, options = {}}) => {
-  // lyrics 只认一个文件夹,没有任何选项;放在最前面,免得下面的渲染选项校验
+  // lyrics 只认一个文件夹和显式 replace;放在最前面,免得下面的渲染选项校验
   // 对它生效(前端就算多传了 format 之类也一律不影响 argv)。
-  if (kind === 'lyrics') return ['lyrics', folder];
+  if (kind === 'lyrics') {
+    const replace = options?.replace;
+    if (replace !== undefined && typeof replace !== 'boolean') throw new JobValidationError('replace', 'replace 必须是布尔值');
+    return ['lyrics', folder, ...(replace ? ['--replace'] : [])];
+  }
   if (kind !== 'render' && kind !== 'still') {
     throw new JobValidationError('kind', 'kind 必须是 render、still 或 lyrics');
   }

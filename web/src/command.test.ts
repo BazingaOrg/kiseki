@@ -11,7 +11,7 @@ import {equivalentCommand} from './command.ts';
 import {buildJobArgv, buildJobEnv} from '../../cli/job-argv.mjs';
 import {formatCommand} from '../../cli/command-format.mjs';
 
-test('render: 默认选项不带任何 flag', () => {
+test('render: 默认选项保留 balanced 诊断环境变量', () => {
   const options = {
     exif: false,
     sign: false,
@@ -23,7 +23,7 @@ test('render: 默认选项不带任何 flag', () => {
     trim: null,
     speed: 'balanced',
   };
-  assert.equal(equivalentCommand('render', '/f', options), 'tsuzuri /f');
+  assert.equal(equivalentCommand('render', '/f', options), 'TSUZURI_RENDER_SPEED=balanced tsuzuri /f');
 });
 
 test('render: 全部选项开启,精确匹配整串(含 env 前缀)', () => {
@@ -40,28 +40,28 @@ test('render: 全部选项开启,精确匹配整串(含 env 前缀)', () => {
   };
   assert.equal(
     equivalentCommand('render', '/f', options),
-    'TSUZURI_CONCURRENCY=90% tsuzuri /f --exif --sign --dark --square --filter faded --filter-intensity 0.42 --draft --trim auto',
+    'TSUZURI_RENDER_SPEED=full TSUZURI_CONCURRENCY=90% tsuzuri /f --exif --sign --dark --square --filter faded --filter-intensity 0.42 --draft --trim auto',
   );
 });
 
 test('still: 默认 scale(2 或不传)不带 --scale', () => {
-  assert.equal(equivalentCommand('still', '/f', {}), 'tsuzuri still /f');
-  assert.equal(equivalentCommand('still', '/f', {scale: 2}), 'tsuzuri still /f');
+  assert.equal(equivalentCommand('still', '/f', {}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri still /f');
+  assert.equal(equivalentCommand('still', '/f', {scale: 2}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri still /f');
 });
 
 test('still: scale=4 带上 --scale 4', () => {
-  assert.equal(equivalentCommand('still', '/f', {scale: 4}), 'tsuzuri still /f --scale 4');
+  assert.equal(equivalentCommand('still', '/f', {scale: 4}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri still /f --scale 4');
 });
 
-test('speed: balanced 不带 env 前缀', () => {
-  assert.equal(equivalentCommand('render', '/f', {speed: 'balanced'}), 'tsuzuri /f');
+test('speed: balanced 保留诊断环境变量但不覆盖默认并发', () => {
+  assert.equal(equivalentCommand('render', '/f', {speed: 'balanced'}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri /f');
 });
 
 test('folder 含空格与单引号,正确用单引号包裹并转义', () => {
   const folder = `/Users/me/My 'trip'`;
   assert.equal(
     equivalentCommand('render', folder, {}),
-    `tsuzuri '/Users/me/My '\\''trip'\\'''`,
+    `TSUZURI_RENDER_SPEED=balanced tsuzuri '/Users/me/My '\\''trip'\\'''`,
   );
 });
 

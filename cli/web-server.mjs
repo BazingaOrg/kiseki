@@ -16,7 +16,7 @@ import {createDoctorService} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
 import {searchAudioCandidates, searchLyricsCandidates, saveLyrics} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
-import {AssetMutationError, mutateAsset, undoAssetDelete} from './web-api/assets.mjs';
+import {AssetMutationError, clearRecognizedLyrics, mutateAsset, undoAssetDelete} from './web-api/assets.mjs';
 import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
 import {resolveSafePath} from './web-api/sandbox.mjs';
@@ -142,24 +142,27 @@ const JOB_ID_RE = /^\/api\/jobs\/([^/]+)$/;
 const JOB_EVENTS_RE = /^\/api\/jobs\/([^/]+)\/events$/;
 const JOB_CANCEL_RE = /^\/api\/jobs\/([^/]+)\/cancel$/;
 const ASSET_UNDO_RE = /^\/api\/assets\/undo$/;
+const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 
 // 这几条是仅有的非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合。
 // 必须同时校验 method,否则"路径对但方法错"(比如 PUT /api/jobs)会被当成合法的
 // post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback。
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
-  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
+  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
- * @param {{spawnImpl?: Function, runImpl?: Function, doctorGet?: Function, thumbDeps?: object, createReadStream?: Function}} [deps]
+ * @param {{spawnImpl?: Function, runImpl?: Function, doctorGet?: Function, thumbDeps?: object, createReadStream?: Function, jobManagerDeps?: object, assetMutationDeps?: object}} [deps]
  *   spawnImpl 供测试注入假的子进程实现,避免单测真的起渲染进程;
  *   runImpl 同理注入 /api/fetch/* 用的异步进程执行器,避免单测真的联网。
  *   doctorGet 可注入 doctor service,避免路由测试依赖本机的外部命令。
+ *   jobManagerDeps 仅供 HTTP 路由测试注入 lease/liveness 等任务依赖。
+ *   assetMutationDeps 仅供 HTTP 路由测试注入资产变更 lease 依赖。
  *   生产环境两个都不传。
  * @returns {{server: import('node:http').Server, token: string}}
  */
-export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream} = {}) => {
+export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps} = {}) => {
   // 只在测试注入时才传下去,生产环境走 fetch.mjs 的默认实现。
   const fetchDeps = runImpl ? {run: runImpl} : {};
   // doctor 缓存属于本 server 实例，不能让测试或同进程的第二个 web server 共用。
@@ -167,7 +170,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
   // 所有非 GET 请求(创建/取消任务)必须带上这个 token(契约二安全前提 3),
   // 与既有的 Host 头校验彼此独立、互不替代,构成双控制。
   const token = crypto.randomBytes(32).toString('hex');
-  const jobManager = createJobManager(spawnImpl ? {spawnImpl} : {});
+  const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {})});
 
   const checkToken = (req, res) => {
     if (req.headers['x-tsuzuri-token'] !== token) {
@@ -265,7 +268,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         .catch(() => sendJson(res, {status: 500, body: {error: '保存歌词失败'}}));
       return;
     }
-    if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname))) {
+    if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname))) {
       if (!checkToken(req, res)) return;
       readBody(req)
         .then((raw) => {
@@ -287,12 +290,16 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
           }
           try {
             const data = url.pathname === '/api/assets/mutate'
-              ? mutateAsset({folder, assetId: body?.assetId, action: body?.action, stem: body?.stem, isJobRunning: jobManager.hasRunningJob})
-              : undoAssetDelete({folder, undoId: body?.undoId, isJobRunning: jobManager.hasRunningJob});
+              ? mutateAsset({...assetMutationDeps, folder, assetId: body?.assetId, action: body?.action, stem: body?.stem, isJobRunning: jobManager.hasRunningJob})
+              : ASSET_UNDO_RE.test(url.pathname)
+                ? undoAssetDelete({...assetMutationDeps, folder, undoId: body?.undoId, isJobRunning: jobManager.hasRunningJob})
+                : clearRecognizedLyrics({...assetMutationDeps, folder, isJobRunning: jobManager.hasRunningJob});
             sendJson(res, {status: 200, body: data});
           } catch (error) {
             if (error instanceof AssetMutationError) {
-              sendJson(res, {status: error.status, body: {error: error.message}});
+              const recoveryUndoId = typeof error.details?.recoveryUndoId === 'string' ? error.details.recoveryUndoId : undefined;
+              const recoveryRequired = error.details?.recoveryRequired === true ? true : undefined;
+              sendJson(res, {status: error.status, body: {error: error.message, ...(recoveryUndoId ? {recoveryUndoId} : {}), ...(recoveryRequired ? {recoveryRequired} : {})}});
               return;
             }
             sendJson(res, {status: 500, body: {error: '文件操作失败'}});
@@ -406,7 +413,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}, createReadStream));
       return;
     }
-    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname)) {
+    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
       // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
       // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面。
       res.writeHead(405);

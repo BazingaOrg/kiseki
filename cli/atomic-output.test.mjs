@@ -44,6 +44,25 @@ test('commit replaces an existing final through same-directory rename', () => {
   }
 });
 
+test('commit rejects directory and symlink finals before mutating either target', () => {
+  const dir = fixture();
+  try {
+    const directoryFinal = path.join(dir, 'directory.mp4');
+    const linkFinal = path.join(dir, 'link.mp4');
+    const target = path.join(dir, 'target.mp4');
+    fs.mkdirSync(directoryFinal);
+    fs.writeFileSync(target, 'old');
+    fs.symlinkSync(target, linkFinal);
+    for (const finalPath of [directoryFinal, linkFinal]) {
+      const partial = createPartialOutput(finalPath, 'lease-1');
+      fs.writeFileSync(partial, 'new');
+      assert.throws(() => commitAtomicOutput(finalPath, partial, {taskId: 'lease-1'}), /普通文件/);
+      assert.equal(fs.readFileSync(partial, 'utf8'), 'new');
+    }
+    assert.equal(fs.readFileSync(target, 'utf8'), 'old');
+  } finally { fs.rmSync(dir, {recursive: true, force: true}); }
+});
+
 test('partial cleanup only removes a generated partial path', () => {
   const dir = fixture();
   try {

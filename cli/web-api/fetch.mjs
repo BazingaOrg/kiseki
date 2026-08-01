@@ -19,15 +19,15 @@ import {
   canonicalLyricsId,
   durationDelta,
   filterSyncedRecords,
-  limitLyricsCandidates,
   installDownloadedLyrics,
+  LYRICS_SEARCH_LIMIT,
   parseCurlResponse,
   probeAudio,
   searchLyricsRecords,
 } from '../fetch.mjs';
 import {preferSimplifiedChineseLrc} from '../lrc.mjs';
 import {scanFolderLoose} from '../project.mjs';
-import {AUDIO_SEARCH_LIMIT, checkYtDlp, parseSearchCandidates} from '../ytdlp.mjs';
+import {AUDIO_PROVIDER_LIMIT, checkYtDlp, normalizeSearchQuery, parseSearchCandidates} from '../ytdlp.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
@@ -92,13 +92,30 @@ export const checkYtDlpAsync = async (run = runProcess) => {
 
 /** 复用 parseSearchLine 的行解析,搜索参数与 cli/ytdlp.mjs 的 searchYtDlp 一致。 */
 export const searchYtDlpAsync = async (query, run = runProcess) => {
+  const normalized = normalizeSearchQuery(query);
   const result = await run('yt-dlp', [
-    `ytsearch${AUDIO_SEARCH_LIMIT}:${query}`,
+    `ytsearch${AUDIO_PROVIDER_LIMIT}:${normalized}`,
     '--flat-playlist',
     '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
   ]);
   if (result.status !== 0) return {ok: false, stderr: (result.stderr ?? '').trim()};
   return {ok: true, candidates: parseSearchCandidates(result.stdout)};
+};
+
+const rankWebLyricsCandidates = (records, audioDuration) => {
+  const seen = new Set();
+  const candidates = filterSyncedRecords(records).flatMap((record, index) => {
+    const id = canonicalLyricsId(record.id);
+    if (id === null || seen.has(id)) return [];
+    seen.add(id);
+    return [{record, id, delta: durationDelta(record.duration, audioDuration), index}];
+  });
+  candidates.sort((left, right) => {
+    if (left.delta === null) return right.delta === null ? left.index - right.index : 1;
+    if (right.delta === null) return -1;
+    return left.delta - right.delta || left.index - right.index;
+  });
+  return candidates.slice(0, LYRICS_SEARCH_LIMIT);
 };
 
 /** 复用 probeAudio 的 tag/时长解析(同样靠注入 spawn 把同步调用换成异步取值)。 */
@@ -189,8 +206,8 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   const {folder, audio} = resolved;
 
   const probe = await probeAudioAsync(path.join(folder, audio), run);
-  const override = typeof queryOverride === 'string' ? queryOverride.trim() : '';
-  const query = override || buildLyricsQuery({title: probe.title, artist: probe.artist, audioFile: audio});
+  const override = normalizeSearchQuery(queryOverride);
+  const query = override || normalizeSearchQuery(buildLyricsQuery({title: probe.title, artist: probe.artist, audioFile: audio}));
   let records;
   try {
     records = await searchLyricsRecords(
@@ -198,7 +215,7 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
       // !customized 且 tag 齐全时会先打 /get 精确查询并直接返回,query 根本用不上。
       // tag 写错(标题是专辑名、翻唱版本)恰恰是用户要手动改词的主要场景,
       // 不传这个标志的话"再找一次"永远返回同一批错结果。
-      {query, title: probe.title, artist: probe.artist, duration: probe.duration, customized: Boolean(override)},
+      {query, title: probe.title, artist: probe.artist, duration: probe.duration, customized: Boolean(override), requireValidId: true},
       fetcher ?? createLrclibFetch(run),
     );
   } catch (error) {
@@ -206,26 +223,22 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
     return {status: 502, body: {error: `歌词搜索失败: ${error.message}`}};
   }
 
-  const synced = limitLyricsCandidates(records);
+  const synced = rankWebLyricsCandidates(records, probe.duration);
   return {
     status: 200,
     body: {
       query,
-      candidates: synced.flatMap((record) => {
-        const id = canonicalLyricsId(record.id);
-        if (id === null) return [];
-        return [{
-          id,
-          title: record.trackName,
-          artist: record.artistName,
-          duration: record.duration,
-          delta: durationDelta(record.duration, probe.duration),
+      candidates: synced.map(({record, id, delta}) => ({
+        id,
+        title: record.trackName,
+        artist: record.artistName,
+        duration: record.duration,
+        delta,
           // filterSyncedRecords 之后一定是带时间轴的,这个字段恒为 true,留着是为了
           // 前端不必假设过滤规则。不下发 CLI 那句成品文案:那是终端排版,网页拿
           // delta 自己组织更合适,多一个没人消费的字段只会变成漂移源。
-          synced: true,
-        }];
-      }),
+        synced: true,
+      })),
     },
   };
 };
@@ -261,11 +274,12 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
   const preferred = await preferSimplifiedChineseLrc(record.syncedLyrics);
   const filename = `${path.basename(audio, path.extname(audio))}.lrc`;
   let lease;
+  let response;
   try {
     // Search/download above deliberately holds no lease; claim only the final
     // identity-checked write, immediately before the in-process mutation lock.
     lease = leaseManager.acquire({kind: 'lyrics-save', resources: [folder]});
-    return withProjectMutationLock(folder, () => {
+    response = withProjectMutationLock(folder, () => {
       assertNoRunningJob(isJobRunning);
       const current = resolveAudioFolder(root, body?.folder);
       if (current.error) return current.error;
@@ -285,17 +299,20 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
       return {status: 200, body: {ok: true, file, converted: preferred.converted}};
     });
   } catch (error) {
-    if (error instanceof ProjectBusyError) return {status: 409, body: {error: '项目已有任务在执行'}};
-    if (error?.status === 409) return {status: 409, body: {error: error.message}};
-    return {status: 500, body: {error: `保存歌词失败: ${error.message}`}};
-  } finally {
-    if (lease) leaseManager.release(lease);
+    if (error instanceof ProjectBusyError) response = {status: 409, body: {error: '项目已有任务在执行'}};
+    else if (error?.status === 409) response = {status: 409, body: {error: error.message}};
+    else response = {status: 500, body: {error: `保存歌词失败: ${error.message}`}};
   }
+  if (lease && !leaseManager.release(lease) && response?.status === 200) {
+    return {status: 500, body: {error: '保存歌词失败: 任务 lease 释放失败'}};
+  }
+  return response;
 };
 
 /** GET /api/fetch/audio-search?q=<关键词> */
 export const searchAudioCandidates = async (query, {run = runProcess} = {}) => {
-  if (typeof query !== 'string' || !query.trim()) {
+  const normalized = typeof query === 'string' ? normalizeSearchQuery(query) : '';
+  if (!normalized) {
     return {status: 400, body: {error: 'q 不能为空', field: 'q'}};
   }
   const ytdlp = await checkYtDlpAsync(run);
@@ -304,7 +321,7 @@ export const searchAudioCandidates = async (query, {run = runProcess} = {}) => {
     // 把 fix 文案显示成"怎么补"。
     return {status: 503, body: {error: '未找到 yt-dlp(下载音频需要它,由你自行安装)', fix: FIXES['yt-dlp']}};
   }
-  const result = await searchYtDlpAsync(query.trim(), run);
+  const result = await searchYtDlpAsync(normalized, run);
   if (!result.ok) {
     return {
       status: 502,

@@ -18,7 +18,7 @@ import {CommandHint} from './ui';
 import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
-import {mutateAsset, undoAssetDelete} from './api';
+import {clearRecognizedLyrics, mutateAsset, undoAssetDelete} from './api';
 import type {AssetItem} from './types';
 
 type SectionKey = 'materials' | 'make' | 'results';
@@ -175,7 +175,7 @@ export const Workbench = ({
   }, [job.busy, jobLock, probeCurrentJob]);
   const [undoRecords, setUndoRecords] = useState<Array<{id: string; action: 'rename' | 'delete'}>>([]);
   const [assetBusy, setAssetBusy] = useState(false);
-  const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean} | null>(null);
+  const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean; confirmLabel?: string} | null>(null);
 
   // folder 在这里补上:起任务的组件只说要做什么,不必自己传素材夹路径
   const handleStart = async (request: JobRequest): Promise<boolean> => {
@@ -215,7 +215,13 @@ export const Workbench = ({
     setAssetBusy(true);
     const result = await mutateAsset(project.path, item.id, action, stem);
     setAssetBusy(false);
-    if (!result.ok) { setDialog({title: '操作未完成', message: result.message}); return false; }
+    if (!result.ok) {
+      if (result.recoveryUndoId) {
+        setUndoRecords((records) => records.some((record) => record.id === result.recoveryUndoId) ? records : [...records, {id: result.recoveryUndoId!, action: 'delete'}]);
+        setDialog({title: '需要恢复清除结果', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleUndo(result.recoveryUndoId!)) setDialog(null); }});
+      } else setDialog({title: '操作未完成', message: result.message});
+      return false;
+    }
     if (result.data.undoId) setUndoRecords((records) => [...records, {id: result.data.undoId!, action}]);
     onProjectRefresh();
     return true;
@@ -234,14 +240,58 @@ export const Workbench = ({
     }
     void performAsset(item, action, stem);
   };
-  const handleUndo = async (undoId: string) => {
-    if (assetBusy || jobBusy) return;
+  const handleUndo = async (undoId: string): Promise<boolean> => {
+    if (assetBusy || jobBusy) return false;
     setAssetBusy(true);
     const result = await undoAssetDelete(project.path, undoId);
     setAssetBusy(false);
-    if (!result.ok) { setDialog({title: '撤销未完成', message: result.message}); return; }
+    if (!result.ok) {
+      const recoveryUndoId = result.recoveryUndoId ?? undoId;
+      if (result.recoveryRequired || result.recoveryUndoId) {
+        setUndoRecords((records) => records.some((record) => record.id === recoveryUndoId) ? records : [...records, {id: recoveryUndoId, action: 'delete'}]);
+        setDialog({title: '撤销未完成', message: result.message, confirmLabel: '再次尝试恢复', confirm: async () => { if (await handleUndo(recoveryUndoId)) setDialog(null); }});
+      } else setDialog({title: '撤销未完成', message: result.message});
+      return false;
+    }
     setUndoRecords((records) => records.filter((record) => record.id !== undoId));
     onProjectRefresh();
+    return true;
+  };
+  const performClearRecognizedLyrics = async (): Promise<boolean> => {
+    if (assetBusy || jobBusy) return false;
+    setAssetBusy(true);
+    const result = await clearRecognizedLyrics(project.path);
+    setAssetBusy(false);
+    if (!result.ok) {
+      if (result.recoveryUndoId) {
+        setUndoRecords((records) => records.some((record) => record.id === result.recoveryUndoId) ? records : [...records, {id: result.recoveryUndoId!, action: 'delete'}]);
+        setDialog({title: '需要恢复清除结果', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleUndo(result.recoveryUndoId!)) setDialog(null); }});
+      } else setDialog({title: '操作未完成', message: result.message});
+      return false;
+    }
+    setUndoRecords((records) => [...records, {id: result.data.undoId, action: 'delete'}]);
+    onProjectRefresh();
+    return true;
+  };
+  const handleClearRecognizedLyrics = () => {
+    setDialog({
+      title: '清除识别结果？',
+      message: '会移除本地识别歌词及依赖的时间线；不会删除 .lrc、分析缓存或节拍，可在当前服务运行期间撤销。',
+      destructive: true,
+      confirmLabel: '清除',
+      confirm: async () => { if (await performClearRecognizedLyrics()) setDialog(null); },
+    });
+  };
+  const handleReplaceRecognizedLyrics = () => {
+    if (assetBusy || jobBusy) return;
+    setDialog({
+      title: '重新识别歌词？',
+      message: '会以新的本地识别结果替换当前识别歌词；识别失败时保留当前结果。成功后会清除依赖的时间线，不会删除 .lrc、分析缓存或节拍。',
+      confirmLabel: '重新识别',
+      confirm: async () => {
+        if (await handleStart({kind: 'lyrics', options: {replace: true}})) setDialog(null);
+      },
+    });
   };
 
   return (
@@ -331,6 +381,8 @@ export const Workbench = ({
               onStart={handleStart}
               onReset={resetJobDisplay}
               onRefresh={onProjectRefresh}
+              onReplaceRecognizedLyrics={handleReplaceRecognizedLyrics}
+              onClearRecognizedLyrics={handleClearRecognizedLyrics}
               locked={jobBusy}
               assetBusy={assetBusy || jobBusy}
               onAsset={handleAsset}
@@ -353,7 +405,7 @@ export const Workbench = ({
           )}
         </main>
       </div>
-      {dialog && <Dialog key={`${dialog.title}:${dialog.message}`} title={dialog.title} message={dialog.message} destructive={dialog.destructive} confirmLabel={dialog.confirm ? '删除' : '知道了'} onConfirm={dialog.confirm} onClose={() => setDialog(null)} />}
+      {dialog && <Dialog key={`${dialog.title}:${dialog.message}`} title={dialog.title} message={dialog.message} destructive={dialog.destructive} confirmLabel={dialog.confirm ? (dialog.confirmLabel ?? '删除') : '知道了'} onConfirm={dialog.confirm} onClose={() => setDialog(null)} />}
     </div>
   );
 };

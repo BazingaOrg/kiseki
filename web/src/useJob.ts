@@ -39,6 +39,10 @@ export interface FetchAudioOptions {
   artist: string;
 }
 
+export interface LyricsJobOptions {
+  replace?: boolean;
+}
+
 /**
  * 一次任务请求里除 folder 之外的部分。folder 由持有任务状态的那一层补上,
  * 起任务的组件不必自己传素材夹路径。
@@ -46,8 +50,7 @@ export interface FetchAudioOptions {
 export type JobRequest =
   | {kind: 'render' | 'still'; options: JobOptions}
   | {kind: 'fetch-audio'; options: FetchAudioOptions}
-  // 本地识别只要素材夹,没有可调的参数
-  | {kind: 'lyrics'};
+  | {kind: 'lyrics'; options?: LyricsJobOptions};
 
 export type JobKind = JobRequest['kind'];
 

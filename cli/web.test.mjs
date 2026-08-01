@@ -6,16 +6,32 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
+import {term} from './term.mjs';
 import {runWeb} from './web.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-'));
+
+const closeServer = (server) => new Promise((resolve, reject) => {
+  server.close((error) => error ? reject(error) : resolve());
+});
+
+const runWebSilently = async (...args) => {
+  const originals = {success: term.success, detail: term.detail};
+  term.success = () => {};
+  term.detail = () => {};
+  try {
+    return await runWeb(...args);
+  } finally {
+    Object.assign(term, originals);
+  }
+};
 
 /** 与 web.mjs 的 START_PORT 保持一致。 */
 const START_PORT = 3000;
 
 test('starts a server on a free port and serves the frontend (or placeholder if unbuilt)', async () => {
   const folder = makeTempRoot();
-  const server = await runWeb(folder, {openBrowser: false});
+  const server = await runWebSilently(folder, {openBrowser: false});
   try {
     const {port} = server.address();
     assert.ok(port > 0);
@@ -25,7 +41,7 @@ test('starts a server on a free port and serves the frontend (or placeholder if 
     // web/dist 存在时 serve 真实构建产物,否则回退占位页——两者皆为合法状态
     assert.match(text, /(tsuzuri 本地工作台|綴り｜tsuzuri)/);
   } finally {
-    server.close();
+    await closeServer(server);
   }
 });
 
@@ -47,10 +63,10 @@ const occupyStartPort = async () => {
       blocker.once('error', reject);
       blocker.listen(START_PORT, '127.0.0.1', resolve);
     });
-    return () => blocker.close();
+    return () => closeServer(blocker);
   } catch (error) {
     if (error.code !== 'EADDRINUSE') throw error;
-    return () => {};
+    return async () => {};
   }
 };
 
@@ -58,13 +74,13 @@ test('picks the next free port when the first one is occupied', async () => {
   const release = await occupyStartPort();
   try {
     const folder = makeTempRoot();
-    const server = await runWeb(folder, {openBrowser: false});
+    const server = await runWebSilently(folder, {openBrowser: false});
     try {
       assert.notEqual(server.address().port, START_PORT);
     } finally {
-      server.close();
+      await closeServer(server);
     }
   } finally {
-    release();
+    await release();
   }
 });

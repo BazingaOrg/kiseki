@@ -46,7 +46,7 @@ export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSy
 
 export const runCommandFromArgv = async (
   argv,
-  {trimInteractive, trimPromptRunner, runCommandImpl = runCommand} = {},
+  {trimInteractive, trimPromptRunner, runCommandImpl = runCommand, offerFetchImpl = offerFetch, runLyricsImpl = runLyrics} = {},
 ) => {
   const parsed = parseArgs(argv);
   if (parsed.command === 'help') {
@@ -64,10 +64,10 @@ export const runCommandFromArgv = async (
     ].some((key) => process.env[key] !== undefined);
     // A lyrics web job owns its own lease and must not turn into an implicit
     // fetch child. Direct interactive use keeps the existing convenience flow.
-    if (!inherited && fs.existsSync(lyricsFolder) && fs.statSync(lyricsFolder).isDirectory()) {
-      await offerFetch(lyricsFolder);
+    if (!parsed.replace && !inherited && fs.existsSync(lyricsFolder) && fs.statSync(lyricsFolder).isDirectory()) {
+      await offerFetchImpl(lyricsFolder);
     }
-    return runLyrics(parsed.folder);
+    return runLyricsImpl(parsed.folder, {replace: parsed.replace});
   }
   if (parsed.command === 'still') return runStill(parsed);
   if (parsed.command === 'web') {
@@ -107,6 +107,7 @@ export const runCommandFromArgv = async (
     [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
   );
   Object.assign(process.env, task.env);
+  let succeeded = false;
   try {
   // 交互终端下缺音频/歌词先给下载与在线搜索的机会;备齐或非交互时不打扰
   await offerFetch(folder, {task});
@@ -238,12 +239,13 @@ export const runCommandFromArgv = async (
   term.success('视频渲染完成');
 
   term.success(`完成 → ${outPath}`);
+  succeeded = true;
   return 0;
   } finally {
     for (const [key, value] of Object.entries(originalEnv)) {
       if (value === undefined) delete process.env[key]; else process.env[key] = value;
     }
-    if (!task.inherited) createTaskLeaseManager().release(task.lease);
+    if (!task.inherited && !createTaskLeaseManager().release(task.lease) && succeeded) throw new CliError('任务 lease 释放失败');
   }
 };
 

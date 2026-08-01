@@ -73,6 +73,8 @@ export interface ProjectResponse {
   lyrics: LyricLine[] | null;
   /** 歌词来自用户自备的 .lrc,还是本地识别的产物 */
   lyricsSource: 'lrc' | 'recognized' | null;
+  /** 只有无任何物理 LRC 且识别 JSON 可用时才能重新识别或清除。 */
+  recognizedLyricsManageable?: boolean;
   /** output/metadata/lyrics.json —— 识别过的产物是否存在 */
   recognizedLyricsPath: string | null;
   /** output/metadata/timeline.json —— 规划过时间线,说明这个素材夹渲染过 */

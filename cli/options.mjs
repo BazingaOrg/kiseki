@@ -27,7 +27,7 @@ export const USAGE =
   '  tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>]  渲染相册视频(默认命令)\n' +
   '  tsuzuri still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  tsuzuri doctor                             检查依赖是否就绪\n' +
-  '  tsuzuri lyrics <folder>                    只识别歌词并预览(不渲染)\n' +
+  '  tsuzuri lyrics <folder> [--replace]        只识别歌词并预览(不渲染)\n' +
   '  tsuzuri fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
   '  tsuzuri web [folder]                       启动本地工作台网页(支持改名/删除,可撤销,不传 folder 则从主目录选)\n' +
   '  tsuzuri help                               显示本说明(同 -h / --help)\n' +
@@ -106,15 +106,16 @@ const parseDoctorArgs = (rest) => {
 };
 
 const parseLyricsArgs = (rest) => {
-  const args = {command: 'lyrics', folder: null};
+  const args = {command: 'lyrics', folder: null, replace: false};
   for (const token of rest) {
+    if (token === '--replace') { args.replace = true; continue; }
     if (token === '-o' || token === '--output') {
       throw new CliError('lyrics 不支持 -o(只在终端预览,不生成文件)\n用法: tsuzuri lyrics <folder>');
     }
     if (!args.folder) {
       args.folder = token;
     } else {
-      throw new CliError(`未知参数: ${token}(用法: tsuzuri lyrics <folder>)`);
+      throw new CliError(`未知参数: ${token}(用法: tsuzuri lyrics <folder> [--replace])`);
     }
   }
   if (!args.folder) {

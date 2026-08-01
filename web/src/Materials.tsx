@@ -12,7 +12,7 @@ import type {FormEvent} from 'react';
 import {Search} from 'lucide-react';
 
 import type {ApiResult} from './api';
-import {installLyrics, searchAudio, searchLyrics} from './api';
+import {installLyrics, normalizeSearchQuery, searchAudio, searchLyrics} from './api';
 import type {Capabilities, Remedy} from './capabilities';
 import {JobPanel} from './JobPanel';
 import {basename} from './media';
@@ -76,14 +76,15 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const q = query.trim();
+    const querySnapshot = queryRef.current;
+    const q = normalizeSearchQuery(querySnapshot);
     if (!q) return;
     const generation = ++searchGeneration.current;
     setSelected(null);
     setResult(null);
     setSearching(true);
     const outcome = await searchAudio(q);
-    if (generation !== searchGeneration.current || queryRef.current.trim() !== q) return;
+    if (generation !== searchGeneration.current || queryRef.current !== querySnapshot) return;
     setResult(outcome);
     setSearching(false);
   };
@@ -122,7 +123,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
             setSelected(null);
             setSearching(false);
           }}
-          placeholder="歌名 + 歌手"
+          placeholder="输入关键词，例如：晴天 周杰伦"
           aria-label="搜索关键词"
         />
         <button className="fetch-button" type="submit" disabled={!query.trim()}>
@@ -194,34 +195,29 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
   );
 };
 
-/** 在线找歌词:查询词后端从音频推,前端只管点一下和挑一条。 */
+/** 在线找歌词:空输入由后端自动匹配，手输内容走关键词搜索。 */
 const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; locked: boolean; onDone: () => void}) => {
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<ApiResult<{candidates: LyricsCandidate[]; query: string}> | null>(null);
   const [installing, setInstalling] = useState<LyricsCandidate['id'] | null>(null);
   const [failure, setFailure] = useState<{message: string; fix: string | null} | null>(null);
   const [selected, setSelected] = useState<LyricsCandidate | null>(null);
-  // 空串 = 让后端从音频 tag / 文件名自己推;搜过一次之后把它推出来的词填回来,
-  // 用户就知道刚才是拿什么在搜、改哪里能搜得更准
+  // 保留原始用户输入；空串始终表示自动匹配，不能被推断词改写成手动搜索。
   const [query, setQuery] = useState('');
   const searchGeneration = useRef(0);
   const queryRef = useRef(query);
 
   const search = async () => {
     const querySnapshot = queryRef.current;
+    const normalized = normalizeSearchQuery(querySnapshot);
     const generation = ++searchGeneration.current;
     setSelected(null);
     setResult(null);
     setSearching(true);
     setFailure(null);
-    const outcome = await searchLyrics(project.path, querySnapshot);
+    const outcome = await searchLyrics(project.path, normalized);
     if (generation !== searchGeneration.current || queryRef.current !== querySnapshot) return;
     setResult(outcome);
-    // 把后端实际用的查询词填回输入框:用户想在推断词基础上微调,不必整句重打
-    if (outcome.ok && !querySnapshot.trim()) {
-      queryRef.current = outcome.data.query;
-      setQuery(outcome.data.query);
-    }
     setSearching(false);
   };
 
@@ -243,7 +239,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
         <input
           className="fetch-input"
           value={query}
-          placeholder="留空则按音频信息自动匹配" 
+          placeholder="留空自动匹配；也可输入歌名 歌手"
           onChange={(event) => {
             searchGeneration.current += 1;
             queryRef.current = event.target.value;
@@ -266,6 +262,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
 
       {result && !result.ok && <Failure message={result.message} fix={result.fix} />}
       {failure && <Failure message={failure.message} fix={failure.fix} />}
+      {result?.ok && <p className="hint">{normalizeSearchQuery(query) ? '手动关键词' : '自动匹配'}：按「{result.data.query}」搜索。</p>}
       {candidates?.length === 0 && (
         <p className="hint">没找到对得上的。音频文件名写成「歌名 - 歌手」通常更容易匹配。</p>
       )}
@@ -421,6 +418,8 @@ interface MaterialsProps {
   onReset: () => void;
   /** 歌词落地走的是普通端点,没有任务结束事件,得自己触发一次刷新 */
   onRefresh: () => void;
+  onReplaceRecognizedLyrics: () => void;
+  onClearRecognizedLyrics: () => void;
   assetBusy: boolean;
   locked: boolean;
   onAsset: (item: AssetItem, action: 'rename' | 'delete', stem?: string) => void;
@@ -435,6 +434,8 @@ export const Materials = ({
   onStart,
   onReset,
   onRefresh,
+  onReplaceRecognizedLyrics,
+  onClearRecognizedLyrics,
   assetBusy,
   locked,
   onAsset,
@@ -530,7 +531,9 @@ export const Materials = ({
               onDelete={(item) => onAsset(item, 'delete')}
             />
           )}
-          {lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
+          {activeKind === 'lyrics' && job.status !== 'idle' ? (
+            <JobPanel verb="识别" status={job.status} events={job.events} error={job.error} onCancel={job.cancel} onReset={onReset} resetLabel="收起" />
+          ) : lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
             /* 原先只列前 3 行,刚下完歌词的人看到的就是"显示不全"。这里是素材段,
                确认自己拿到的是哪一份歌词正是它的用途,所以列全,超高了自己滚。 */
             <ol className="material-lyric-preview">
@@ -551,6 +554,12 @@ export const Materials = ({
               onReset={onReset}
               onRefresh={onRefresh}
             />
+          )}
+          {project.lyricsSource === 'recognized' && project.recognizedLyricsManageable === true && (
+            <div className="asset-actions">
+              <button className="link-button" disabled={locked || assetBusy || running} onClick={onReplaceRecognizedLyrics}>重新识别</button>
+              <button className="link-button" disabled={locked || assetBusy || running} onClick={onClearRecognizedLyrics}>清除识别结果</button>
+            </div>
           )}
       </div>
 
