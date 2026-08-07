@@ -7,6 +7,7 @@ import {
   readFileSync,
   rmSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs';
 import {tmpdir} from 'node:os';
@@ -17,7 +18,7 @@ import {fileURLToPath} from 'node:url';
 
 import {parseArgs} from './options.mjs';
 import {createPercentProgress} from './progress.mjs';
-import {computeInputHash, copyLegacyJson, ensureProjectDirs, resolveProjectPaths} from './project.mjs';
+import {computeInputHash, copyLegacyJson, ensureProjectDirs, resolveProjectPaths, scanFolderLoose} from './project.mjs';
 import {createTerminal, dim, paint, promptPrefix} from './term.mjs';
 import {runCommandFromArgv} from './tsuzuri.mjs';
 
@@ -336,6 +337,37 @@ test('input hash changes when user lyrics change', () => {
   }
 });
 
+test('input hash is metadata-based: mtime change alone is detected without content read', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tsuzuri-hash-mtime-'));
+  try {
+    const photo = join(root, 'photo.jpg');
+    writeFileSync(photo, 'same-bytes');
+    const first = computeInputHash(root, ['photo.jpg']);
+    const future = new Date(Date.now() + 10_000);
+    utimesSync(photo, future, future);
+
+    assert.notEqual(computeInputHash(root, ['photo.jpg']), first);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('scanFolderLoose ignores directory and dangling symlinks even with image extensions', () => {
+  const root = mkdtempSync(join(tmpdir(), 'tsuzuri-symlink-'));
+  try {
+    const realDir = join(root, 'real-dir');
+    mkdirSync(realDir);
+    writeFileSync(join(root, 'real.jpg'), 'bytes');
+    symlinkSync('real-dir', join(root, 'fake.jpg'), 'dir');
+    symlinkSync('nowhere.png', join(root, 'dangling.png'), 'file');
+    const {photos} = scanFolderLoose(root);
+
+    assert.deepEqual(photos, ['real.jpg']);
+  } finally {
+    rmSync(root, {recursive: true, force: true});
+  }
+});
+
 test(
   'the executable still runs through a package-style symlink',
   {skip: process.platform === 'win32'},
@@ -450,6 +482,7 @@ test(
           'fs.appendFileSync(process.env.TSUZURI_TEST_CALLS, JSON.stringify(args) + "\\n");\n' +
           'const valueAfter = (flag) => args[args.indexOf(flag) + 1];\n' +
           'if (args.includes("tsuzuri-analysis-fingerprint")) {\n' +
+          '  if (fs.existsSync(process.env.TSUZURI_TEST_FP_FAIL ?? "")) process.exit(1);\n' +
           '  console.log("{\\"version\\":1,\\"beat_features_version\\":1,\\"backend\\":\\"cpu\\",\\"model\\":\\"small\\",\\"demucs_available\\":false}");\n' +
           '  process.exit(0);\n' +
           '}\n' +
@@ -467,7 +500,7 @@ test(
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
         TSUZURI_TEST_CALLS: calls,
       };
-      const run = () => spawnSync(process.execPath, [script, album], {encoding: 'utf8', env});
+      const run = (extra = {}) => spawnSync(process.execPath, [script, album], {encoding: 'utf8', env: {...env, ...extra}});
       const readCalls = () => readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
       const readPipelineCalls = () => readCalls().filter((args) => !args.includes('tsuzuri-analysis-fingerprint'));
 
@@ -488,6 +521,21 @@ test(
       const audioChanged = run();
       assert.equal(audioChanged.status, 7);
       assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [true, false]);
+
+      // 瞬时指纹失败:重分析但保留 manifest;环境恢复后素材未变 → 命中缓存
+      writeFileSync(calls, '');
+      writeFileSync(join(root, 'fp-fail'), '');
+      const transientFail = run({TSUZURI_TEST_FP_FAIL: join(root, 'fp-fail')});
+      assert.equal(transientFail.status, 7);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [true, false]);
+      assert.ok(existsSync(join(album, 'output', 'metadata', 'analysis.json')));
+      assert.match(transientFail.stderr, /运行时指纹获取失败/);
+
+      writeFileSync(calls, '');
+      const recovered = run();
+      assert.equal(recovered.status, 7);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [false]);
+      assert.match(recovered.stdout, /音频和歌词未变,跳过音频分析/);
     } finally {
       rmSync(root, {recursive: true, force: true});
     }

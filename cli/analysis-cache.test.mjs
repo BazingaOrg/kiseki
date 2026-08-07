@@ -128,6 +128,22 @@ test('manifest requires matching version, hash, and both valid analyzer artifact
   }
 });
 
+test('null audio hash preserves an existing valid manifest for later recovery', () => {
+  const project = makeProject();
+  try {
+    const audioHash = computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: runtime()});
+    writeAnalysisManifest({...project, audioHash});
+    assert.ok(fs.existsSync(project.analysisPath));
+
+    // 指纹/环境探测失败(null)时不再删除旧 manifest
+    writeAnalysisManifest({...project, audioHash: null});
+    assert.ok(fs.existsSync(project.analysisPath));
+    assert.equal(hasValidAnalysisCache({...project, audioHash}), true);
+  } finally {
+    fs.rmSync(project.folder, {recursive: true, force: true});
+  }
+});
+
 test('runtime fingerprint accepts only a complete analyzer response', () => {
   const spawn = (_cmd, _args, _opts) => ({
     status: 0,

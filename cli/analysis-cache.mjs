@@ -116,7 +116,9 @@ export const invalidateAnalysisManifest = (analysisPath) => {
 
 export const writeAnalysisManifest = ({analysisPath, beatsPath, lyricsPath, audioHash}) => {
   if (audioHash === null) {
-    invalidateAnalysisManifest(analysisPath);
+    // 指纹/环境探测失败时保留旧 manifest,不主动删除:它仍对应"素材未变"
+    // 的有效结果,环境恢复后下一次运行可直接命中缓存;素材变了 audio_hash
+    // 自然对不上,无需在这里清掉。
     return false;
   }
   if (!validJsonArtifact(beatsPath) || !validJsonArtifact(lyricsPath)) {

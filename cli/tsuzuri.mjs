@@ -146,7 +146,13 @@ export const runCommandFromArgv = async (
   if (skipAnalyze) term.detail('音频和歌词未变,跳过音频分析');
 
   if (!skipAnalyze) {
-    invalidateAnalysisManifest(project.analysisPath);
+    // audioHash 为 null 是环境探测瞬时失败:不清 manifest,保留它让环境恢复
+    // 后还能命中(素材未变时)。否则一次瞬时故障会把有效缓存永久烧掉。
+    if (audioHash === null) {
+      term.warn('运行时指纹获取失败,跳过音频分析缓存');
+    } else {
+      invalidateAnalysisManifest(project.analysisPath);
+    }
     term.start('分析音频');
     const analyzeArgs = [
       'run', '--project', analyzer, 'tsuzuri-analyze', path.join(folder, audio),

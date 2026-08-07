@@ -14,9 +14,21 @@ const LYRIC_EXTS = new Set(['.lrc']);
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 export const AUDIO_DIR = 'audio';
 
+// 符号链接按跟随后的真实类型归类:指向目录的链接(哪怕扩展名像图片)不算文件,
+// 悬空/循环链接跳过 —— 否则它们会被算成照片,在读取时以 EISDIR/ENOENT 崩溃。
+const isReadableFile = (folder, entry) => {
+  if (entry.isFile()) return true;
+  if (!entry.isSymbolicLink()) return false;
+  try {
+    return fs.statSync(path.join(folder, entry.name)).isFile();
+  } catch {
+    return false;
+  }
+};
+
 const listFiles = (folder) =>
   fs.readdirSync(folder, {withFileTypes: true})
-    .filter((entry) => !entry.name.startsWith('.') && (entry.isFile() || entry.isSymbolicLink()))
+    .filter((entry) => !entry.name.startsWith('.') && isReadableFile(folder, entry))
     .map((entry) => entry.name);
 
 /**
@@ -133,11 +145,20 @@ export const writeTrimPreference = (preferencesPath, value) => {
   fs.writeFileSync(preferencesPath, `${JSON.stringify({version: 1, trim: value}, null, 2)}\n`, 'utf8');
 };
 
+/**
+ * 输入素材是否变化的摘要,供 plan.py 判断时间线要不要重建。
+ * 用 size + mtimeNs 元数据代替全量读文件:写入必然更新 mtime,真实修改
+ * 都会被检出;代价是"改了内容又精确恢复 mtime+size"的刻意伪造检测不到,
+ * 对本地素材改动检测这是可接受的取舍 —— 全量读哈希在大照片集下要同步读
+ * 数十 GB,缓存命中与否都得付。
+ */
 export const computeInputHash = (folder, files) => {
   const hash = createHash('sha256');
   for (const file of [...files].sort()) {
-    hash.update(file + '\0');
-    hash.update(fs.readFileSync(path.join(folder, file)));
+    // mtimeNs 只在 bigint stat 上有;普通 stat 只有 mtimeMs,同一毫秒内的
+    // 连续写入会撞出相同的摘要,纳秒级才可靠。
+    const {size, mtimeNs} = fs.statSync(path.join(folder, file), {bigint: true});
+    hash.update(`${file}\0${size}:${mtimeNs}\0`);
   }
   return hash.digest('hex').slice(0, 16);
 };
