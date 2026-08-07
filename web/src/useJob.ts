@@ -29,6 +29,8 @@ export interface JobOptions {
   trim?: 'auto' | 'full' | null;
   /** 仅 render:并发档位。still 不走 resolveRenderSettings,设了也没用 */
   speed?: 'saver' | 'balanced' | 'full';
+  /** 仅 render:呈现层模板 id,见 renderer/src/templates.ts;null = 不应用模板 */
+  template?: string | null;
   /** 仅 still */
   scale?: number;
 }

@@ -7,7 +7,7 @@
  * 说明原因 —— 沿用 Blocked 组件"禁用必须带理由"的规矩,这里理由是任务占用而非
  * 素材缺失,所以没有直接套 Blocked,而是单独一行提示。
  */
-import {useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
 import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
@@ -24,6 +24,28 @@ import type {useJob} from './useJob';
 import {useTransitionPresence} from './useTransitionPresence';
 
 type Kind = 'render' | 'still';
+
+interface TemplateInfo {
+  id: string;
+  name: string;
+  description: string;
+}
+
+// 模板列表是静态数据,进程内缓存一次即可;渲染失败按空列表处理(不阻塞表单)
+let templatesCache: TemplateInfo[] | null = null;
+const loadTemplates = (): Promise<TemplateInfo[]> => {
+  if (templatesCache) return Promise.resolve(templatesCache);
+  return fetch('/api/templates')
+    .then((res) => (res.ok ? res.json() : {templates: []}))
+    .then((data: {templates?: TemplateInfo[]}) => {
+      templatesCache = data.templates ?? [];
+      return templatesCache;
+    })
+    .catch(() => {
+      templatesCache = [];
+      return templatesCache;
+    });
+};
 
 const KIND_VERB: Record<Kind, string> = {render: '渲染', still: '导出'};
 
@@ -57,6 +79,7 @@ const RENDER_DEFAULTS: JobOptions = {
   draft: false,
   trim: null,
   speed: 'balanced',
+  template: null,
 };
 
 const STILL_DEFAULTS: JobOptions = {
@@ -108,9 +131,10 @@ interface OptionsFormProps {
   photos: string[];
   options: JobOptions;
   onChange: (options: JobOptions) => void;
+  templates?: TemplateInfo[] | null;
 }
 
-const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
+const OptionsForm = ({kind, photos, options, onChange, templates = null}: OptionsFormProps) => {
   const set = <K extends keyof JobOptions>(key: K, value: JobOptions[K]) =>
     onChange({...options, [key]: value});
 
@@ -126,6 +150,32 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
 
   return (
     <div className="make-form">
+      {/* 呈现层模板:只影响转场/字幕/章节卡的"长相",滤镜/暗色等素材基调选项保持独立 */}
+      {kind === 'render' && (
+        <div className="make-field">
+          <span className="make-field-label">呈现模板</span>
+          <div className="make-radio-group make-template-grid">
+            <label className="make-radio make-template-card">
+              <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
+              <span className="make-template-card-body">
+                <strong>默认</strong>
+                <em>跟随配置的转场与字幕</em>
+              </span>
+            </label>
+            {(templates ?? []).map((template) => (
+              <label className="make-radio make-template-card" key={template.id}>
+                <input type="radio" name="render-template" checked={options.template === template.id} onChange={() => set('template', template.id)} />
+                <span className="make-template-card-body">
+                  <strong>{template.name}</strong>
+                  <em>{template.description}</em>
+                </span>
+              </label>
+            ))}
+          </div>
+          {templates === null && <p className="make-field-hint">模板列表加载中…</p>}
+        </div>
+      )}
+
       <div className="make-checkboxes">
         <label className="make-checkbox">
           <input type="checkbox" checked={options.exif} onChange={(e) => set('exif', e.target.checked)} />
@@ -292,8 +342,43 @@ const ActionCard = ({
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
+  const [templates, setTemplates] = useState<TemplateInfo[] | null>(null);
   const optionsPresence = useTransitionPresence(expanded);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
+  // 呈现模板按素材夹记忆:同一种风格反复迭代时不用每次重选
+  const templateStorageKey = `tsuzuri-template:${folder}`;
+
+  useEffect(() => {
+    let alive = true;
+    loadTemplates().then((list) => {
+      if (alive) setTemplates(list);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    // 模板列表就绪后回填上次选择;只在用户尚未手动选过时生效
+    if (kind !== 'render' || templates === null || options.template) return;
+    let saved: string | null = null;
+    try {
+      saved = localStorage.getItem(templateStorageKey);
+    } catch {}
+    if (saved && templates.some((t) => t.id === saved)) {
+      setOptions((prev) => ({...prev, template: saved}));
+    }
+  }, [templates, kind, templateStorageKey, options.template]);
+
+  const handleOptionsChange = (next: JobOptions) => {
+    if (kind === 'render' && next.template !== options.template) {
+      try {
+        if (next.template) localStorage.setItem(templateStorageKey, next.template);
+        else localStorage.removeItem(templateStorageKey);
+      } catch {}
+    }
+    setOptions(next);
+  };
 
   useLayoutEffect(() => {
     const panel = optionsPanelRef.current;
@@ -356,7 +441,7 @@ const ActionCard = ({
                   style={{pointerEvents: expanded ? undefined : 'none'}}
                   onTransitionEnd={optionsPresence.onTransitionEnd}
                 >
-                  <OptionsForm kind={kind} photos={photos} options={options} onChange={setOptions} />
+                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} templates={templates} />
                 </div>
               )}
               {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
