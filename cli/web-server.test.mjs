@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {PassThrough} from 'node:stream';
 import test from 'node:test';
+import {fileURLToPath} from 'node:url';
 
 import {createGalleryServer} from './web-server.mjs';
 import {createDoctorService} from './web-api/doctor.mjs';
@@ -96,6 +97,45 @@ test('/api/thumb errors remain errors even when If-None-Match is supplied', asyn
     assert.equal(escaped.status, 403);
   } finally {
     server.close();
+  }
+});
+
+test('静态资源缓存:assets 产物 immutable,index.html 不缓存,根级文件带 ETag 可 304', async (t) => {
+  const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
+  if (!fs.existsSync(dist)) {
+    t.skip('web/dist 未构建,跳过静态缓存头测试');
+    return;
+  }
+  const assetsDir = path.join(dist, 'assets');
+  fs.mkdirSync(assetsDir, {recursive: true});
+  const hashed = path.join(assetsDir, 'index-testhash.js');
+  const rootFile = path.join(dist, '.cache-test.txt');
+  fs.writeFileSync(hashed, 'console.log(1)');
+  fs.writeFileSync(rootFile, 'favicon-ish');
+  const {server} = createTestGalleryServer(makeTempRoot());
+  const port = await listen(server);
+  try {
+    const asset = await fetch(`http://127.0.0.1:${port}/assets/index-testhash.js`);
+    assert.equal(asset.status, 200);
+    assert.equal(asset.headers.get('cache-control'), 'public, max-age=31536000, immutable');
+
+    const root = await fetch(`http://127.0.0.1:${port}/.cache-test.txt`);
+    assert.equal(root.status, 200);
+    const etag = root.headers.get('etag');
+    assert.ok(etag, '根级文件应有 ETag');
+    assert.equal(root.headers.get('cache-control'), 'private, no-cache');
+
+    const revalidate = await fetch(`http://127.0.0.1:${port}/.cache-test.txt`, {headers: {'If-None-Match': etag}});
+    assert.equal(revalidate.status, 304);
+    assert.equal(await revalidate.text(), '');
+
+    const index = await fetch(`http://127.0.0.1:${port}/`);
+    assert.equal(index.status, 200);
+    assert.equal(index.headers.get('cache-control'), 'private, no-cache');
+  } finally {
+    server.close();
+    fs.rmSync(hashed, {force: true});
+    fs.rmSync(rootFile, {force: true});
   }
 });
 

@@ -74,9 +74,35 @@ const sendMedia = (res, result, createReadStream = fs.createReadStream) => {
 const INDEX_HTML = path.join(STATIC_DIR, 'index.html');
 const isDistBuilt = () => fs.existsSync(INDEX_HTML) && fs.statSync(INDEX_HTML).isFile();
 
-const serveFile = (res, filePath) => {
+const ASSETS_DIR = path.join(STATIC_DIR, 'assets');
+
+const staticEtag = (filePath) => {
+  const {size, mtimeNs} = fs.statSync(filePath, {bigint: true});
+  return `"${size}-${mtimeNs}"`;
+};
+
+const serveFile = (req, res, filePath) => {
   const contentType = STATIC_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
-  res.writeHead(200, {'Content-Type': contentType});
+  const headers = {'Content-Type': contentType};
+  // vite 把带内容哈希的产物全部打进 assets/:文件名变了内容才变,可永久缓存;
+  // 其余(如 favicon)按 stat 出 ETag,no-cache 每次都重新校验。
+  if (filePath.startsWith(ASSETS_DIR + path.sep)) {
+    headers['Cache-Control'] = 'public, max-age=31536000, immutable';
+  } else {
+    headers['Cache-Control'] = 'private, no-cache';
+    // existsSync 之后、stat 之前文件被删的竞态:退化为不带 ETag 直发,不崩。
+    let etag = null;
+    try { etag = staticEtag(filePath); } catch {}
+    if (etag !== null) {
+      headers.ETag = etag;
+      if (req.headers['if-none-match'] === etag) {
+        res.writeHead(304, {'Cache-Control': 'private, no-cache', ETag: etag});
+        res.end();
+        return;
+      }
+    }
+  }
+  res.writeHead(200, headers);
   fs.createReadStream(filePath).pipe(res);
 };
 
@@ -84,12 +110,13 @@ const serveFile = (res, filePath) => {
  * index.html 需要在返回前注入任务 API 用的 token(契约二:token 通过
  * `<meta name="tsuzuri-token">` 下发,不做 GET /api/token 端点白送出去),
  * 所以这里不能再用 fs.createReadStream 直接管道,要先读出内容改字符串。
+ * HTML 不缓存:token 每次启动都换,且它引用的哈希资源必须能立刻切换到新版本。
  */
 const serveIndexHtml = (res, token) => {
   const html = fs.readFileSync(INDEX_HTML, 'utf8');
   const escapedToken = token.replaceAll('"', '&quot;');
   const withToken = html.replace('</head>', `<meta name="tsuzuri-token" content="${escapedToken}">\n</head>`);
-  res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
+  res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache'});
   res.end(withToken);
 };
 
@@ -114,7 +141,7 @@ const serveStatic = (req, res, token) => {
       serveIndexHtml(res, token);
       return;
     }
-    serveFile(res, filePath);
+    serveFile(req, res, filePath);
     return;
   }
   // 已构建但没命中:带静态资源扩展名的路径确实是 404,其余(SPA 路由)回退到 index.html
