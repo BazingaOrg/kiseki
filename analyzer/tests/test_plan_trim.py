@@ -174,3 +174,26 @@ def test_main_rejects_invalid_trim_override(tmp_path: Path, value: str):
     with pytest.raises(SystemExit) as exc:
         plan.main([str(tmp_path), "--trim", value])
     assert exc.value.code == 2
+
+
+def test_trim_clips_lyrics_beyond_the_cut(tmp_path: Path):
+    """歌长图少裁剪时,截断点之后的歌词行被过滤,跨线行的 end 收敛到 duration。"""
+    make_photos(tmp_path, n=2)
+    (tmp_path / "tsuzuri.toml").write_text('trim = "auto"\n', encoding="utf-8")
+    beats = make_beats(duration=60.0)
+    lyrics = [
+        {"start": 0.0, "end": 3.0, "text": "line in range", "lang": "zh", "confidence": 0.9},
+        {"start": 15.0, "end": 20.0, "text": "crossing the cut", "lang": "zh", "confidence": 0.9},
+        {"start": 50.0, "end": 55.0, "text": "after cut", "lang": "zh", "confidence": 0.9},
+        {"start": 55.5, "end": 58.0, "text": "far after cut", "lang": "zh", "confidence": 0.9},
+    ]
+
+    timeline = plan.build_timeline(tmp_path, beats, lyrics, plan.load_config(tmp_path), None)
+
+    duration = timeline["meta"]["duration"]
+    assert duration < 60.0, "裁剪必须生效"
+    assert [line["text"] for line in timeline["subtitles"]] == ["line in range", "crossing the cut"]
+    for line in timeline["subtitles"]:
+        assert line["end"] <= duration, "任何字幕行的 end 都不能超过时间线时长"
+    crossing = timeline["subtitles"][1]
+    assert crossing["end"] == duration, "跨线行的 end 收敛到截断点"

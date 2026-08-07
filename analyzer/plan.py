@@ -476,6 +476,20 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     if input_hash:
         meta["input_hash"] = input_hash
 
+    # 歌长图少裁剪时,落在截断点之后的歌词行必须过滤、跨过截断点的行把 end
+    # 收敛到 duration——否则 timeline 校验(subtitles.end <= meta.duration)会
+    # 拒绝整份时间线,渲染端也本就不该有超出最后一帧的字幕。
+    if duration < full_duration and lyrics:
+        kept_lyrics = [
+            {**line, "end": min(line["end"], duration)}
+            for line in lyrics
+            if line["start"] < duration
+        ]
+        dropped = len(lyrics) - len(kept_lyrics)
+        if dropped:
+            term.info(f"歌词: 裁剪到 {duration:.1f}s,过滤 {dropped} 行超出部分的歌词")
+        lyrics = kept_lyrics
+
     result = {
         "meta": meta,
         "photos": clips,
