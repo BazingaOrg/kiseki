@@ -3,7 +3,7 @@
  * 转场、字幕/歌词呈现、章节卡样式。滤镜/背景/签名/文案/结构开关
  * 都不归模板(见 docs/plans/2026-08-07-template-system.md)。
  *
- * cli/templates.mjs 有平行的 id/名称镜像,只用于 CLI 校验与 web 端点;
+ * cli/templates.mjs 有平行的 id/名称镜像,只用于 CLI 校验与帮助;
  * 呈现字段只在这里定义,渲染器按 meta.templateId 自行解析。
  */
 
