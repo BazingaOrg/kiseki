@@ -11,12 +11,14 @@ import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
 import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
-// 直接复用渲染管线的滤镜定义:预览与成片同源,不再养第三份滤镜副本
+// 直接复用渲染管线的滤镜/模板定义:预览与成片同源,不再养第三份副本
 import {FILTERS, getFilter} from '../../renderer/src/filters';
+import {TEMPLATES as RENDER_TEMPLATES, type Template} from '../../renderer/src/templates';
 import type {Capability, Capabilities, Remedy} from './capabilities';
 import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
 import {thumbUrl} from './media';
+import {deletePreset, loadPresets, savePreset, type RenderPreset} from './presets';
 import type {ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import type {JobOptions} from './useJob';
@@ -25,27 +27,20 @@ import {useTransitionPresence} from './useTransitionPresence';
 
 type Kind = 'render' | 'still';
 
-interface TemplateInfo {
-  id: string;
-  name: string;
-  description: string;
-}
+/** 模板卡片示意:按 1080p 基准缩放字号,让卡片里的样本字幕接近成片的相对观感 */
+const CARD_CAPTION_SCALE = 0.34;
+const SAMPLE_CAPTION = '晴天 海边 午后';
 
-// 模板列表是静态数据,进程内缓存一次即可;渲染失败按空列表处理(不阻塞表单)
-let templatesCache: TemplateInfo[] | null = null;
-const loadTemplates = (): Promise<TemplateInfo[]> => {
-  if (templatesCache) return Promise.resolve(templatesCache);
-  return fetch('/api/templates')
-    .then((res) => (res.ok ? res.json() : {templates: []}))
-    .then((data: {templates?: TemplateInfo[]}) => {
-      templatesCache = data.templates ?? [];
-      return templatesCache;
-    })
-    .catch(() => {
-      templatesCache = [];
-      return templatesCache;
-    });
-};
+const captionCardStyle = (template: Template | undefined) => ({
+  fontSize: `${(template?.captions?.fontSize ?? 36) * CARD_CAPTION_SCALE}px`,
+  fontWeight: template?.captions?.fontWeight ?? 500,
+  letterSpacing: template?.captions?.letterSpacing ?? '0.12em',
+});
+
+const chapterCardStyle = (template: Template | undefined) => ({
+  fontSize: `${(template?.chapterCard?.fontSize ?? 46) * CARD_CAPTION_SCALE}px`,
+  letterSpacing: template?.chapterCard?.letterSpacing ?? '0.1em',
+});
 
 const KIND_VERB: Record<Kind, string> = {render: '渲染', still: '导出'};
 
@@ -131,10 +126,9 @@ interface OptionsFormProps {
   photos: string[];
   options: JobOptions;
   onChange: (options: JobOptions) => void;
-  templates?: TemplateInfo[] | null;
 }
 
-const OptionsForm = ({kind, photos, options, onChange, templates = null}: OptionsFormProps) => {
+const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
   const set = <K extends keyof JobOptions>(key: K, value: JobOptions[K]) =>
     onChange({...options, [key]: value});
 
@@ -150,21 +144,37 @@ const OptionsForm = ({kind, photos, options, onChange, templates = null}: Option
 
   return (
     <div className="make-form">
-      {/* 呈现层模板:只影响转场/字幕/章节卡的"长相",滤镜/暗色等素材基调选项保持独立 */}
+      {/* 呈现层模板:只影响转场/字幕/章节卡的"长相",滤镜/暗色等素材基调选项保持独立。
+          卡片示意用注册表的真实样式值拼 CSS 预览,与滤镜预览同模式,标注示意不当承诺。 */}
       {kind === 'render' && (
         <div className="make-field">
           <span className="make-field-label">呈现模板</span>
           <div className="make-radio-group make-template-grid">
             <label className="make-radio make-template-card">
               <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
+              {photos[0] && (
+                <span className="make-template-card-visual">
+                  <img src={thumbUrl(photos[0], 240)} alt="" loading="lazy" />
+                  <span className="make-template-card-caption" style={captionCardStyle(undefined)}>{SAMPLE_CAPTION}</span>
+                </span>
+              )}
               <span className="make-template-card-body">
                 <strong>默认</strong>
                 <em>跟随配置的转场与字幕</em>
               </span>
             </label>
-            {(templates ?? []).map((template) => (
+            {RENDER_TEMPLATES.map((template) => (
               <label className="make-radio make-template-card" key={template.id}>
                 <input type="radio" name="render-template" checked={options.template === template.id} onChange={() => set('template', template.id)} />
+                {photos[0] && (
+                  <span className="make-template-card-visual">
+                    <img src={thumbUrl(photos[0], 240)} alt="" loading="lazy" />
+                    {template.chapterCard && (
+                      <span className="make-template-card-chapter" style={chapterCardStyle(template)}>第一天</span>
+                    )}
+                    <span className="make-template-card-caption" style={captionCardStyle(template)}>{SAMPLE_CAPTION}</span>
+                  </span>
+                )}
                 <span className="make-template-card-body">
                   <strong>{template.name}</strong>
                   <em>{template.description}</em>
@@ -172,7 +182,7 @@ const OptionsForm = ({kind, photos, options, onChange, templates = null}: Option
               </label>
             ))}
           </div>
-          {templates === null && <p className="make-field-hint">模板列表加载中…</p>}
+          <p className="make-field-hint">卡片为样式示意,以成片为准。</p>
         </div>
       )}
 
@@ -342,33 +352,24 @@ const ActionCard = ({
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
-  const [templates, setTemplates] = useState<TemplateInfo[] | null>(null);
+  const [presets, setPresets] = useState<RenderPreset[]>(() => loadPresets(folder));
+  const [presetName, setPresetName] = useState('');
   const optionsPresence = useTransitionPresence(expanded);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
   // 呈现模板按素材夹记忆:同一种风格反复迭代时不用每次重选
   const templateStorageKey = `tsuzuri-template:${folder}`;
 
   useEffect(() => {
-    let alive = true;
-    loadTemplates().then((list) => {
-      if (alive) setTemplates(list);
-    });
-    return () => {
-      alive = false;
-    };
-  }, []);
-
-  useEffect(() => {
-    // 模板列表就绪后回填上次选择;只在用户尚未手动选过时生效
-    if (kind !== 'render' || templates === null || options.template) return;
+    // 挂载后回填上次选择的模板;只在用户尚未手动选过时生效
+    if (kind !== 'render' || options.template) return;
     let saved: string | null = null;
     try {
       saved = localStorage.getItem(templateStorageKey);
     } catch {}
-    if (saved && templates.some((t) => t.id === saved)) {
+    if (saved && RENDER_TEMPLATES.some((t) => t.id === saved)) {
       setOptions((prev) => ({...prev, template: saved}));
     }
-  }, [templates, kind, templateStorageKey, options.template]);
+  }, [kind, options.template, templateStorageKey]);
 
   const handleOptionsChange = (next: JobOptions) => {
     if (kind === 'render' && next.template !== options.template) {
@@ -379,6 +380,23 @@ const ActionCard = ({
     }
     setOptions(next);
   };
+
+  // 预设 = 用户级一键组合(模板+滤镜+暗色+开关),应用时净化可能已失效的模板 id
+  const applyPreset = (preset: RenderPreset) => {
+    const template = preset.options.template && RENDER_TEMPLATES.some((t) => t.id === preset.options.template)
+      ? preset.options.template
+      : null;
+    handleOptionsChange({...preset.options, template});
+  };
+
+  const isCurrentPreset = (preset: RenderPreset) => JSON.stringify(preset.options) === JSON.stringify(options);
+
+  const handleSavePreset = () => {
+    setPresets(savePreset(folder, presetName, options, RENDER_TEMPLATES.map((t) => t.id)));
+    setPresetName('');
+  };
+
+  const handleDeletePreset = (id: string) => setPresets(deletePreset(folder, id));
 
   useLayoutEffect(() => {
     const panel = optionsPanelRef.current;
@@ -441,7 +459,45 @@ const ActionCard = ({
                   style={{pointerEvents: expanded ? undefined : 'none'}}
                   onTransitionEnd={optionsPresence.onTransitionEnd}
                 >
-                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} templates={templates} />
+                  {kind === 'render' && (
+                    <div className="make-presets">
+                      {presets.length > 0 && (
+                        <div className="make-preset-row">
+                          {presets.map((preset) => (
+                            <div className={`make-preset-chip${isCurrentPreset(preset) ? ' make-preset-chip-active' : ''}`} key={preset.id}>
+                              <button
+                                type="button"
+                                className="make-preset-apply"
+                                onClick={() => applyPreset(preset)}
+                                title={`应用预设:${preset.name}`}
+                              >
+                                {preset.name}
+                              </button>
+                              <button
+                                type="button"
+                                className="make-preset-delete"
+                                onClick={() => handleDeletePreset(preset.id)}
+                                aria-label={`删除预设 ${preset.name}`}
+                              >
+                                ×
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      <div className="make-preset-save">
+                        <input
+                          className="make-preset-name"
+                          value={presetName}
+                          onChange={(event) => setPresetName(event.target.value)}
+                          placeholder="预设名称,如 复古暗夜"
+                          aria-label="预设名称"
+                        />
+                        <button className="link-button" disabled={!presetName.trim()} onClick={handleSavePreset}>存为预设</button>
+                      </div>
+                    </div>
+                  )}
+                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} />
                 </div>
               )}
               {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}

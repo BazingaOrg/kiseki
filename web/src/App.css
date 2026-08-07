@@ -1403,6 +1403,43 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   border-radius: 4px;
 }
 
+.make-template-card-visual {
+  position: relative;
+  width: 100%;
+  height: 84px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #171512;
+}
+
+.make-template-card-visual img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.85;
+}
+
+.make-template-card-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  white-space: nowrap;
+}
+
+.make-template-card-chapter {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
+  letter-spacing: 0.1em;
+}
+
 .make-template-card-body {
   display: flex;
   flex-direction: column;
@@ -1419,6 +1456,69 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   font-style: normal;
   font-size: 0.75rem;
   color: var(--color-secondary-text);
+}
+
+.make-presets {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.make-preset-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.make-preset-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid var(--color-divider);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.make-preset-chip-active {
+  border-color: var(--color-accent, var(--color-secondary-text));
+}
+
+.make-preset-apply {
+  padding: 0.25rem 0.6rem;
+  font-size: 0.78rem;
+  background: none;
+  border: none;
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.make-preset-apply:hover {
+  text-decoration: underline;
+}
+
+.make-preset-delete {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.78rem;
+  background: none;
+  border: none;
+  border-left: 1px solid var(--color-divider);
+  color: var(--color-faint-text);
+  cursor: pointer;
+}
+
+.make-preset-delete:hover {
+  color: var(--color-error, #c0392b);
+}
+
+.make-preset-save {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.make-preset-name {
+  flex: 1;
+  max-width: 16rem;
 }
 
 .photo-group-head {
