@@ -17,6 +17,7 @@ import {Subtitle} from './Subtitle';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, getPalette, getVisualScale} from './theme';
 import {getFadeDuration} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
+import {resolveTemplatePresentation} from './templates';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
@@ -34,6 +35,8 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const {fps, width, height, durationInFrames} = useVideoConfig();
   const t = frame / fps;
   const palette = getPalette(meta.background);
+  // 呈现层模板:只覆盖照片转场与字幕/章节卡长相;缺省(无 templateId)全部回落现有常量
+  const template = resolveTemplatePresentation(meta.templateId);
 
   // 视觉规格以 1080p 为基准,非 1080p 输出等比缩放
   const scale = getVisualScale(width, height);
@@ -51,14 +54,16 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   for (let index = 0; index < visualClips.length; index += 1) {
     const clip = visualClips[index];
     if (!isPhotoClip(clip)) continue;
-    const dIn = getFadeDuration(clip.transition);
+    // 模板转场是呈现层默认,取代 timeline 里的逐 clip 转场;chapter 卡保持自身节奏
+    const effective = template.transition === undefined ? clip : {...clip, transition: template.transition};
+    const dIn = getFadeDuration(effective.transition);
     const nextClip = visualClips[index + 1];
-    const dOut = isPhotoClip(nextClip) ? getFadeDuration(nextClip.transition) : 0;
+    const dOut = isPhotoClip(nextClip) ? getFadeDuration(template.transition ?? nextClip.transition) : 0;
     if (
       t >= clip.start - dIn / 2 - 1 / fps &&
       t <= clip.end + dOut / 2 + 1 / fps
     ) {
-      visiblePhotos.push({clip, index});
+      visiblePhotos.push({clip: effective, index});
     }
   }
 
@@ -138,9 +143,10 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           bandCenterFromBottom={bandCenterFromBottom}
           sideInset={subtitleSideInset}
           palette={palette}
+          captions={template.captions}
         />
       ))}
-      {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} />)}
+      {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} />)}
       {whiteFade > 0 ? (
         <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} />
       ) : null}

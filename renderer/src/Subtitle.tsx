@@ -2,6 +2,7 @@ import React from 'react';
 import {Easing, interpolate, useCurrentFrame, useVideoConfig} from 'remotion';
 import {FONT_FAMILY, SUBTITLE, type Palette} from './theme';
 import type {SubtitleLine} from './types';
+import type {TemplateCaptionsStyle} from './templates';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 const easeOut = {...clamp, easing: Easing.out(Easing.cubic)} as const;
@@ -38,32 +39,37 @@ export const Subtitle: React.FC<{
   bandCenterFromBottom: number; // 照片安全框下缘到画布底部的带状区域中心,距底 px
   sideInset?: number; // 左右对称预留,避免长字幕与右下角落款交叠
   palette: Palette;
-}> = ({line, scale, bandCenterFromBottom, sideInset = 0, palette}) => {
+  /** 模板注入的字幕呈现样式;缺省用全局 SUBTITLE 常量(时序/过滤字段永远全局) */
+  captions?: TemplateCaptionsStyle;
+}> = ({line, scale, bandCenterFromBottom, sideInset = 0, palette, captions}) => {
   const frame = useCurrentFrame();
   const {fps, width} = useVideoConfig();
   const t = frame / fps;
 
-  const inEnd = line.start + SUBTITLE.fadeInDuration;
-  const outEnd = line.end + SUBTITLE.fadeOutDuration;
+  // 模板只覆盖"长相"(字号/字重/字距/位移),淡入淡出等时序仍走全局常量
+  const style = {...SUBTITLE, ...captions};
+
+  const inEnd = line.start + style.fadeInDuration;
+  const outEnd = line.end + style.fadeOutDuration;
   const fadeIn = interpolate(t, [line.start, inEnd], [0, 1], clamp);
   const fadeOut = interpolate(t, [line.end, outEnd], [1, 0], clamp);
   const opacity = Math.min(fadeIn, fadeOut);
 
   // 摄影展题签式动效:只保留克制的淡化与短距离位移。
-  const riseIn = interpolate(t, [line.start, inEnd], [SUBTITLE.riseDistance * scale, 0], easeOut);
-  const riseOut = interpolate(t, [line.end, outEnd], [0, -SUBTITLE.exitRise * scale], easeOut);
+  const riseIn = interpolate(t, [line.start, inEnd], [style.riseDistance * scale, 0], easeOut);
+  const riseOut = interpolate(t, [line.end, outEnd], [0, -style.exitRise * scale], easeOut);
   const rise = riseIn + riseOut;
 
   const letterSpacing =
-    fullwidthLength(line.text) > SUBTITLE.compactThreshold
-      ? SUBTITLE.letterSpacingCompact
-      : SUBTITLE.letterSpacing;
+    fullwidthLength(line.text) > style.compactThreshold
+      ? style.letterSpacingCompact
+      : style.letterSpacing;
 
   // 超宽兜底:analyze 层已按词拆行,但手改 timeline 等场景仍可能出现超长行,
   // 按估算宽度等比缩小字号,保证不溢出画布(估算:全角 1em、半角 0.5em + 字距)
   const spacingEm = parseFloat(letterSpacing);
   const units = fullwidthLength(line.text);
-  const baseSize = SUBTITLE.fontSize * scale;
+  const baseSize = style.fontSize * scale;
   const estWidth = baseSize * (units + line.text.length * spacingEm);
   const maxWidth = Math.min(width * 0.86, Math.max(1, width - sideInset * 2));
   const fontSize = estWidth > maxWidth ? baseSize * (maxWidth / estWidth) : baseSize;
@@ -87,7 +93,7 @@ export const Subtitle: React.FC<{
         style={{
           fontFamily: resolveFontFamily(line.text, line.lang),
           fontSize,
-          fontWeight: SUBTITLE.fontWeight,
+          fontWeight: style.fontWeight,
           color: palette.text,
           lineHeight: 1,
           letterSpacing,

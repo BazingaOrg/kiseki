@@ -73,6 +73,8 @@ export type TimelineMeta = {
   sign?: boolean;
   /** 渲染时覆盖注入的全局滤镜;逐张覆盖见 PhotoClip.filter(阶段二实现) */
   filter?: {id: string; intensity?: number} | null;
+  /** 渲染时覆盖注入的呈现层模板 id(见 renderer/src/templates.ts);缺省不应用模板 */
+  templateId?: string;
   chapters?: {enabled: boolean; day_count: number; card_count: number};
 };
 
