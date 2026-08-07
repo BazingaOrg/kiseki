@@ -17,7 +17,7 @@ const YTDLP_PROGRESS_RE = /^\[download\]\s+(\d{1,3}(?:\.\d+)?)%/;
 /** Search text keeps its characters and order; only surrounding/repeated whitespace is normalized. */
 export const normalizeSearchQuery = (value) => String(value ?? '').trim().replace(/\s+/g, ' ');
 
-/** 把 yt-dlp 的下载行抹平成 CLI/Web 共用的 progress 契约。 */
+/** 把 yt-dlp 的下载行抹平成 CLI/Web 共用的 progress 契约. */
 export const parseYtDlpProgress = (line) => {
   const clean = String(line ?? '').replace(ANSI_RE, '').trim();
   const match = YTDLP_PROGRESS_RE.exec(clean);
@@ -27,7 +27,7 @@ export const parseYtDlpProgress = (line) => {
   return {kind: 'progress', label: YTDLP_PROGRESS_LABEL, percent: Math.round(value)};
 };
 
-/** 解析 yt-dlp --print "%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s" 的一行。 */
+/** 解析 yt-dlp --print "%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s" 的一行. */
 export const parseSearchLine = (line) => {
   const parts = String(line ?? '').split('\t');
   if (parts.length < 2 || !parts[0].trim()) return null;
@@ -40,7 +40,7 @@ export const parseSearchLine = (line) => {
   };
 };
 
-/** 保留 yt-dlp 输出中的首个同 id 结果，随后才限制候选数。 */
+/** 保留 yt-dlp 输出中的首个同 id 结果,随后才限制候选数. */
 export const parseSearchCandidates = (stdout) => {
   const seen = new Set();
   return String(stdout ?? '').split('\n')
@@ -74,8 +74,8 @@ export const searchYtDlp = (query, {spawn = spawnSync} = {}) => {
 };
 
 /**
- * 始终下载到素材目录外的临时目录。这既能强制同 URL 重新下载,
- * 也保证 yt-dlp/转码失败时不会碰到已有素材。
+ * 始终下载到素材目录外的临时目录.这既能强制同 URL 重新下载,
+ * 也保证 yt-dlp/转码失败时不会碰到已有素材.
  */
 export const downloadWithYtDlp = (
   url,
@@ -105,9 +105,9 @@ export const downloadWithYtDlp = (
 };
 
 /**
- * fetch 交互流程专用的流式下载。yt-dlp 自身的百分比被解析后交给共享进度器，
- * 因而 TTY 与重定向日志分别遵循同一行刷新和稳定节流规则。错误文字保留给调用方
- * 用 term.detail 输出，避免子进程原样刷屏后再重复报一次失败。
+ * fetch 交互流程专用的流式下载.yt-dlp 自身的百分比被解析后交给共享进度器,
+ * 因而 TTY 与重定向日志分别遵循同一行刷新和稳定节流规则.错误文字保留给调用方
+ * 用 term.detail 输出,避免子进程原样刷屏后再重复报一次失败.
  */
 export const downloadWithYtDlpProgress = (
   url,

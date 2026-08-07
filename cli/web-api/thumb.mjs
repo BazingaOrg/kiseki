@@ -1,4 +1,4 @@
-/** GET /api/thumb?path=<abs 照片路径>&w=<宽> —— 缩略图及条件缓存。 */
+/** GET /api/thumb?path=<abs 照片路径>&w=<宽> —— 缩略图及条件缓存. */
 import {spawn} from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -20,11 +20,11 @@ export const normalizeWidth = (raw) => {
 
 const statPart = (stat, nsName, msName) => {
   if (stat[nsName] !== undefined) return String(stat[nsName]);
-  // 旧 Node/平台没有 *Ns 时仍将毫秒值明确序列化，不能依赖对象字符串化。
+  // 旧 Node/平台没有 *Ns 时仍将毫秒值明确序列化,不能依赖对象字符串化.
   return String(stat[msName] ?? '');
 };
 
-/** 源身份同时作为缓存键和强 ETag 的输入，不能只看 mtime/大小。 */
+/** 源身份同时作为缓存键和强 ETag 的输入,不能只看 mtime/大小. */
 export const sourceIdentity = (filePath, stat, width) => [
   filePath,
   String(stat.dev ?? ''),
@@ -40,7 +40,7 @@ export const cacheKey = (filePath, stat, width) =>
 
 export const etagFor = (filePath, stat, width) => `"thumb-${cacheKey(filePath, stat, width)}"`;
 
-/** If-None-Match 使用弱比较；缩略图的当前内容身份由 ETag 完整代表。 */
+/** If-None-Match 使用弱比较;缩略图的当前内容身份由 ETag 完整代表. */
 export const matchesIfNoneMatch = (raw, etag) => {
   if (!raw) return false;
   return raw.split(',').some((part) => {
@@ -55,7 +55,7 @@ const CACHE_ENTRY_RE = /^[a-f0-9]{40}\.jpg$/;
 export const pruneCache = (dir = CACHE_DIR, limit = MAX_CACHE_ENTRIES) => {
   let entries;
   try {
-    // 只处理本服务以 SHA-1 cache key 命名的产物，绝不顺手删目录里的其他文件。
+    // 只处理本服务以 SHA-1 cache key 命名的产物,绝不顺手删目录里的其他文件.
     entries = fs.readdirSync(dir).filter((name) => CACHE_ENTRY_RE.test(name));
   } catch {
     return 0;
@@ -76,9 +76,9 @@ export const pruneCache = (dir = CACHE_DIR, limit = MAX_CACHE_ENTRIES) => {
 
 /**
  * 每生成一张缩略图就全目录 readdir + 逐条 statSync 做 LRU 是 O(n²):把
- * "够不够修剪"的判定换成进程内计数,只有计数超限才真正扫一次盘。冷启动时
- * 用一次只读名字的 readdir 校准真实数量,避免上一会话留下的缓存漏修剪。
- * 计数漂移(如外部删文件)最多导致一次多余修剪或一次超限修剪,不影响正确性。
+ * "够不够修剪"的判定换成进程内计数,只有计数超限才真正扫一次盘.冷启动时
+ * 用一次只读名字的 readdir 校准真实数量,避免上一会话留下的缓存漏修剪.
+ * 计数漂移(如外部删文件)最多导致一次多余修剪或一次超限修剪,不影响正确性.
  */
 export const createPruner = () => {
   let generatedCount = 0;
@@ -109,7 +109,7 @@ const ffmpegWaiters = [];
 
 /**
  * 并发上限内的调度:首屏/快速滚动时大量缓存未命中,不能瞬间拉起几十个
- * ffmpeg。超出的请求排队,前面的结束一个放行一个。
+ * ffmpeg.超出的请求排队,前面的结束一个放行一个.
  */
 const withFfmpegSlot = (job) => {
   if (ffmpegActive >= THUMB_CONCURRENCY) {
@@ -130,7 +130,7 @@ const ffmpegArgs = (source, destination, width) => [
 
 /**
  * @param {{spawn?: Function, timeoutMs?: number}} [options] 测试注入用;超时
- * 兜底 kill 掉卡死的 ffmpeg 返回 false,调用方回源图,不让请求无限挂着。
+ * 兜底 kill 掉卡死的 ffmpeg 返回 false,调用方回源图,不让请求无限挂着.
  */
 export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn, timeoutMs = THUMB_TIMEOUT_MS} = {}) =>
   withFfmpegSlot(() => new Promise((resolve) => {
@@ -198,7 +198,7 @@ export const resolveThumb = async (root, requestedPath, rawWidth, ifNoneMatch, d
 
   try { mkdirSync(cacheDir, {recursive: true, mode: 0o700}); } catch { return serve(safePath, 'image/jpeg'); }
 
-  // 文件在 ffmpeg 期间被替换时，绝不能把新旧内容用旧身份塞进缓存。只重试一次。
+  // 文件在 ffmpeg 期间被替换时,绝不能把新旧内容用旧身份塞进缓存.只重试一次.
   {
     const pending = `${cached}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp.jpg`;
     const ok = await generate(safePath, pending, width);
@@ -206,7 +206,7 @@ export const resolveThumb = async (root, requestedPath, rawWidth, ifNoneMatch, d
     if (!after || sourceIdentity(safePath, after, width) !== sourceIdentity(safePath, sourceStat, width)) {
       try { rmSync(pending, {force: true}); } catch {}
       if (!deps._thumbRetry) {
-        // 从新的身份重新开始，ETag/cache key 都必须一起更新。
+        // 从新的身份重新开始,ETag/cache key 都必须一起更新.
         return resolveThumb(root, requestedPath, rawWidth, ifNoneMatch, {...deps, cacheDir, _thumbRetry: true});
       }
       return {status: 409, body: '生成缩略图时源文件持续变化'};

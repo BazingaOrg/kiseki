@@ -1,10 +1,10 @@
 /**
  * tsuzuri fetch <folder> — 在线备料:用用户自装的 yt-dlp 下载音频,用 LRCLIB
- * 公开 API 搜索同步歌词。两者都是可选步骤:yt-dlp 用时才检测(不内置下载器),
- * 歌词搜不到就照旧走本地识别。fetch 获取的音频与同名 .lrc 归档到 audio/。
+ * 公开 API 搜索同步歌词.两者都是可选步骤:yt-dlp 用时才检测(不内置下载器),
+ * 歌词搜不到就照旧走本地识别.fetch 获取的音频与同名 .lrc 归档到 audio/.
  *
- * 交互约定与 menu.mjs 一致:readline 问答、回车走安全默认值、q 退出、Ctrl+C 中断。
- * 决策逻辑抽成纯函数(可测),交互层只负责问答与 spawn。
+ * 交互约定与 menu.mjs 一致:readline 问答、回车走安全默认值、q 退出、Ctrl+C 中断.
+ * 决策逻辑抽成纯函数(可测),交互层只负责问答与 spawn.
  */
 
 import {spawnSync} from 'node:child_process';
@@ -47,7 +47,7 @@ export const formatDuration = (totalSeconds) => {
   return `${minutes}:${String(seconds).padStart(2, '0')}`;
 };
 
-/** 生成跨平台安全的单个文件名片段。 */
+/** 生成跨平台安全的单个文件名片段. */
 export const sanitizeFilePart = (value) =>
   String(value ?? '')
     .replace(/[\x00-\x1f<>:"/\\|?*]+/g, ' ')
@@ -63,7 +63,7 @@ export const buildAudioFilename = ({title, artist, ext}) => {
   return `${cleanTitle}${cleanArtist ? ` - ${cleanArtist}` : ''}${suffix.toLowerCase()}`;
 };
 
-/** 从 ffprobe tags / 文件名推默认歌词关键词。 */
+/** 从 ffprobe tags / 文件名推默认歌词关键词. */
 export const buildLyricsQuery = ({title, artist, audioFile}) => {
   if (title && artist) return `${title} ${artist}`;
   if (title) return title;
@@ -71,7 +71,7 @@ export const buildLyricsQuery = ({title, artist, audioFile}) => {
   return base.replace(/[_\-.]+/g, ' ').replace(/\s+/g, ' ').trim();
 };
 
-/** 歌词候选与音频时长差(秒);无法比较返回 null。 */
+/** 歌词候选与音频时长差(秒);无法比较返回 null. */
 export const durationDelta = (candidateSeconds, audioSeconds) => {
   if (!Number.isFinite(candidateSeconds) || !Number.isFinite(audioSeconds)) return null;
   return Math.abs(candidateSeconds - audioSeconds);
@@ -86,33 +86,33 @@ export const formatLyricsCandidate = (record, audioSeconds) => {
   return base;
 };
 
-/** 只保留带同步时间轴的候选(纯文本歌词对踩点字幕没有用)。 */
+/** 只保留带同步时间轴的候选(纯文本歌词对踩点字幕没有用). */
 export const filterSyncedRecords = (records) =>
   (Array.isArray(records) ? records : []).filter(
     (r) => r && typeof r.syncedLyrics === 'string' && r.syncedLyrics.trim() && !r.instrumental,
   );
 
-/** LRCLIB 的 id 只能是十进制整数；数字类型也必须安全且非负。 */
+/** LRCLIB 的 id 只能是十进制整数;数字类型也必须安全且非负. */
 export const canonicalLyricsId = (id) => {
   if (typeof id === 'string') return /^\d+$/.test(id) ? id : null;
   if (typeof id === 'number' && Number.isSafeInteger(id) && id >= 0) return String(id);
   return null;
 };
 
-/** 保留 LRCLIB 返回顺序中的首个同 id 记录，随后才限制候选数。 */
+/** 保留 LRCLIB 返回顺序中的首个同 id 记录,随后才限制候选数. */
 export const limitLyricsCandidates = (records) => {
   const seen = new Set();
   return filterSyncedRecords(records)
     .filter((record) => {
       const id = canonicalLyricsId(record.id);
-      // CLI 直接保存候选里的歌词；没有 provider id 的两条候选不能因 undefined
-      // 被误认为同一条。Web 层会在把候选下发给按 id 保存的 UI 前过滤它们。
+      // CLI 直接保存候选里的歌词;没有 provider id 的两条候选不能因 undefined
+      // 被误认为同一条.Web 层会在把候选下发给按 id 保存的 UI 前过滤它们.
       return id === null || (!seen.has(id) && seen.add(id));
     })
     .slice(0, LYRICS_SEARCH_LIMIT);
 };
 
-/** 解析 `curl -w '\n%{http_code}'` 的输出:末行是状态码,其余是 body。 */
+/** 解析 `curl -w '\n%{http_code}'` 的输出:末行是状态码,其余是 body. */
 export const parseCurlResponse = (stdout) => {
   const text = String(stdout ?? '');
   const cut = text.lastIndexOf('\n');
@@ -122,7 +122,7 @@ export const parseCurlResponse = (stdout) => {
   return {status, body: text.slice(0, cut)};
 };
 
-/** 按文件夹现状决定兜底流程该提议什么(主流程只补缺,不打扰已备齐的)。 */
+/** 按文件夹现状决定兜底流程该提议什么(主流程只补缺,不打扰已备齐的). */
 export const planOffers = ({audios, lyrics}) => ({
   offerAudio: audios.length === 0,
   offerLyrics: audios.length === 1 && lyrics.length === 0,
@@ -133,8 +133,8 @@ export const planOffers = ({audios, lyrics}) => ({
 // ---------------------------------------------------------------------------
 
 /**
- * 以 lease claim 派生的同目录 partial/backup 事务安装下载结果。
- * 不扫描或创建项目内 `.tsuzuri-fetch-*` 目录。
+ * 以 lease claim 派生的同目录 partial/backup 事务安装下载结果.
+ * 不扫描或创建项目内 `.tsuzuri-fetch-*` 目录.
  */
 const installFetchedFile = ({source = null, contents = null, folder, filename, existing = null, task = null}) => {
   const audioFolder = path.join(folder, AUDIO_DIR);
@@ -171,7 +171,7 @@ export const installDownloadedAudio = (options) => installFetchedFile(options);
 export const installDownloadedLyrics = ({lyrics, ...options}) =>
   installFetchedFile({...options, contents: lyrics});
 
-/** 读音频 tag 与时长;ffprobe 失败不致命,返回空对象走文件名兜底。 */
+/** 读音频 tag 与时长;ffprobe 失败不致命,返回空对象走文件名兜底. */
 export const probeAudio = (file, spawn = spawnSync) => {
   const r = spawn(
     'ffprobe',
@@ -199,7 +199,7 @@ export const probeAudio = (file, spawn = spawnSync) => {
 // ---------------------------------------------------------------------------
 
 // 用 curl 而非 Node fetch:curl 跟随系统代理环境变量(http_proxy 等),
-// 且与本项目 spawnSync 外部命令的风格一致;macOS 与 Windows 10+ 均自带。
+// 且与本项目 spawnSync 外部命令的风格一致;macOS 与 Windows 10+ 均自带.
 const lrclibFetch = (pathname, params) => {
   const url = new URL(`${LRCLIB_BASE}${pathname}`);
   for (const [key, value] of Object.entries(params)) {
@@ -220,7 +220,7 @@ const lrclibFetch = (pathname, params) => {
   return JSON.parse(parsed.body);
 };
 
-/** 精确记录必须真的含同步歌词;否则继续用关键词宽松搜索。 */
+/** 精确记录必须真的含同步歌词;否则继续用关键词宽松搜索. */
 export const searchLyricsRecords = async (
   {query, title, artist, duration, customized = false, requireValidId = false},
   fetcher = lrclibFetch,
@@ -243,7 +243,7 @@ const NETWORK_HINT = '检查网络是否可达 lrclib.net(请求经 curl 发出,
 // 交互层
 // ---------------------------------------------------------------------------
 
-/** 音频下载子流程;成功时返回用户确认的文件名/歌曲信息。 */
+/** 音频下载子流程;成功时返回用户确认的文件名/歌曲信息. */
 const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
   const ytdlp = checkYtDlp();
   if (!ytdlp.ok) {
@@ -347,7 +347,7 @@ const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
   }
 };
 
-/** 歌词搜索子流程;audio 必须存在(要按时长匹配、按音频名落盘)。 */
+/** 歌词搜索子流程;audio 必须存在(要按时长匹配、按音频名落盘). */
 export const lyricsFlow = async (
   ask,
   out,
@@ -463,7 +463,7 @@ const resolveFolder = (folderArg) => {
 };
 
 export const buildNextStepMessage = (folder, {photos, audios}) => {
-  if (photos.length === 0) return '下一步:先把照片放入素材文件夹';
+  if (photos.length === 0) return '下一步:先把照片放入素材夹';
   if (audios.length === 1) {
     return `下一步:可运行 ${formatEquivalentCommand([folder])} 渲染`;
   }
@@ -491,7 +491,7 @@ export const chooseSingleAudio = async (ask, folder, audios) => {
   return [keep];
 };
 
-/** `tsuzuri fetch <folder>`:显式备料入口,任何状态可进,覆盖需确认。 */
+/** `tsuzuri fetch <folder>`:显式备料入口,任何状态可进,覆盖需确认. */
 export const runFetch = async (
   folderArg,
   {input = process.stdin, output = process.stdout, leaseManager = createTaskLeaseManager()} = {},
@@ -580,8 +580,8 @@ export const runFetch = async (
 };
 
 /**
- * 渲染 / lyrics 主流程兜底:交互终端下缺什么补什么,备齐则一句话不问。
- * 用户拒绝或失败后直接返回,由随后的 scanFolder 给出既有的清晰报错。
+ * 渲染 / lyrics 主流程兜底:交互终端下缺什么补什么,备齐则一句话不问.
+ * 用户拒绝或失败后直接返回,由随后的 scanFolder 给出既有的清晰报错.
  */
 export const offerFetch = async (folder, {input = process.stdin, output = process.stdout, task: existingTask = null} = {}) => {
   if (input === process.stdin && (!process.stdin.isTTY || !process.stdout.isTTY)) return;

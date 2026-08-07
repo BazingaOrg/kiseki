@@ -72,7 +72,7 @@ export const commitAtomicOutput = (finalPath, partialPath, {taskId = resolveAtom
       try {
         fs.renameSync(backup, finalResolved);
       } catch (rollbackError) {
-        throw new AggregateError([error, rollbackError], '原子输出替换失败，且无法恢复旧文件');
+        throw new AggregateError([error, rollbackError], '原子输出替换失败,且无法恢复旧文件');
       }
     }
     throw error;

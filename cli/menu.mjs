@@ -1,7 +1,7 @@
 /**
  * tsuzuri 裸命令交互菜单:数字 + 回车,只在 TTY 且零参数时进入(入口判断在
- * tsuzuri.mjs)。菜单只组装 argv 交回 parseArgs,与命令行走同一条代码路径;
- * 执行前回显等效命令,用一次菜单就能学会直达写法。
+ * tsuzuri.mjs).菜单只组装 argv 交回 parseArgs,与命令行走同一条代码路径;
+ * 执行前回显等效命令,用一次菜单就能学会直达写法.
  */
 
 import os from 'node:os';
@@ -13,16 +13,16 @@ import {PICK_BACK, withPrompts} from './prompts.mjs';
 import {paint, term} from './term.mjs';
 
 export const MENU_ITEMS = [
-  {key: '1', label: '渲染相册视频', pathPrompt: '素材文件夹'},
-  {key: '2', label: '导出静态作品图(still)', pathPrompt: '照片或文件夹'},
-  {key: '3', label: '预览歌词识别(lyrics)', pathPrompt: '素材文件夹'},
+  {key: '1', label: '渲染相册视频', pathPrompt: '素材夹'},
+  {key: '2', label: '导出静态图(still)', pathPrompt: '照片或文件夹'},
+  {key: '3', label: '预览歌词识别(lyrics)', pathPrompt: '素材夹'},
   {key: '4', label: '检查依赖(doctor)', pathPrompt: null},
-  {key: '5', label: '获取音频/歌词到素材夹(fetch)', pathPrompt: '素材文件夹'},
+  {key: '5', label: '获取音频/歌词到素材夹(fetch)', pathPrompt: '素材夹'},
   {key: '6', label: '打开本地工作台(web)', pathPrompt: null},
 ];
 export const MENU_BACK = Symbol('menu-back');
 
-/** 常驻命令:起来之后进程就归它了,菜单不能再回到提示符 —— 否则同一项目会被多个服务实例操作。 */
+/** 常驻命令:起来之后进程就归它了,菜单不能再回到提示符 —— 否则同一项目会被多个服务实例操作. */
 export const isResidentCommand = (argv) => Array.isArray(argv) && argv[0] === 'web';
 
 // 极简 ASCII(不用方框):规避全角字符在窄/等宽异常终端的对齐错位
@@ -32,23 +32,23 @@ const BANNER = [
 ];
 const FAREWELL = [
   '  /\\_/\\',
-  ' ( -ᴥ- )  晚安。素材都在原文件夹,随时再来。',
+  ' ( -ᴥ- )  晚安.素材都在原位置,随时再来.',
 ];
 
-/** 只在裸命令进入交互菜单时打印;直接命令/管道绝不打印,保持可脚本性。 */
+/** 只在裸命令进入交互菜单时打印;直接命令/管道绝不打印,保持可脚本性. */
 export const writeBanner = (output = process.stdout) => {
   output.write(`${BANNER.map((line) => paint('start', line, output)).join('\n')}\n\n`);
 };
 
-/** 只在从菜单 q 正常退出时打印。 */
+/** 只在从菜单 q 正常退出时打印. */
 export const writeFarewell = (output = process.stdout) => {
   output.write(`${FAREWELL.map((line) => paint('start', line, output)).join('\n')}\n`);
 };
 
 /**
- * 规整拖拽/手输路径。macOS 拖拽会反斜杠转义空格与括号(`My\ Photos`),
+ * 规整拖拽/手输路径.macOS 拖拽会反斜杠转义空格与括号(`My\ Photos`),
  * Windows 拖拽会整体带引号(`"C:\Users\me\My Photos"`);Windows 路径分隔符
- * `\` 后面只会跟字母数字,不会命中"反斜杠 + 特殊字符"的反转义规则。
+ * `\` 后面只会跟字母数字,不会命中"反斜杠 + 特殊字符"的反转义规则.
  */
 export const normalizeDroppedPath = (input) => {
   let s = String(input ?? '').trim();
@@ -65,7 +65,7 @@ export const normalizeDroppedPath = (input) => {
   return s;
 };
 
-/** 由菜单选择组装 argv,与命令行同一语义;未知选择返回 null。 */
+/** 由菜单选择组装 argv,与命令行同一语义;未知选择返回 null. */
 export const buildArgvFromChoices = ({choice, target, exif = false, sign = false, dark = false, portrait = false, square = false, filter = null}) => {
   if (choice === '1') {
     const argv = [target];
@@ -95,7 +95,7 @@ export const buildArgvFromChoices = ({choice, target, exif = false, sign = false
 };
 
 /**
- * 交互层:问答收集选择,返回 argv 数组;q 退出时返回 null。
+ * 交互层:问答收集选择,返回 argv 数组;q 退出时返回 null.
  */
 export const runMenu = async (
   {input = process.stdin, output = process.stdout, promptRunner = withPrompts} = {},
@@ -150,7 +150,7 @@ export const runMenu = async (
       sign = await ask.confirm('加入签名落款,用于作品署名?', {
         defaultValue: false, defaultLabel: '不加入', alternateKey: 's', alternateLabel: '加入',
       });
-      dark = await ask.confirm('使用黑色背景,适合暗色展陈?', {
+      dark = await ask.confirm('使用暗色背景?', {
         defaultValue: false, defaultLabel: '不使用', alternateKey: 'd', alternateLabel: '使用',
       });
       const format = await ask.pick('选择画幅', ['横版(沿用项目设置)', '竖版 1080×1920', '方形 1080×1080'], {
@@ -167,7 +167,7 @@ export const runMenu = async (
     const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, dark, portrait, square, filter});
     term.detail(`等效命令: ${formatEquivalentCommand(argv)}`);
     if (!['4', '5', '6'].includes(item.key)) {
-      term.detail('进阶配置(分辨率/过渡/字幕/背景…)见素材夹 tsuzuri.toml,参考 docs/config.md');
+      term.detail('进阶配置(分辨率/过渡/字幕/背景...)见素材夹 tsuzuri.toml,参考 docs/config.md');
     }
     return argv;
   }, {input, output});

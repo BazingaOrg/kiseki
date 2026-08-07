@@ -1,8 +1,8 @@
 /**
  * GET /media?path=<abs> —— 媒体文件透传(照片/视频/音频),支持 Range 以便
- * 视频/音频拖进度条。这是唯一直接把文件内容吐给浏览器的接口,路径沙箱校验
+ * 视频/音频拖进度条.这是唯一直接把文件内容吐给浏览器的接口,路径沙箱校验
  * 必须最严格:全部走 resolveSafePath(与 dirs/project 共用同一实现),并且
- * 额外要求目标是一个普通文件(不透传目录/设备文件等)。
+ * 额外要求目标是一个普通文件(不透传目录/设备文件等).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -42,7 +42,7 @@ const parseRange = (rangeHeader, size) => {
 
 /**
  * 把结果描述成 {status, headers, stream|body} 交由 web-server.mjs 写回响应,
- * 保持本模块可在不起真实 server 的情况下单测。
+ * 保持本模块可在不起真实 server 的情况下单测.
  * @param {string} root 允许访问的根目录
  * @param {string} requestedPath 客户端传入的文件路径
  * @param {string|undefined} rangeHeader 请求的 Range 头

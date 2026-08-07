@@ -45,7 +45,7 @@ export const readAnalysisFingerprint = (analyzer, spawn = spawnSync) => {
 const demucsKeyPattern = /^\s*(?:demucs|"demucs"|'demucs')\s*=/;
 const demucsValuePattern = /^\s*(?:demucs|"demucs"|'demucs')\s*=\s*(true|false)\s*(?:#.*)?$/;
 
-/** 只读取 analyzer 消费的 flat TOML 布尔键；可疑配置返回 null，保守禁用缓存。 */
+/** 只读取 analyzer 消费的 flat TOML 布尔键;可疑配置返回 null,保守禁用缓存. */
 export const readDemucsSetting = (folder) => {
   const tomlPath = path.join(folder, 'tsuzuri.toml');
   if (!fs.existsSync(tomlPath)) return true;
@@ -118,7 +118,7 @@ export const writeAnalysisManifest = ({analysisPath, beatsPath, lyricsPath, audi
   if (audioHash === null) {
     // 指纹/环境探测失败时保留旧 manifest,不主动删除:它仍对应"素材未变"
     // 的有效结果,环境恢复后下一次运行可直接命中缓存;素材变了 audio_hash
-    // 自然对不上,无需在这里清掉。
+    // 自然对不上,无需在这里清掉.
     return false;
   }
   if (!validJsonArtifact(beatsPath) || !validJsonArtifact(lyricsPath)) {

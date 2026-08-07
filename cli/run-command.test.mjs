@@ -14,7 +14,7 @@ test('stage command preserves a non-zero exit code', () => {
 
 // --- fd 3 的结构化进度出口 -------------------------------------------------
 
-/** 抓住传给 spawn 的 options,断言 stdio 形状。 */
+/** 抓住传给 spawn 的 options,断言 stdio 形状. */
 const captureStdio = (env) => {
   let seen = null;
   runCommand('渲染视频', 'node', [], {}, (_cmd, _args, options) => {
@@ -26,7 +26,7 @@ const captureStdio = (env) => {
 
 test('fd 3 is passed down to the grandchild when the JSON progress flag is on', () => {
   // 渲染的百分比全部产生在 render.mjs 这个孙进程里(它一次 term.* 都不调),
-  // 'inherit' 只继承 0/1/2,不显式带上 3 的话网页进度条永远是不确定态。
+  // 'inherit' 只继承 0/1/2,不显式带上 3 的话网页进度条永远是不确定态.
   assert.deepEqual(captureStdio({TSUZURI_JSON_PROGRESS: '1'}), ['inherit', 'inherit', 'inherit', 3]);
 });
 

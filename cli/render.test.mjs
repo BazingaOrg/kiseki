@@ -157,7 +157,7 @@ test('render diagnostics use the final composition and effective concurrency', (
       renderSettings: {concurrency: 5},
       speed: 'full',
     }),
-    '实际渲染配置：草稿；1280×720；60 fps；1440 帧；concurrency 5；速度档位 full',
+    '实际渲染配置:草稿;1280×720;60 fps;1440 帧;concurrency 5;速度档位 full',
   );
 });
 

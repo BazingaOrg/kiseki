@@ -1,7 +1,7 @@
 /**
- * tsuzuri lyrics <folder> — 只跑歌词识别(跳过节拍分析),终端预览结果。
+ * tsuzuri lyrics <folder> — 只跑歌词识别(跳过节拍分析),终端预览结果.
  *
- * 每次运行都会重新识别(LRC 即时,Whisper 较慢),方便渲染前先检查歌词对不对。
+ * 每次运行都会重新识别(LRC 即时,Whisper 较慢),方便渲染前先检查歌词对不对.
  */
 
 import fs from 'node:fs';
@@ -20,7 +20,7 @@ import {hasUsableRecognizedLyricsPayload, isRecognizedLyricsManageable} from './
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 // 与 renderer/src/theme.ts 的 SUBTITLE.confidenceThreshold 保持一致:
-// 低于这个置信度的段落,渲染时不会显示字幕。
+// 低于这个置信度的段落,渲染时不会显示字幕.
 export const RENDER_CONFIDENCE_THRESHOLD = 0.6;
 
 const formatTimestamp = (totalSeconds) => {
@@ -54,7 +54,7 @@ export const formatLyricsPreview = (lyrics, {confidenceThreshold = RENDER_CONFID
         kind: 'warn',
         text:
           `${range} ${segment.text} ` +
-          `(置信度 ${segment.confidence.toFixed(2)} 低于渲染阈值 ${confidenceThreshold},视频中不会显示)`,
+          `(置信度 ${segment.confidence.toFixed(2)} 低于渲染阈值 ${confidenceThreshold},成片里不会显示)`,
       });
     } else {
       lines.push({kind: 'line', text: `${range} ${segment.text}`});
@@ -79,7 +79,7 @@ const regularOrMissing = (file) => {
 };
 
 const assertMissing = (file) => {
-  try { fs.lstatSync(file); throw new CliError('任务原子输出残留，任务状态不安全'); }
+  try { fs.lstatSync(file); throw new CliError('任务原子输出残留,任务状态不安全'); }
   catch (error) { if (error?.code === 'ENOENT') return; throw error; }
 };
 
@@ -104,13 +104,13 @@ const fileIdentityOrAbsent = (file) => {
 const assertRecognizedIdentity = ({lyricsPath, lrcFiles, identity}) => {
   if (!isRecognizedLyricsManageable({lyricsPath, lrcFiles})) throw new CliError('识别结果不存在或已变化');
   const current = recognizedIdentity(lyricsPath);
-  if (Object.keys(identity).some((key) => current[key] !== identity[key])) throw new CliError('识别结果已变化，未替换');
+  if (Object.keys(identity).some((key) => current[key] !== identity[key])) throw new CliError('识别结果已变化,未替换');
 };
 
 const assertReplacementInputs = ({project, identity}) => {
   assertRecognizedIdentity({lyricsPath: project.lyricsPath, lrcFiles: scanFolderLoose(path.dirname(path.dirname(project.metadataDir))).lyrics, identity: identity.lyrics});
   const timeline = fileIdentityOrAbsent(project.timelinePath);
-  if (JSON.stringify(timeline) !== JSON.stringify(identity.timeline)) throw new CliError('时间线已变化，未替换');
+  if (JSON.stringify(timeline) !== JSON.stringify(identity.timeline)) throw new CliError('时间线已变化,未替换');
 };
 
 const ensureCanonicalMetadata = (folder, metadataDir) => {
@@ -139,7 +139,7 @@ const replaceRecognizedLyrics = ({project, stagedPath, task, identity, beforeMar
   for (const file of [outputArtifactPaths(project.lyricsPath, taskId).partialPath, outputArtifactPaths(project.lyricsPath, taskId).backupPath, outputArtifactPaths(project.timelinePath, taskId).partialPath, outputArtifactPaths(project.timelinePath, taskId).backupPath]) assertMissing(file);
   if (!regularOrMissing(stagedPath)) throw new CliError('识别输出不存在或已变化');
   const staged = JSON.parse(fs.readFileSync(stagedPath, 'utf8'));
-  if (!hasUsableRecognizedLyricsPayload(staged)) throw new CliError('识别输出没有可用歌词，已保留原结果');
+  if (!hasUsableRecognizedLyricsPayload(staged)) throw new CliError('识别输出没有可用歌词,已保留原结果');
   task.manager.extendOutputClaims(task.lease, [project.lyricsPath, project.timelinePath]);
   let finalizeError = null;
   const transaction = {
@@ -194,18 +194,18 @@ export const runLyrics = (
   const copied = copyLegacyJson(folder, project.metadataDir);
   if (copied.length > 0) term.warn(`已复制旧版 JSON 到 output/metadata/: ${copied.join(', ')}(原文件保留)`);
   const lrcFiles = scanFolderLoose(folder).lyrics;
-  if (replace && lrcFiles.length !== 0) throw new CliError('检测到 LRC 歌词，不能替换本地识别结果');
+  if (replace && lrcFiles.length !== 0) throw new CliError('检测到 LRC 歌词,不能替换本地识别结果');
   if (replace && !isRecognizedLyricsManageable({lyricsPath: project.lyricsPath, lrcFiles})) {
     throw new CliError('没有可替换的本地识别歌词');
   }
   if (isRecognizedLyricsManageable({lyricsPath: project.lyricsPath, lrcFiles}) && !replace) {
-    throw new CliError('已有可用的本地识别歌词；如要替换，请使用 tsuzuri lyrics <folder> --replace');
+    throw new CliError('已有可用的本地识别歌词;如要替换,请使用 tsuzuri lyrics <folder> --replace');
   }
 
   const analyzer = path.join(REPO, 'analyzer');
   stagedPath = replace ? path.join(task.lease.taskRoot, 'tmp', 'recognized-lyrics.json') : project.lyricsPath;
   if (replace) {
-    if (regularOrMissing(stagedPath)) throw new CliError('识别 staging 文件已存在，任务状态不安全');
+    if (regularOrMissing(stagedPath)) throw new CliError('识别 staging 文件已存在,任务状态不安全');
     for (const file of [project.lyricsPath, project.timelinePath]) regularOrMissing(file);
     for (const file of [outputArtifactPaths(project.lyricsPath, task.lease.id).partialPath, outputArtifactPaths(project.lyricsPath, task.lease.id).backupPath, outputArtifactPaths(project.timelinePath, task.lease.id).partialPath, outputArtifactPaths(project.timelinePath, task.lease.id).backupPath]) assertMissing(file);
   }
@@ -221,7 +221,7 @@ export const runLyrics = (
   if (code !== 0) { if (replace) fs.rmSync(stagedPath, {force: true}); outcome = code; return code; }
   if (replace) {
     assertRecognizedIdentity({lyricsPath: project.lyricsPath, lrcFiles: scanFolderLoose(folder).lyrics, identity: oldRecognizedIdentity.lyrics});
-    if (JSON.stringify(fileIdentityOrAbsent(project.timelinePath)) !== JSON.stringify(oldRecognizedIdentity.timeline)) throw new CliError('时间线已变化，未替换');
+    if (JSON.stringify(fileIdentityOrAbsent(project.timelinePath)) !== JSON.stringify(oldRecognizedIdentity.timeline)) throw new CliError('时间线已变化,未替换');
     replaceRecognizedLyrics({project, stagedPath, task, identity: oldRecognizedIdentity, beforeMarkCommitting});
   }
   term.success('歌词识别完成');

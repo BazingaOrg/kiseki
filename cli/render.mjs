@@ -23,9 +23,9 @@ export const detectParallelism = (osModule = os) =>
 export const resolveRenderSettings = (
   {draft = false, envConcurrency = process.env.TSUZURI_CONCURRENCY, parallelism = detectParallelism()} = {},
 ) => {
-  // 默认用一半核心,不是"核数减一"。后者在 10 核机器上会拉起 9 个 chromium 把
+  // 默认用一半核心,不是"核数减一".后者在 10 核机器上会拉起 9 个 chromium 把
   // 机器占满,风扇狂转、其它事都别想干了 —— 这是本地工具,渲染时用户多半还在用
-  // 这台机器。想要满速的人可以用 TSUZURI_CONCURRENCY 自己拉上去。
+  // 这台机器.想要满速的人可以用 TSUZURI_CONCURRENCY 自己拉上去.
   let concurrency = Math.max(1, Math.round(parallelism / 2));
   if (envConcurrency !== undefined && envConcurrency !== '') {
     if (/^\d+$/.test(envConcurrency) && Number(envConcurrency) > 0) {
@@ -50,10 +50,10 @@ export const resolveRenderSettings = (
 export const readTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
   validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
 
-/** 渲染前诊断只报告最终 composition 和已解析的设置，不能拿请求参数冒充实际值。 */
+/** 渲染前诊断只报告最终 composition 和已解析的设置,不能拿请求参数冒充实际值. */
 export const formatRenderDiagnostics = ({draft, composition, renderSettings, speed = null}) => {
-  const speedDetail = speed ? `；速度档位 ${speed}` : '';
-  return `实际渲染配置：${draft ? '草稿' : '正式'}；${composition.width}×${composition.height}；${composition.fps} fps；${composition.durationInFrames} 帧；concurrency ${renderSettings.concurrency}${speedDetail}`;
+  const speedDetail = speed ? `;速度档位 ${speed}` : '';
+  return `实际渲染配置:${draft ? '草稿' : '正式'};${composition.width}×${composition.height};${composition.fps} fps;${composition.durationInFrames} 帧;concurrency ${renderSettings.concurrency}${speedDetail}`;
 };
 
 const TARGET_LUFS = -14;
@@ -103,7 +103,7 @@ const normalizeLoudness = (file) => {
 
 /**
  * 渲染时覆盖 inputProps(timeline.json 本身绝不改写):
- * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null。
+ * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null.
  * @param {object} timeline
  * @param {{exif?: boolean, sign?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null}} flags
  * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null}} deps
@@ -184,7 +184,7 @@ const main = async () => {
   const taskId = resolveAtomicTaskId();
   const partialOutputPath = createPartialOutput(outputPath, taskId);
   const publicDir = path.resolve(publicDirArg);
-  // 必须在加载 Remotion 前失败：内部入口也可直接调用，不能只依赖主 CLI。
+  // 必须在加载 Remotion 前失败:内部入口也可直接调用,不能只依赖主 CLI.
   const timeline = readTimeline(timelinePath);
   const {renderMedia, selectComposition} = loadRemotionRenderer();
   const progress = createPercentProgress();
@@ -204,8 +204,8 @@ const main = async () => {
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
-    // 后面的 detail 会另起一行；只收束 bundling 的活动 TTY 行，不把整个
-    // progress 生命周期提前 finish，renderMedia 仍复用它进入渲染阶段。
+    // 后面的 detail 会另起一行;只收束 bundling 的活动 TTY 行,不把整个
+    // progress 生命周期提前 finish,renderMedia 仍复用它进入渲染阶段.
     progress.endLine();
 
     const composition = await selectComposition({
@@ -215,8 +215,8 @@ const main = async () => {
       logLevel: 'error',
     });
     const totalFrames = composition.durationInFrames;
-    // 这里已拿到最终 composition；紧邻 renderMedia 输出，CLI 和 Web fd3 日志看见
-    // 的都是同一份实际负载，而非原始请求或百分比历史。
+    // 这里已拿到最终 composition;紧邻 renderMedia 输出,CLI 和 Web fd3 日志看见
+    // 的都是同一份实际负载,而非原始请求或百分比历史.
     term.detail(formatRenderDiagnostics({
       draft: flags.draft,
       composition,

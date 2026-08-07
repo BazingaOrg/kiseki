@@ -1,9 +1,9 @@
 /**
- * 本地网页工作台 server:Node 原生 http,不引入 express。
+ * 本地网页工作台 server:Node 原生 http,不引入 express.
  * 五个 API(dirs / project / doctor / exif / thumb)+ 媒体透传(media)+ 静态前端
- * (`web/dist`,未构建时回退占位页)。除 /api/thumb 会往系统临时目录写缩略图缓存外,
- * 全部只读,不碰用户的素材夹。
- * `root` 是路径沙箱的允许根目录,由 cli/web.mjs 决定(锁定素材夹或用户主目录)。
+ * (`web/dist`,未构建时回退占位页).除 /api/thumb 会往系统临时目录写缩略图缓存外,
+ * 全部只读,不碰用户的素材夹.
+ * `root` 是路径沙箱的允许根目录,由 cli/web.mjs 决定(锁定素材夹或用户主目录).
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -61,7 +61,7 @@ const sendMedia = (res, result, createReadStream = fs.createReadStream) => {
     return;
   }
   res.writeHead(result.status, result.headers);
-  // 304 没有消息体，也不应打开文件描述符（缩略图条件请求的关键契约）。
+  // 304 没有消息体,也不应打开文件描述符(缩略图条件请求的关键契约).
   if (result.status === 304) {
     res.end();
     return;
@@ -85,12 +85,12 @@ const serveFile = (req, res, filePath) => {
   const contentType = STATIC_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   const headers = {'Content-Type': contentType};
   // vite 把带内容哈希的产物全部打进 assets/:文件名变了内容才变,可永久缓存;
-  // 其余(如 favicon)按 stat 出 ETag,no-cache 每次都重新校验。
+  // 其余(如 favicon)按 stat 出 ETag,no-cache 每次都重新校验.
   if (filePath.startsWith(ASSETS_DIR + path.sep)) {
     headers['Cache-Control'] = 'public, max-age=31536000, immutable';
   } else {
     headers['Cache-Control'] = 'private, no-cache';
-    // existsSync 之后、stat 之前文件被删的竞态:退化为不带 ETag 直发,不崩。
+    // existsSync 之后、stat 之前文件被删的竞态:退化为不带 ETag 直发,不崩.
     let etag = null;
     try { etag = staticEtag(filePath); } catch {}
     if (etag !== null) {
@@ -109,8 +109,8 @@ const serveFile = (req, res, filePath) => {
 /**
  * index.html 需要在返回前注入任务 API 用的 token(契约二:token 通过
  * `<meta name="tsuzuri-token">` 下发,不做 GET /api/token 端点白送出去),
- * 所以这里不能再用 fs.createReadStream 直接管道,要先读出内容改字符串。
- * HTML 不缓存:token 每次启动都换,且它引用的哈希资源必须能立刻切换到新版本。
+ * 所以这里不能再用 fs.createReadStream 直接管道,要先读出内容改字符串.
+ * HTML 不缓存:token 每次启动都换,且它引用的哈希资源必须能立刻切换到新版本.
  */
 const serveIndexHtml = (res, token) => {
   const html = fs.readFileSync(INDEX_HTML, 'utf8');
@@ -154,10 +154,10 @@ const serveStatic = (req, res, token) => {
 };
 
 /**
- * 校验请求的 Host 头,只允许 localhost/127.0.0.1 加上 server 实际监听的端口。
+ * 校验请求的 Host 头,只允许 localhost/127.0.0.1 加上 server 实际监听的端口.
  * server 只绑定 127.0.0.1,理论上外部拿不到直连,但攻击者网页可用 DNS
  * rebinding 把自己的域名重新解析到 127.0.0.1,浏览器就会带着"同源"的假象
- * 发起请求——不校验 Host 就会让这类页面读到 home 目录下的任意文件。
+ * 发起请求——不校验 Host 就会让这类页面读到 home 目录下的任意文件.
  * @param {string} hostHeader req.headers.host
  * @param {number} port server 实际监听的端口
  * @returns {boolean}
@@ -171,9 +171,9 @@ const JOB_CANCEL_RE = /^\/api\/jobs\/([^/]+)\/cancel$/;
 const ASSET_UNDO_RE = /^\/api\/assets\/undo$/;
 const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 
-// 这几条是仅有的非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合。
+// 这几条是仅有的非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合.
 // 必须同时校验 method,否则"路径对但方法错"(比如 PUT /api/jobs)会被当成合法的
-// post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback。
+// post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback.
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
   && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
@@ -182,20 +182,20 @@ const isAllowedPostRoute = (method, pathname) =>
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
  * @param {{spawnImpl?: Function, runImpl?: Function, doctorGet?: Function, thumbDeps?: object, createReadStream?: Function, jobManagerDeps?: object, assetMutationDeps?: object}} [deps]
  *   spawnImpl 供测试注入假的子进程实现,避免单测真的起渲染进程;
- *   runImpl 同理注入 /api/fetch/* 用的异步进程执行器,避免单测真的联网。
- *   doctorGet 可注入 doctor service,避免路由测试依赖本机的外部命令。
- *   jobManagerDeps 仅供 HTTP 路由测试注入 lease/liveness 等任务依赖。
- *   assetMutationDeps 仅供 HTTP 路由测试注入资产变更 lease 依赖。
- *   生产环境两个都不传。
+ *   runImpl 同理注入 /api/fetch/* 用的异步进程执行器,避免单测真的联网.
+ *   doctorGet 可注入 doctor service,避免路由测试依赖本机的外部命令.
+ *   jobManagerDeps 仅供 HTTP 路由测试注入 lease/liveness 等任务依赖.
+ *   assetMutationDeps 仅供 HTTP 路由测试注入资产变更 lease 依赖.
+ *   生产环境两个都不传.
  * @returns {{server: import('node:http').Server, token: string}}
  */
 export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps} = {}) => {
-  // 只在测试注入时才传下去,生产环境走 fetch.mjs 的默认实现。
+  // 只在测试注入时才传下去,生产环境走 fetch.mjs 的默认实现.
   const fetchDeps = runImpl ? {run: runImpl} : {};
-  // doctor 缓存属于本 server 实例，不能让测试或同进程的第二个 web server 共用。
+  // doctor 缓存属于本 server 实例,不能让测试或同进程的第二个 web server 共用.
   const requestDoctor = doctorGet ?? createDoctorService().getDoctor;
   // 所有非 GET 请求(创建/取消任务)必须带上这个 token(契约二安全前提 3),
-  // 与既有的 Host 头校验彼此独立、互不替代,构成双控制。
+  // 与既有的 Host 头校验彼此独立、互不替代,构成双控制.
   const token = crypto.randomBytes(32).toString('hex');
   const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {})});
 
@@ -218,7 +218,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
 
   const server = http.createServer((req, res) => {
     // 监听端口在 listen() 之后才确定,这里从连接的本地端口读取,
-    // 与调用方实际调用 server.listen() 时使用的端口一致。
+    // 与调用方实际调用 server.listen() 时使用的端口一致.
     const port = req.socket.localPort;
     if (!isAllowedHost(req.headers.host, port)) {
       res.writeHead(403);
@@ -249,7 +249,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
             return;
           }
           // resolveSafePath 只管越界,不管目标是不是目录——不带 folder 启动时沙箱根是
-          // 整个用户主目录,不校验的话可以对任意子目录(甚至文件)起任务。
+          // 整个用户主目录,不校验的话可以对任意子目录(甚至文件)起任务.
           let isDirectory;
           try {
             isDirectory = fs.statSync(safeFolder).isDirectory();
@@ -289,7 +289,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
             sendJson(res, {status: 400, body: {error: '请求体不是合法 JSON'}});
             return null;
           }
-          // folder 的沙箱校验在 saveLyrics 内部统一做(与 GET 端点同一条路径)。
+          // folder 的沙箱校验在 saveLyrics 内部统一做(与 GET 端点同一条路径).
           return saveLyrics(root, body, {...fetchDeps, isJobRunning: jobManager.hasRunningJob}).then((result) => sendJson(res, result));
         })
         .catch(() => sendJson(res, {status: 500, body: {error: '保存歌词失败'}}));
@@ -347,7 +347,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       // 必须先判断任务是否存在、再 writeHead——subscribeEvents 对历史事件是
       // *同步回放* 的(见 jobs.mjs),如果先订阅再 writeHead,历史事件的
       // res.write() 会发生在 writeHead 之前,Node 隐式发出默认响应头,随后的
-      // writeHead 抛 ERR_HTTP_HEADERS_SENT,没人接住就是整个进程崩溃。
+      // writeHead 抛 ERR_HTTP_HEADERS_SENT,没人接住就是整个进程崩溃.
       if (!jobManager.getJob(id)) {
         res.writeHead(404);
         res.end();
@@ -360,24 +360,24 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       });
       // writeHead 不会立即把响应头刷到 socket——Node 默认等到第一次 write() 才
       // 真正发送,SSE 场景下可能长时间没有事件,客户端会一直卡在等响应头上,
-      // 必须显式 flush 一次,让连接尽早建立起来。
+      // 必须显式 flush 一次,让连接尽早建立起来.
       res.flushHeaders();
       const unsubscribe = jobManager.subscribeEvents(id, (chunk) => {
         res.write(chunk);
         // 任务已经结束(subscribeEvents 立即补发 end 帧,或订阅期间任务跑完了)
         // 服务端主动关闭连接——否则只能靠浏览器主动 close,curl 之类的客户端
-        // 会永久挂在这个连接上。
+        // 会永久挂在这个连接上.
         if (chunk.startsWith('event: end\n')) res.end();
       });
       // 客户端断开(切页面/关标签页)时必须解除订阅,否则任务管理器里的监听者
       // 集合会一直攒着一个再也不会被调用的回调,直到任务结束才清空——长任务
-      // 场景下会造成持续的内存泄漏。
+      // 场景下会造成持续的内存泄漏.
       req.on('close', unsubscribe);
       return;
     }
     // 必须放在 JOB_ID_RE 判断之前:JOB_ID_RE 是 `/^\/api\/jobs\/([^/]+)$/`,
-    // 会把 'current' 当成任意 job id 吃掉,这条更具体的路由排在后面就永远走不到。
-    // 与 GET /api/jobs/:id/events 同为 GET,按既有约定不需要 token。
+    // 会把 'current' 当成任意 job id 吃掉,这条更具体的路由排在后面就永远走不到.
+    // 与 GET /api/jobs/:id/events 同为 GET,按既有约定不需要 token.
     if (req.method === 'GET' && url.pathname === '/api/jobs/current') {
       sendJson(res, {status: 200, body: {job: jobManager.getRunningJob()}});
       return;
@@ -403,22 +403,22 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     if (url.pathname === '/api/exif') {
-      // 唯一的异步 handler(exifr 解析)。失败一律回 500 而不是让 promise 逃逸,
-      // 否则未捕获的 rejection 会连整个 server 一起带走。
+      // 唯一的异步 handler(exifr 解析).失败一律回 500 而不是让 promise 逃逸,
+      // 否则未捕获的 rejection 会连整个 server 一起带走.
       getExif(root, url.searchParams.get('path'))
         .then((result) => sendJson(res, result))
         .catch(() => sendJson(res, {status: 500, body: {error: '读取 EXIF 失败'}}));
       return;
     }
     // 这两条 GET 会 spawn 外部进程(yt-dlp / ffprobe / curl),所以**破例也要校验
-    // token**。Host 校验只挡 DNS rebinding,挡不住任意网页直接请求 localhost ——
-    // 那样一个页面就能无限起进程把机器拖垮。其余只读 GET 不需要这道闸。
+    // token**.Host 校验只挡 DNS rebinding,挡不住任意网页直接请求 localhost ——
+    // 那样一个页面就能无限起进程把机器拖垮.其余只读 GET 不需要这道闸.
     if (url.pathname === '/api/fetch/lyrics-search' || url.pathname === '/api/fetch/audio-search') {
       if (!checkToken(req, res)) return;
     }
     if (url.pathname === '/api/fetch/lyrics-search') {
       // 这几个 handler 都是异步的(外部进程走异步 spawn,不能阻塞单线程 server),
-      // 与 /api/exif 一样必须自己接住 rejection,否则会连整个 server 一起带走。
+      // 与 /api/exif 一样必须自己接住 rejection,否则会连整个 server 一起带走.
       searchLyricsCandidates(root, url.searchParams.get('folder'), {...fetchDeps, query: url.searchParams.get('q')})
         .then((result) => sendJson(res, result))
         .catch(() => sendJson(res, {status: 500, body: {error: '搜索歌词失败'}}));
@@ -442,7 +442,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     }
     if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
       // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
-      // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面。
+      // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面.
       res.writeHead(405);
       res.end();
       return;
@@ -450,6 +450,6 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     serveStatic(req, res, token);
   });
   // killAll 交给调用方在进程退出时收尾:子进程是 detached 的,收不到终端的
-  // Ctrl+C,不显式杀掉就会变成孤儿继续跑(见 jobs.mjs 的说明)。
+  // Ctrl+C,不显式杀掉就会变成孤儿继续跑(见 jobs.mjs 的说明).
   return {server, token, killAll: jobManager.killAll};
 };

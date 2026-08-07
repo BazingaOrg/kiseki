@@ -1,6 +1,6 @@
 /**
- * Timeline 的渲染前边界检查。它有意不是 JSON Schema：只验证当前渲染器消费的
- * 字段，不改写输入，也不拒绝未知 kind，以便新版 planner 产物仍可被旧 CLI 透传。
+ * Timeline 的渲染前边界检查.它有意不是 JSON Schema:只验证当前渲染器消费的
+ * 字段,不改写输入,也不拒绝未知 kind,以便新版 planner 产物仍可被旧 CLI 透传.
  */
 export class TimelineValidationError extends Error {
   constructor(path, message) {
@@ -108,7 +108,7 @@ export const validateTimeline = (timeline) => {
   photos.forEach((value, index) => {
     const path = `$.photos[${index}]`;
     const clip = object(value, path);
-    // kind 省略是旧版照片；未知 string kind 则由 Diary 忽略，保留前向兼容。
+    // kind 省略是旧版照片;未知 string kind 则由 Diary 忽略,保留前向兼容.
     if (clip.kind !== undefined && clip.kind !== 'photo' && clip.kind !== 'chapter') return;
     validateClipBounds(clip, path, duration);
     if (clip.kind === 'chapter') {

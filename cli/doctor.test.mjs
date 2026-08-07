@@ -1,9 +1,9 @@
 /**
- * doctor 的检查项已拆给 collectDoctorChecks 供 web API 复用,runDoctor 只剩打印。
- * 这组测试盯住"打印行为不因拆分而改变"——顺序、前缀、必需项与可选项的区别对待。
+ * doctor 的检查项已拆给 collectDoctorChecks 供 web API 复用,runDoctor 只剩打印.
+ * 这组测试盯住"打印行为不因拆分而改变"——顺序、前缀、必需项与可选项的区别对待.
  *
  * 失败分支用注入的合成 checks 覆盖:在依赖齐全的开发机上,真实 checks 永远全绿,
- * 光靠它跑不到 term.error / term.info 那两条路,断言等于没写。
+ * 光靠它跑不到 term.error / term.info 那两条路,断言等于没写.
  */
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
@@ -11,7 +11,7 @@ import test from 'node:test';
 
 import {collectDoctorChecks, collectWebDoctorChecks, FIXES, runDoctor} from './doctor.mjs';
 
-/** 捕获 stdout/stderr,按写入顺序记录并标注来源流(term 同步写,顺序可靠)。 */
+/** 捕获 stdout/stderr,按写入顺序记录并标注来源流(term 同步写,顺序可靠). */
 const captureOutput = (fn) => {
   const lines = [];
   const originalOut = process.stdout.write;

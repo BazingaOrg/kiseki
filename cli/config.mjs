@@ -1,10 +1,10 @@
 /**
- * tsuzuri.toml 统一配置 schema。唯一真源——analyzer/config_schema.py 镜像同一份
+ * tsuzuri.toml 统一配置 schema.唯一真源——analyzer/config_schema.py 镜像同一份
  * 字段表(两侧各自实现,字段/约束/默认值必须保持一致,交叉检查见
- * examples/config-cases.json)。
+ * examples/config-cases.json).
  *
  * 本项目目前只有作者本人使用,不做任何兼容层:未知键、非法值、已弃用键一律
- * 直接报错退出,不做 warning 静默降级。
+ * 直接报错退出,不做 warning 静默降级.
  */
 
 import fs from 'node:fs';
@@ -27,7 +27,7 @@ const isFileInsideFolder = (folder, relativePath) => {
   return relative !== '' && !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
 };
 
-/** 已弃用且不再生效的键——出现即报错,不是 warning 通道。 */
+/** 已弃用且不再生效的键——出现即报错,不是 warning 通道. */
 const DEPRECATED_KEYS = new Set(['motion', 'kenburns_from', 'kenburns_to']);
 
 export const CONFIG_SCHEMA = {
@@ -181,11 +181,11 @@ const buildFieldError = (lineNo, key, field, received) =>
   );
 
 /**
- * 读取素材夹下的 tsuzuri.toml,校验后返回 `{values, explicitKeys}`。
+ * 读取素材夹下的 tsuzuri.toml,校验后返回 `{values, explicitKeys}`.
  * - `values`: 全字段配置(未显式出现的键取 CONFIG_SCHEMA 默认值)
  * - `explicitKeys`: 文件中显式出现过的键名集合
- * 文件不存在时返回全默认值与空集合。语法错误或字段非法一律抛 CliError,
- * 只报告遇到的第一个错误(按文件出现顺序)。
+ * 文件不存在时返回全默认值与空集合.语法错误或字段非法一律抛 CliError,
+ * 只报告遇到的第一个错误(按文件出现顺序).
  */
 export const loadProjectConfig = (folder) => {
   const tomlPath = path.join(folder, 'tsuzuri.toml');

@@ -1,11 +1,11 @@
 /**
- * 严格的 TOML 标量子集解析器(不是完整 TOML)。
- * 只支持顶层 `key = value` 的一行一项配置,值类型为 bool / int / float / string。
- * 不支持 [table]、数组、内联表、多行字符串、点号键——出现即报错,不做静默降级。
+ * 严格的 TOML 标量子集解析器(不是完整 TOML).
+ * 只支持顶层 `key = value` 的一行一项配置,值类型为 bool / int / float / string.
+ * 不支持 [table]、数组、内联表、多行字符串、点号键——出现即报错,不做静默降级.
  *
  * 之所以自己写而不用现成 TOML 库:tsuzuri.toml 只需要这个极小子集,手写解析器
  * 能精确控制"字符串内的 # 不是注释"这类边界情况(旧实现 cli/still.mjs 用
- * `raw.includes(' #')` 简单查找,会把 `outro_text = "a # b"` 这种合法配置错误截断)。
+ * `raw.includes(' #')` 简单查找,会把 `outro_text = "a # b"` 这种合法配置错误截断).
  */
 
 const isWs = (ch) => ch === ' ' || ch === '\t';
@@ -16,7 +16,7 @@ const syntaxError = (lineNo, message) => {
   return err;
 };
 
-/** 基本字符串(双引号)转义:\b \t \n \f \r \" \\ \uXXXX \UXXXXXXXX。 */
+/** 基本字符串(双引号)转义:\b \t \n \f \r \" \\ \uXXXX \UXXXXXXXX. */
 const readEscape = (line, i, lineNo) => {
   const c = line[i + 1];
   const simple = {b: '\b', t: '\t', n: '\n', f: '\f', r: '\r', '"': '"', '\\': '\\'};
@@ -34,7 +34,7 @@ const readEscape = (line, i, lineNo) => {
   throw syntaxError(lineNo, `不支持的转义序列: \\${c ?? ''}`);
 };
 
-/** 读取双引号基本字符串,line[start] 必须是开头的 `"`。返回值与紧随其后的下标。 */
+/** 读取双引号基本字符串,line[start] 必须是开头的 `"`.返回值与紧随其后的下标. */
 const readBasicString = (line, start, lineNo) => {
   let i = start + 1;
   let buf = '';
@@ -53,7 +53,7 @@ const readBasicString = (line, start, lineNo) => {
   return {value: buf, next: i + 1};
 };
 
-// TOML 十进制整数不允许前导零;每个下划线两侧都必须是数字。
+// TOML 十进制整数不允许前导零;每个下划线两侧都必须是数字.
 const DEC = String.raw`(?:0|[1-9](?:_?\d)*)`;
 const INT_RE = new RegExp(
   `^([+-]?)(0x[0-9A-Fa-f](?:_?[0-9A-Fa-f])*|0o[0-7](?:_?[0-7])*|0b[01](?:_?[01])*|${DEC})$`,
@@ -63,13 +63,13 @@ const FLOAT_RE = new RegExp(
 );
 const INF_NAN_RE = /^([+-]?)(inf|nan)$/;
 
-/** 解析裸词数值(int/float/bool 之外的字面量已被上层过滤),失败返回 null。 */
+/** 解析裸词数值(int/float/bool 之外的字面量已被上层过滤),失败返回 null. */
 const parseBareNumber = (raw) => {
   const intMatch = raw.match(INT_RE);
   if (intMatch) {
     const sign = intMatch[1] === '-' ? -1 : 1;
     const body = intMatch[2];
-    // TOML 只允许十进制整数带正负号;0x/0o/0b 字面量必须无符号。
+    // TOML 只允许十进制整数带正负号;0x/0o/0b 字面量必须无符号.
     if (intMatch[1] && /^(0x|0o|0b)/.test(body)) return null;
     let n;
     if (body.startsWith('0x')) n = parseInt(body.slice(2).replace(/_/g, ''), 16);
@@ -108,13 +108,13 @@ const parseBareValue = (raw, lineNo, key) => {
 };
 
 /**
- * 解析一份 flat TOML 文本。
+ * 解析一份 flat TOML 文本.
  * 返回 `{values, lineOf, kinds}`:
  * - values: {key: JS 值}(bool→boolean,int/float→number,string→string)
  * - lineOf: {key: 首次出现的行号},供上层拼接报错
  * - kinds:  {key: 'bool'|'int'|'float'|'string'},供上层区分"60" (int) 与
- *   "60.0"(float)字面量——数值上相等但 TOML 类型不同,int 字段不接受 float 字面量。
- * 语法错误抛出 Error,并带 `.line` 属性。
+ *   "60.0"(float)字面量——数值上相等但 TOML 类型不同,int 字段不接受 float 字面量.
+ * 语法错误抛出 Error,并带 `.line` 属性.
  */
 export const parseFlatToml = (text) => {
   const values = {};

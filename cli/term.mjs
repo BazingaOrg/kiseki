@@ -19,14 +19,14 @@ export const ansiEnabled = (stream, env = process.env) =>
   !hasOwn(env, 'NO_COLOR') &&
   String(env.TERM ?? '').toLowerCase() !== 'dumb';
 
-/** 按 ansiEnabled 决定是否包 ANSI;交互提示与状态输出共用同一套降级判断。 */
+/** 按 ansiEnabled 决定是否包 ANSI;交互提示与状态输出共用同一套降级判断. */
 export const paint = (kind, text, stream = process.stdout, env = process.env) =>
   ansiEnabled(stream, env) ? `\x1b[${COLORS[kind]}m${text}\x1b[0m` : text;
 
 export const dim = (text, stream = process.stdout, env = process.env) =>
   paint('dim', text, stream, env);
 
-/** 提问行前缀:cyan `?`,让"等输入"与"● 输出结果"一眼可分。 */
+/** 提问行前缀:cyan `?`,让"等输入"与"● 输出结果"一眼可分. */
 export const promptPrefix = (stream = process.stdout, env = process.env) =>
   paint('prompt', '?', stream, env);
 
@@ -35,15 +35,15 @@ const linesOf = (message) => {
   return lines.length > 0 ? lines : [''];
 };
 
-/** 结构化进度出口开关:必须显式设为 '1',其余取值(含未设置)一律关闭,终端行为零变化。 */
+/** 结构化进度出口开关:必须显式设为 '1',其余取值(含未设置)一律关闭,终端行为零变化. */
 export const jsonProgressEnabled = (env = process.env) => env.TSUZURI_JSON_PROGRESS === '1';
 
-/** 默认 JSON 写入器:落到 fd 3。fd 3 未打开时 writeSync 抛 EBADF,吞掉——结构化出口是尽力而为,绝不能带崩 CLI。 */
+/** 默认 JSON 写入器:落到 fd 3.fd 3 未打开时 writeSync 抛 EBADF,吞掉——结构化出口是尽力而为,绝不能带崩 CLI. */
 export const defaultJsonWrite = (event) => {
   try {
     writeSync(JSON_PROGRESS_FD, `${JSON.stringify(event)}\n`);
   } catch {
-    // fd 3 未打开或写入失败:静默丢弃。
+    // fd 3 未打开或写入失败:静默丢弃.
   }
 };
 

@@ -95,7 +95,7 @@ test('runMenu reports invalid choices and q exits cleanly', async () => {
   assert.equal(result, null);
   assert.match(output, /无效选择,请输入 1-6/);
   assert.doesNotMatch(output, /回车 选默认 · 0 返回/);
-  assert.match(output, /晚安。素材都在原文件夹,随时再来。/);
+  assert.match(output, /晚安.素材都在原位置,随时再来./);
 });
 
 test('banner and farewell degrade to plain ASCII art without a TTY', () => {
@@ -105,7 +105,7 @@ test('banner and farewell degrade to plain ASCII art without a TTY', () => {
   writeFarewell(output);
   assert.match(text, /tsuzuri 綴/);
   assert.match(text, /把照片和一首歌缀成影像日记/);
-  assert.match(text, /晚安。素材都在原文件夹,随时再来。/);
+  assert.match(text, /晚安.素材都在原位置,随时再来./);
   assert.doesNotMatch(text, /\x1b\[/);
 });
 

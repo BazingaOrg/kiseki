@@ -178,7 +178,7 @@ test('TSUZURI_JSON_PROGRESS=1 时每次调用向 JSON 出口发一条对应 kind
     {kind: 'error', text: '失败'},
     {kind: 'detail', text: '细节'},
   ]);
-  // 终端输出不受 JSON 出口影响,与关闭开关时完全一致的写法。
+  // 终端输出不受 JSON 出口影响,与关闭开关时完全一致的写法.
   assert.equal(
     stdout.output,
     '\x1b[39m●\x1b[0m 信息\n' +
@@ -214,8 +214,8 @@ test('多行消息按行拆成多条 JSON 事件,与终端换行行为一致', (
 test('开关开启但 fd 3 未打开时,默认 JSON 写入器吞掉 EBADF 且不影响终端输出', () => {
   const stdout = stream(true);
   const stderr = stream(true);
-  // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...)。
-  // 测试进程通常没有打开 fd 3,预期抛 EBADF 并被内部吞掉。
+  // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...).
+  // 测试进程通常没有打开 fd 3,预期抛 EBADF 并被内部吞掉.
   const output = createTerminal({stdout, stderr, env: {TSUZURI_JSON_PROGRESS: '1'}});
 
   assert.doesNotThrow(() => {

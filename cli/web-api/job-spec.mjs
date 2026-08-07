@@ -1,8 +1,8 @@
 /**
- * 任务描述:把网页选项校验并组装为命令、参数和进度来源。
+ * 任务描述:把网页选项校验并组装为命令、参数和进度来源.
  *
- * 这里不管理子进程或任务状态，方便独立测试；JobValidationError 始终直接
- * 从 job-argv.mjs 导入，确保 HTTP 层的 instanceof 判断保持同一类身份。
+ * 这里不管理子进程或任务状态,方便独立测试;JobValidationError 始终直接
+ * 从 job-argv.mjs 导入,确保 HTTP 层的 instanceof 判断保持同一类身份.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -23,7 +23,7 @@ const CLI_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const TSUZURI_ENTRY = path.join(CLI_DIR, 'tsuzuri.mjs');
 const YTDLP_ID_RE = /^[A-Za-z0-9_-]{5,64}$/;
 
-/** yt-dlp 下载进度事件的标签。 */
+/** yt-dlp 下载进度事件的标签. */
 export {parseYtDlpProgress, YTDLP_PROGRESS_LABEL};
 
 const readOptionalString = (value, field) => {
@@ -62,7 +62,7 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
     finalize: (code, {stderrTail = [], spawnFailed = false, task = null} = {}) => {
       try {
         if (spawnFailed) {
-          return {ok: false, events: [{kind: 'error', text: `起不了 yt-dlp,确认它已安装并在 PATH 里。${FIXES['yt-dlp']}`}]};
+          return {ok: false, events: [{kind: 'error', text: `起不了 yt-dlp,确认它已安装并在 PATH 里.${FIXES['yt-dlp']}`}]};
         }
         if (code !== 0) {
           const detail = stderrTail.length > 0 ? `\n${stderrTail.join('\n')}` : '';
@@ -90,7 +90,7 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
 };
 
 /**
- * 按 kind 分派出命令、参数和进度来源。
+ * 按 kind 分派出命令、参数和进度来源.
  * @param {{kind: string, folder: string, options?: object, tempParent?: string}} params
  */
 export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir()}) => {

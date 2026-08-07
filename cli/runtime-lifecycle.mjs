@@ -1,6 +1,6 @@
 import {spawnSync} from 'node:child_process';
 
-/** Web runtime 的唯一 shutdown 入口：先停止接新请求，再回收任务，绝不抢在异步收尾前退出。 */
+/** Web runtime 的唯一 shutdown 入口:先停止接新请求,再回收任务,绝不抢在异步收尾前退出. */
 export const installRuntimeShutdown = ({server, killAll, processImpl = process, deadlineMs = 8000}) => {
   let shutdownPromise = null;
   const closeServer = () => new Promise((resolve) => {

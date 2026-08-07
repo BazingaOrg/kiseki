@@ -1,10 +1,10 @@
 /**
  * GET /api/exif?path=<abs 照片路径> —— 单张照片的 EXIF 展签,复用 exif.mjs 的
  * extractFormattedExif(与渲染成片上那块 EXIF 面板是同一份格式化逻辑,
- * 不会出现"网页上看到的参数和成片里印的不一样")。
+ * 不会出现"网页上看到的参数和成片里印的不一样").
  *
  * 按需单张请求而不是在 /api/project 里批量提取:批量解析是实打实的异步 I/O,
- * 一个几十张照片的素材夹会让选择文件夹这一步明显变慢,而 EXIF 只在点开大图时才看。
+ * 一个几十张照片的素材夹会让选择文件夹这一步明显变慢,而 EXIF 只在点开大图时才看.
  */
 import fs from 'node:fs';
 import path from 'node:path';

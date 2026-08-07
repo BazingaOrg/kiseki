@@ -23,7 +23,7 @@ const saveLyricsWithIsolatedLease = (root, body, options) => saveLyrics(root, bo
   leaseManager: createTaskLeaseManager({registryRoot: path.join(root, '.runtime')}),
 });
 
-/** 造一个"有唯一音频"的素材夹,免得端点在前置检查就返回 400。 */
+/** 造一个"有唯一音频"的素材夹,免得端点在前置检查就返回 400. */
 const makeFolderWithAudio = (root, name = 'trip') => {
   const folder = path.join(root, name);
   fs.mkdirSync(folder);
@@ -31,7 +31,7 @@ const makeFolderWithAudio = (root, name = 'trip') => {
   return folder;
 };
 
-/** 把预设的进程结果按命令分发,单测一律不真的联网/不真的起进程。 */
+/** 把预设的进程结果按命令分发,单测一律不真的联网/不真的起进程. */
 const fakeRun = (byCommand) => async (command) =>
   byCommand[command] ?? {status: null, stdout: '', stderr: ''};
 
@@ -81,7 +81,7 @@ test('checkYtDlpAsync 复用 checkYtDlp 的判定', async () => {
   assert.deepEqual(missing, {ok: false});
 });
 
-test('searchYtDlpAsync 复用解析逻辑，稳定去重后限制候选', async () => {
+test('searchYtDlpAsync 复用解析逻辑,稳定去重后限制候选', async () => {
   const lines = Array.from({length: 12}, (_, index) =>
     `${index === 3 ? '2' : index}\tSong ${index}\t3:01\tChannel`,
   );
@@ -173,7 +173,7 @@ test('lyrics-search:筛掉前十中的无效、纯文本和器乐记录后仍从
   assert.deepEqual(result.body.candidates.map(({id}) => id), valid.map(({id}) => String(id)));
 });
 
-test('lyrics-search:Web 候选过滤缺失 id，并以 canonical id 下发', async () => {
+test('lyrics-search:Web 候选过滤缺失 id,并以 canonical id 下发', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
   const records = [
@@ -382,7 +382,7 @@ test('lyrics-search:空白的 q 退回自动推断', async () => {
 test('lyrics-search:tag 齐全时,手输关键词必须走 /search 而不是 /get 精确查询', async () => {
   // 这是 q 唯一真正要解决的场景:tag 齐全但写错了(标题是专辑名/翻唱版本),
   // 不把 customized 传下去的话 searchLyricsRecords 会先打 /get 命中并直接返回,
-  // 用户改多少次关键词都拿到同一批错结果。
+  // 用户改多少次关键词都拿到同一批错结果.
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
   const tagged = fakeRun({
@@ -406,7 +406,7 @@ test('lyrics-search:tag 齐全时,手输关键词必须走 /search 而不是 /ge
   assert.equal(paths[0], '/get', '没有手输关键词时仍应先试精确查询');
 });
 
-test('lyrics-search:tag 齐全时 /get 的传输或协议错误直接报错，不能回退 /search', async () => {
+test('lyrics-search:tag 齐全时 /get 的传输或协议错误直接报错,不能回退 /search', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
   const tagged = fakeRun({

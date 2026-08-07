@@ -11,7 +11,7 @@ const stream = (isTTY) => ({
   },
 });
 
-test('TTY 阶段切换与 label 变化均在同一行覆写，finish 恰好换一次行', () => {
+test('TTY 阶段切换与 label 变化均在同一行覆写,finish 恰好换一次行', () => {
   const run = (env) => {
     const stdout = stream(true);
     const progress = createPercentProgress({stream: stdout, env});
@@ -53,7 +53,7 @@ test('TSUZURI_JSON_PROGRESS=1 时 TTY 路径每次 percent 变化发一条 progr
     {kind: 'progress', label: 'Rendering frames', percent: 42},
     {kind: 'progress', label: 'Encoding video', percent: 100},
   ]);
-  // finish() 不发事件;label/阶段变化不会额外换行。
+  // finish() 不发事件;label/阶段变化不会额外换行.
   assert.equal(
     stdout.output,
     '\r\x1b[2K└ Rendering frames   [█░░░░░░░░░░░░░░░░░░░]   7%' +
@@ -80,7 +80,7 @@ test('非 TTY 路径下 JSON 事件不受终端的 25% 节流影响,逐个 perce
     events.map((event) => event.percent),
     [0, 10, 24, 25, 51, 76, 100],
   );
-  // 终端侧仍按 25% 节流,证明 JSON 出口与终端节流互不影响。
+  // 终端侧仍按 25% 节流,证明 JSON 出口与终端节流互不影响.
   assert.equal(
     stdout.output,
     '└ Rendering frames   [░░░░░░░░░░░░░░░░░░░░]   0%\n' +
@@ -107,7 +107,7 @@ test('重复的 percent 跳过 JSON 事件,与终端"同 percent 不重复打印
   assert.deepEqual(events, [{kind: 'progress', label: 'Rendering frames', percent: 50}]);
 });
 
-test('endLine 只结束活动行，后续阶段仍可继续且 finish 不重复换行', () => {
+test('endLine 只结束活动行,后续阶段仍可继续且 finish 不重复换行', () => {
   const stdout = stream(true);
   const progress = createPercentProgress({stream: stdout});
 
@@ -123,7 +123,7 @@ test('endLine 只结束活动行，后续阶段仍可继续且 finish 不重复�
   );
 });
 
-test('非 TTY 以稳定 stage 节流，动态 label 不会重复输出阶段开始行', () => {
+test('非 TTY 以稳定 stage 节流,动态 label 不会重复输出阶段开始行', () => {
   const stdout = stream(false);
   const progress = createPercentProgress({stream: stdout});
 
@@ -142,7 +142,7 @@ test('非 TTY 以稳定 stage 节流，动态 label 不会重复输出阶段开�
 
 test('开关开启但 fd 3 未打开时,默认 JSON 写入器吞掉 EBADF 且终端输出正常', () => {
   const stdout = stream(true);
-  // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...)。
+  // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...).
   const progress = createPercentProgress({stream: stdout, env: {TSUZURI_JSON_PROGRESS: '1'}});
 
   assert.doesNotThrow(() => {

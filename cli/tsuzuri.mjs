@@ -3,8 +3,8 @@
  * tsuzuri CLI — 日常入口:`tsuzuri ./folder`
  *
  * 约定优于配置:文件夹内的图片 + 唯一音频是必需输入,可选唯一 LRC;
- * JSON 写入 metadata/,默认视频写入 output/。
- * -o 可覆盖输出路径,其余选项按素材自动决策。
+ * JSON 写入 metadata/,默认视频写入 output/.
+ * -o 可覆盖输出路径,其余选项按素材自动决策.
  */
 
 import {randomUUID} from 'node:crypto';
@@ -147,7 +147,7 @@ export const runCommandFromArgv = async (
 
   if (!skipAnalyze) {
     // audioHash 为 null 是环境探测瞬时失败:不清 manifest,保留它让环境恢复
-    // 后还能命中(素材未变时)。否则一次瞬时故障会把有效缓存永久烧掉。
+    // 后还能命中(素材未变时).否则一次瞬时故障会把有效缓存永久烧掉.
     if (audioHash === null) {
       term.warn('运行时指纹获取失败,跳过音频分析缓存');
     } else {
@@ -226,7 +226,7 @@ export const runCommandFromArgv = async (
   const rendererPackage = path.join(REPO, 'renderer', 'node_modules', '@remotion', 'renderer');
   if (!fs.existsSync(rendererPackage)) throw new CliError('渲染器依赖未安装,先执行: cd renderer && npm install');
 
-  term.start(`渲染视频${exif ? ', EXIF' : ''}${sign ? ', 签名' : ''}${dark ? ', 黑底' : ''}${draft ? ', 草稿' : ''}`);
+  term.start(`渲染视频${exif ? ', EXIF' : ''}${sign ? ', 签名' : ''}${dark ? ', 暗色' : ''}${draft ? ', 草稿' : ''}`);
   const renderCode = runCommandImpl('渲染视频', process.execPath, [
     path.join(REPO, 'cli', 'render.mjs'),
     timelinePath,
@@ -283,9 +283,9 @@ export const runInteractiveMenu = async (
       if (code !== 0) term.warn(`流程以退出码 ${code} 结束`);
       else if (isResidentCommand(argv)) {
         // 返回并不等于退出进程:server 的 listening handle 挂住事件循环,
-        // 进程活到用户 Ctrl+C(收尾在 web.mjs 的 SIGINT handler 里)。
-        // 依赖:菜单退出后进程存活靠这个 handle;若 runWeb 改成不 listen 就返回,菜单会直接退出。
-        output.write('\n本地工作台已接管这个终端。要回到菜单,先按 Ctrl+C 结束它,再运行 tsuzuri。\n');
+        // 进程活到用户 Ctrl+C(收尾在 web.mjs 的 SIGINT handler 里).
+        // 依赖:菜单退出后进程存活靠这个 handle;若 runWeb 改成不 listen 就返回,菜单会直接退出.
+        output.write('\n本地工作台已接管这个终端.要回到菜单,先按 Ctrl+C 结束它,再运行 tsuzuri.\n');
         return 0;
       }
     } catch (error) {

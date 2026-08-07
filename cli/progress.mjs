@@ -62,7 +62,7 @@ export const createPercentProgress = ({
         lastPrintedBucket = bucket;
       }
     },
-    /** 打印一行外部消息(如浏览器日志),不打断进行中的进度行。 */
+    /** 打印一行外部消息(如浏览器日志),不打断进行中的进度行. */
     println(text) {
       if (interactive && label !== null && percent >= 0) {
         stream.write(`\r\x1b[2K${text}\n${currentLine()}`);
@@ -70,7 +70,7 @@ export const createPercentProgress = ({
         stream.write(`${text}\n`);
       }
     },
-    /** 结束当前 TTY 行，但保留阶段状态，供后续进度继续使用。 */
+    /** 结束当前 TTY 行,但保留阶段状态,供后续进度继续使用. */
     endLine() {
       finishLine();
     },

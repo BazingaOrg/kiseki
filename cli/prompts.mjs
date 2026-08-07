@@ -20,13 +20,13 @@ export class PromptQuitError extends Error {
   }
 }
 
-/** 键图例:段与段用 ` · ` 连接,整体 dim,视觉焦点留给问题文本。 */
+/** 键图例:段与段用 ` · ` 连接,整体 dim,视觉焦点留给问题文本. */
 export const formatLegend = (segments, output = process.stdout) => {
   const filtered = segments.filter(Boolean);
   return filtered.length > 0 ? dim(` · ${filtered.join(' · ')}`, output) : '';
 };
 
-/** 提问行:`? 问题 [默认值] · 键 动作 · 键 动作: `,主体无码以免干扰行编辑。 */
+/** 提问行:`? 问题 [默认值] · 键 动作 · 键 动作: `,主体无码以免干扰行编辑. */
 export const renderPrompt = ({text, defaultValue = null, legend = []}, output = process.stdout) =>
   `${promptPrefix(output)} ${text}` +
   `${defaultValue !== null ? ` [${defaultValue}]` : ''}` +
@@ -35,8 +35,8 @@ export const renderPrompt = ({text, defaultValue = null, legend = []}, output = 
 const isQuit = (answer) => String(answer ?? '').trim().toLowerCase() === 'q';
 
 /**
- * 共享交互问答层。SIGINT 与输入流提前关闭都按用户放弃处理,退出码为 130。
- * fn 收到的 ask 提供 confirm / pick / line 三种固定语义的问答。
+ * 共享交互问答层.SIGINT 与输入流提前关闭都按用户放弃处理,退出码为 130.
+ * fn 收到的 ask 提供 confirm / pick / line 三种固定语义的问答.
  */
 export const withPrompts = async (
   fn,

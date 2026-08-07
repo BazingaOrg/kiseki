@@ -1,9 +1,9 @@
 /**
  * GET /api/project?path=<abs 素材夹路径> —— 汇总一个素材夹的清单:照片/音频/
  * 歌词(复用 project.mjs 的 scanFolderLoose,宽松扫描不因缺件报错)、逐张滤镜
- * 配置(readFilterConfig)、以及 output/ 下已导出的视频与 still 照片列表。
+ * 配置(readFilterConfig)、以及 output/ 下已导出的视频与 still 照片列表.
  * 不做 EXIF 批量提取(耗时):批量解析几十张会让"选择文件夹"这一步明显变慢,
- * 而 EXIF 只在点开大图时才看,交给 /api/exif 按需请求单张。
+ * 而 EXIF 只在点开大图时才看,交给 /api/exif 按需请求单张.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -12,6 +12,7 @@ import {readFilterConfig, resolveProjectPaths, scanFolderLoose} from '../project
 import {parseLrc} from '../lrc.mjs';
 import {readUsableRecognizedLyrics} from '../recognized-lyrics.mjs';
 import {resolveSafePath} from './sandbox.mjs';
+import {LYRIC_MUTATION_HINT} from './assets.mjs';
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -19,7 +20,7 @@ const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const assetItem = ({kind, origin, folder, relativePath, manageable = true, actionHint = null}) => {
   const assetPath = path.join(folder, relativePath);
   return {
-    // id 由 kind + 当前项目内路径组成；改名后会变化。写操作仍必须重新扫描验证。
+    // id 由 kind + 当前项目内路径组成;改名后会变化.写操作仍必须重新扫描验证.
     id: `${kind}:${relativePath}`,
     kind,
     origin,
@@ -35,7 +36,7 @@ const assetCollection = ({kind, origin, folder, relativePaths}) => {
   const items = relativePaths.map((relativePath) => {
     return assetItem({
       kind, origin, folder, relativePath, manageable: kind !== 'lyrics',
-      actionHint: kind === 'lyrics' ? '歌词文件此批只读；音频操作仅联动同 stem 歌词' : null,
+      actionHint: kind === 'lyrics' ? LYRIC_MUTATION_HINT : null,
     });
   });
   return {
@@ -48,8 +49,8 @@ const assetCollection = ({kind, origin, folder, relativePaths}) => {
 };
 
 /**
- * 把 keepGaps 解析出来的空文本行折叠成上一句的 `until`,自己不出现在结果里。
- * 前端据此知道"这一句到点该收了",间奏期间不再有行被高亮。
+ * 把 keepGaps 解析出来的空文本行折叠成上一句的 `until`,自己不出现在结果里.
+ * 前端据此知道"这一句到点该收了",间奏期间不再有行被高亮.
  * @param {{time: number, text: string}[]} entries
  * @returns {{time: number, text: string, until: number|null}[]}
  */
@@ -60,7 +61,7 @@ export const withGapEnds = (entries) => {
       out.push({time: entry.time, text: entry.text, until: null});
       continue;
     }
-    // 空行:标记上一句的结束。开头就是空行则无事可做。
+    // 空行:标记上一句的结束.开头就是空行则无事可做.
     if (out.length > 0) out[out.length - 1].until = entry.time;
   }
   return out;
@@ -97,16 +98,16 @@ export const getProject = (root, requestedPath) => {
   const {photos, audios, lyrics, videos: unsupportedVideos} = scanFolderLoose(safePath);
   const {lyricsPath, timelinePath} = resolveProjectPaths(safePath);
 
-  // 歌词优先用用户自备的 .lrc(手工校对过,最准),没有才退回本地识别的产物。
-  // 两者归一成同一个 {time, text}[],前端不必关心来源差异。
+  // 歌词优先用用户自备的 .lrc(手工校对过,最准),没有才退回本地识别的产物.
+  // 两者归一成同一个 {time, text}[],前端不必关心来源差异.
   let lyricsEntries = null;
   let lyricsSource = null;
   if (lyrics.length === 1) {
     try {
-      // keepGaps:把"只有时间戳没有文本"的行也读进来,转成上一句的 until。
-      // 没有它,间奏那十几秒里上一句会一直挂着高亮不消失。
+      // keepGaps:把"只有时间戳没有文本"的行也读进来,转成上一句的 until.
+      // 没有它,间奏那十几秒里上一句会一直挂着高亮不消失.
       const parsed = withGapEnds(parseLrc(fs.readFileSync(path.join(safePath, lyrics[0]), 'utf8'), {keepGaps: true}));
-      // 只在真解析出行时才认作歌词来源。空文件、或只有 [ti:]/[ar:] 标签的 .lrc
+      // 只在真解析出行时才认作歌词来源.空文件、或只有 [ti:]/[ar:] 标签的 .lrc
       // 会让 parseLrc 返回 [],若把它当成"有 .lrc"就会永久遮蔽已识别的歌词
       if (parsed.length > 0) {
         lyricsEntries = parsed;
@@ -184,16 +185,16 @@ export const getProject = (root, requestedPath) => {
     body: {
       path: safePath,
       name: path.basename(safePath),
-      // 沙箱根。`tsuzuri web <folder>` 会把根锁定成那个素材夹,此时 root === path,
+      // 沙箱根.`tsuzuri web <folder>` 会把根锁定成那个素材夹,此时 root === path,
       // 选择器里除了它自己什么都挑不到 —— 前端据此把"切换素材夹"改成说明,
-      // 而不是留一个点了只能选回原地的按钮。
+      // 而不是留一个点了只能选回原地的按钮.
       root: path.resolve(root),
       photos: photos.map((name) => path.join(safePath, name)),
       // 多份音频是 scanFolder 会报错的歧义状态,宽松扫描不报错但要让前端能提示
       audio: audios[0] ? path.join(safePath, audios[0]) : null,
       audioCount: audios.length,
-      // 新字段保留全量列表；旧的 audio/lyricsFile/count 字段继续返回，避免旧 Web
-      // 客户端在升级期间失效。主资产只会在唯一候选时由 assets.*.primaryId 表示。
+      // 新字段保留全量列表;旧的 audio/lyricsFile/count 字段继续返回,避免旧 Web
+      // 客户端在升级期间失效.主资产只会在唯一候选时由 assets.*.primaryId 表示.
       audios: audioAssets.items.map((item) => item.path),
       lyricsFile: lyrics.length === 1 ? path.join(safePath, lyrics[0]) : null,
       lyricsCount: lyrics.length,

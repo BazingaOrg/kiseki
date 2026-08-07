@@ -93,7 +93,7 @@ test('limitLyricsCandidates 稳定按 id 去重后限制为 10 个候选', () =>
   assert.deepEqual(limitLyricsCandidates(records).map(({id}) => id), [0, 1, 2, 4, 5, 6, 7, 8, 9, 10]);
 });
 
-test('LRCLIB id 用 String(id) 去重，缺失 id 的候选彼此保留', () => {
+test('LRCLIB id 用 String(id) 去重,缺失 id 的候选彼此保留', () => {
   const records = [
     {id: 42, syncedLyrics: '[00:01.00]a'},
     {id: '42', syncedLyrics: '[00:01.00]b'},
@@ -327,7 +327,7 @@ test('next-step guidance follows the final material state', () => {
   );
   assert.equal(
     buildNextStepMessage('/trip', {photos: [], audios: ['song.m4a']}),
-    '下一步:先把照片放入素材文件夹',
+    '下一步:先把照片放入素材夹',
   );
   assert.equal(buildNextStepMessage('/trip', {photos: ['a.jpg'], audios: []}), null);
 });

@@ -1,5 +1,5 @@
 /**
- * Remotion bundle 共享 helper:视频 render 与 still 共用同一套打包配置。
+ * Remotion bundle 共享 helper:视频 render 与 still 共用同一套打包配置.
  */
 
 import fs from 'node:fs';

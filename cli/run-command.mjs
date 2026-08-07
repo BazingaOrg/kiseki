@@ -11,10 +11,10 @@ const STAGE_DETAILS = {
 };
 
 /**
- * 结构化进度出口开启时的 stdio。`'inherit'` 只继承 0/1/2,fd 3 传不下去 ——
+ * 结构化进度出口开启时的 stdio.`'inherit'` 只继承 0/1/2,fd 3 传不下去 ——
  * 而渲染的百分比全部产生在 `render.mjs` 这个孙进程里(它一次 term.* 都不调),
- * 不显式把 3 传下去,网页上的进度条就永远是不确定态,等于这个功能没做。
- * uv 那两次调用也会拿到 fd 3,Python 不写它,无害。
+ * 不显式把 3 传下去,网页上的进度条就永远是不确定态,等于这个功能没做.
+ * uv 那两次调用也会拿到 fd 3,Python 不写它,无害.
  */
 const stdioFor = (env) =>
   jsonProgressEnabled(env) ? ['inherit', 'inherit', 'inherit', 3] : 'inherit';

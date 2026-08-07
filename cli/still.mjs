@@ -1,6 +1,6 @@
 /**
- * tsuzuri still — 纯 Node 管道:扫描照片 → 可选 EXIF → renderStill PNG。
- * 不碰 analyzer / uv。
+ * tsuzuri still — 纯 Node 管道:扫描照片 → 可选 EXIF → renderStill PNG.
+ * 不碰 analyzer / uv.
  */
 
 import fs from 'node:fs';
@@ -25,7 +25,7 @@ const ALL_VARIANT_SUFFIXES = PRESENTATION_SUFFIXES.flatMap((presentation) =>
   CANVAS_SUFFIXES.map((canvas) => `${presentation}${canvas}`),
 );
 
-/** 读取视频/still 共享配置 schema,仅投影 still 所需画布字段。 */
+/** 读取视频/still 共享配置 schema,仅投影 still 所需画布字段. */
 export const loadStillCanvasConfig = (folder) => {
   const {values} = loadProjectConfig(folder);
   return {
@@ -37,10 +37,10 @@ export const loadStillCanvasConfig = (folder) => {
   };
 };
 
-/** 静态导出诊断只使用解析后的画布、倍率和确定的输出目标。 */
+/** 静态导出诊断只使用解析后的画布、倍率和确定的输出目标. */
 export const formatStillDiagnostics = ({canvas, scale, jobs}) => {
   const destination = jobs.length === 1 ? jobs[0].outPath : path.dirname(jobs[0].outPath);
-  return `实际静态导出配置：${canvas.width * scale}×${canvas.height * scale} px；输出倍率 ${scale}；${jobs.length} 张；输出 ${destination}`;
+  return `实际静态导出配置:${canvas.width * scale}×${canvas.height * scale} px;输出倍率 ${scale};${jobs.length} 张;输出 ${destination}`;
 };
 
 const listPhotosInFolder = (folder) => {
@@ -64,8 +64,8 @@ const assertNoCrossVariantCollisions = (jobs, variantSuffix) => {
       const previous = producers.get(key);
       if (previous && previous !== job.absPath) {
         throw new CliError(
-          `图片文件名会导致 still 变体输出冲突: ${path.basename(previous)} / ${path.basename(job.absPath)} → ${outputName}\n` +
-          '└ 请重命名其中一张图片后重试',
+          `照片文件名会导致 still 变体输出冲突: ${path.basename(previous)} / ${path.basename(job.absPath)} → ${outputName}\n` +
+          '└ 请重命名其中一张照片后重试',
         );
       }
       producers.set(key, job.absPath);
@@ -119,7 +119,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
   if (stat.isDirectory()) {
     const photos = listPhotosInFolder(resolved);
     if (photos.length === 0) {
-      throw new CliError(`文件夹里没有图片: ${resolved}`);
+      throw new CliError(`文件夹里没有照片: ${resolved}`);
     }
     const variantSuffix = resolveOutputVariantSuffix({
       exif, sign, dark, portrait, square, filter,
@@ -144,7 +144,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
         const base = path.basename(job.absPath, path.extname(job.absPath));
         job.outPath = path.join(outDir, `${base}-${sourceExt}${variantSuffix}.png`);
       }
-      term.warn(`同名图片输出冲突,已保留源扩展名消歧: ${group.map((job) => path.basename(job.outPath)).join(', ')}`);
+      term.warn(`同名照片输出冲突,已保留源扩展名消歧: ${group.map((job) => path.basename(job.outPath)).join(', ')}`);
     }
     assertNoCrossVariantCollisions(jobs, variantSuffix);
     return {
@@ -200,16 +200,16 @@ export const runStill = async (opts) => {
     const stillProgressLabel = (index) =>
       jobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${jobs.length}`;
 
-    term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 黑底' : ''})`);
+    term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 暗色' : ''})`);
     const bundled = await bundleRenderer(resolved.publicDir, {
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
-    // 诊断须独占一行；不 finish，后面的批量进度仍沿用稳定的 Rendering still stage。
+    // 诊断须独占一行;不 finish,后面的批量进度仍沿用稳定的 Rendering still stage.
     progress.endLine();
 
     // 复用同一个 Chromium 渲染全部照片:每张冷启动一次浏览器是批量导出
-    // 的最大开销。selectComposition 与 renderStill 都吃同一个 puppeteerInstance。
+    // 的最大开销.selectComposition 与 renderStill 都吃同一个 puppeteerInstance.
     const browser = await openBrowser('chrome', {logLevel: 'error'});
     cleanup = () => {
       Promise.resolve(browser.close({silent: true})).catch(() => {});
@@ -264,7 +264,7 @@ export const runStill = async (opts) => {
       await renderStill({
         serveUrl: bundled.serveUrl,
         // selectComposition 只做一次以复用相同画布元数据;其 resolved props
-        // 必须按 job 更新,否则首次选择时的 exif:null 会覆盖动态 inputProps。
+        // 必须按 job 更新,否则首次选择时的 exif:null 会覆盖动态 inputProps.
         composition: {...composition, props: inputProps},
         inputProps,
         output: activePartial,
@@ -351,7 +351,7 @@ export const runStill = async (opts) => {
       ...(skipped > 0 ? [`${skipped} 张已存在`] : []),
       ...(skippedExif > 0 ? [`${skippedExif} 张 EXIF 信息不足`] : []),
     ];
-    term.success(`still 完成 → 未导出图片${reasons.length > 0 ? `(${reasons.join(',')})` : ''}`);
+    term.success(`still 完成 → 未导出静态图${reasons.length > 0 ? `(${reasons.join(',')})` : ''}`);
   } else {
     const destination = jobs.length === 1 ? jobs[0].outPath : path.dirname(jobs[0].outPath);
     const skippedTotal = skipped + skippedExif;

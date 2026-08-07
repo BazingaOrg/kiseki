@@ -15,7 +15,7 @@ const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 export const AUDIO_DIR = 'audio';
 
 // 符号链接按跟随后的真实类型归类:指向目录的链接(哪怕扩展名像图片)不算文件,
-// 悬空/循环链接跳过 —— 否则它们会被算成照片,在读取时以 EISDIR/ENOENT 崩溃。
+// 悬空/循环链接跳过 —— 否则它们会被算成照片,在读取时以 EISDIR/ENOENT 崩溃.
 const isReadableFile = (folder, entry) => {
   if (entry.isFile()) return true;
   if (!entry.isSymbolicLink()) return false;
@@ -32,8 +32,8 @@ const listFiles = (folder) =>
     .map((entry) => entry.name);
 
 /**
- * 宽松扫描:只按扩展名分类,不校验数量。fetch 用它判断文件夹缺什么、有什么
- * 可覆盖;严格校验仍由 scanFolder 负责。
+ * 宽松扫描:只按扩展名分类,不校验数量.fetch 用它判断文件夹缺什么、有什么
+ * 可覆盖;严格校验仍由 scanFolder 负责.
  */
 export const scanFolderLoose = (folder) => {
   const entries = listFiles(folder);
@@ -61,12 +61,12 @@ export const scanFolder = (folder, {requirePhotos = true} = {}) => {
   if (audios.length > 1) throw new CliError(`文件夹里有多个音频,只能有一个:\n${audios.join('\n')}`);
   if (audios.length === 0) {
     throw new CliError(
-      `没有找到音频文件。目录约定:照片 + 唯一的音频文件(${[...AUDIO_EXTS].join(' ')})` +
+      `没有找到音频文件.目录约定:照片 + 唯一的音频文件(${[...AUDIO_EXTS].join(' ')})` +
       `\n└ 可运行 ${formatEquivalentCommand(['fetch', folder])} 补齐`,
     );
   }
   if (requirePhotos && photos.length === 0) {
-    throw new CliError(`没有找到图片。目录约定:照片(${[...IMAGE_EXTS].join(' ')})+ 唯一的音频文件`);
+    throw new CliError(`没有找到图片.目录约定:照片(${[...IMAGE_EXTS].join(' ')})+ 唯一的音频文件`);
   }
   if (lyrics.length > 1) {
     throw new CliError(`文件夹里有多个 LRC 歌词,只能有一个:\n${lyrics.join('\n')}`);
@@ -76,7 +76,7 @@ export const scanFolder = (folder, {requirePhotos = true} = {}) => {
 
 /**
  * `outputSuffix`(如 `-exif-sign-dark`)只在 `output` 未显式指定时追加到默认
- * 文件名,避免变体覆盖普通版;`-o` 显式指定时用户说了算,不加后缀。
+ * 文件名,避免变体覆盖普通版;`-o` 显式指定时用户说了算,不加后缀.
  */
 export const resolveProjectPaths = (folder, output = null, outputSuffix = '') => {
   const defaultOutputDir = path.join(folder, 'output');
@@ -146,17 +146,17 @@ export const writeTrimPreference = (preferencesPath, value) => {
 };
 
 /**
- * 输入素材是否变化的摘要,供 plan.py 判断时间线要不要重建。
+ * 输入素材是否变化的摘要,供 plan.py 判断时间线要不要重建.
  * 用 size + mtimeNs 元数据代替全量读文件:写入必然更新 mtime,真实修改
  * 都会被检出;代价是"改了内容又精确恢复 mtime+size"的刻意伪造检测不到,
  * 对本地素材改动检测这是可接受的取舍 —— 全量读哈希在大照片集下要同步读
- * 数十 GB,缓存命中与否都得付。
+ * 数十 GB,缓存命中与否都得付.
  */
 export const computeInputHash = (folder, files) => {
   const hash = createHash('sha256');
   for (const file of [...files].sort()) {
     // mtimeNs 只在 bigint stat 上有;普通 stat 只有 mtimeMs,同一毫秒内的
-    // 连续写入会撞出相同的摘要,纳秒级才可靠。
+    // 连续写入会撞出相同的摘要,纳秒级才可靠.
     const {size, mtimeNs} = fs.statSync(path.join(folder, file), {bigint: true});
     hash.update(`${file}\0${size}:${mtimeNs}\0`);
   }
@@ -176,9 +176,9 @@ const isValidIntensity = (value) =>
 
 /**
  * 素材夹逐张滤镜偏好:`<folder>/tsuzuri.json`,结构
- * `{ filter?, intensity?, perPhoto?: { "<照片文件名>": { filter?, intensity? } } }`。
- * tsuzuri.toml 是画布用的扁平配置,不适合嵌套的 perPhoto 结构,故用独立 JSON 文件。
- * 文件不存在时返回 null;字段非法时抛 CliError,便于用户第一时间发现拼写错误。
+ * `{ filter?, intensity?, perPhoto?: { "<照片文件名>": { filter?, intensity? } } }`.
+ * tsuzuri.toml 是画布用的扁平配置,不适合嵌套的 perPhoto 结构,故用独立 JSON 文件.
+ * 文件不存在时返回 null;字段非法时抛 CliError,便于用户第一时间发现拼写错误.
  */
 export const readFilterConfig = (folder) => {
   const jsonPath = path.join(folder, 'tsuzuri.json');
@@ -237,8 +237,8 @@ export const readFilterConfig = (folder) => {
 };
 
 /**
- * 照片文件名变更时同步 tsuzuri.json 的 perPhoto 键。先完整校验旧配置，再用同目录
- * 临时文件替换；调用方若随后文件移动失败，可以把 returned raw 写回去回滚。
+ * 照片文件名变更时同步 tsuzuri.json 的 perPhoto 键.先完整校验旧配置,再用同目录
+ * 临时文件替换;调用方若随后文件移动失败,可以把 returned raw 写回去回滚.
  */
 export const renamePerPhotoConfig = (folder, fromName, toName) => {
   const jsonPath = path.join(folder, 'tsuzuri.json');
@@ -259,8 +259,8 @@ export const renamePerPhotoConfig = (folder, fromName, toName) => {
 };
 
 /**
- * 优先级:CLI flag > perPhoto > 配置全局 > 无。
- * cliFilter 非空时对所有照片一视同仁(渲染/still 全局 --filter 语义不变)。
+ * 优先级:CLI flag > perPhoto > 配置全局 > 无.
+ * cliFilter 非空时对所有照片一视同仁(渲染/still 全局 --filter 语义不变).
  */
 export const resolveFilterForPhoto = ({config = null, cliFilter = null, photoName}) => {
   if (cliFilter) return cliFilter;

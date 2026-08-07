@@ -1,10 +1,10 @@
 /**
  * GET /api/doctor —— 环境依赖状态,直接复用 doctor.mjs 的 collectDoctorChecks,
- * 与 `tsuzuri doctor` 是同一份判定,不另立一套。
+ * 与 `tsuzuri doctor` 是同一份判定,不另立一套.
  *
  * 前端拿它来决定哪些能力可用(缺 ffmpeg 就禁用渲染并写明原因),
- * 所以每项都带 `fix` 安装提示,前端可直接展示成"怎么补"。
- * 仅接受调用方的 refresh 标记以绕过已完成缓存,不碰文件系统沙箱。
+ * 所以每项都带 `fix` 安装提示,前端可直接展示成"怎么补".
+ * 仅接受调用方的 refresh 标记以绕过已完成缓存,不碰文件系统沙箱.
  */
 import {collectWebDoctorChecks} from '../doctor.mjs';
 
@@ -25,7 +25,7 @@ const responseFor = (checks) => ({
   },
 });
 
-/** 每个 web server 应有自己的一份缓存与 single-flight 状态。 */
+/** 每个 web server 应有自己的一份缓存与 single-flight 状态. */
 export const createDoctorService = ({collect = collectWebDoctorChecks, now = Date.now, ttlMs = TTL_MS} = {}) => {
   let cached = null;
   let inFlight = null;
@@ -39,7 +39,7 @@ export const createDoctorService = ({collect = collectWebDoctorChecks, now = Dat
       .then(collect)
       .then((checks) => {
         const result = responseFor(checks);
-        // TTL 从完整成功探测完成后开始计算，不能从请求发起时算。
+        // TTL 从完整成功探测完成后开始计算,不能从请求发起时算.
         cached = {result, completedAt: now()};
         return result;
       })

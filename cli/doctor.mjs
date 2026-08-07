@@ -1,5 +1,5 @@
 /**
- * tsuzuri doctor — <2s 依赖预检,不联网、不触发 `uv sync`(那可能很慢)。
+ * tsuzuri doctor — <2s 依赖预检,不联网、不触发 `uv sync`(那可能很慢).
  */
 
 import {spawn, spawnSync} from 'node:child_process';
@@ -15,9 +15,9 @@ export {FIXES} from './dependencies.mjs';
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 
 /**
- * 探测子命令的超时。doctor 承诺 <2s 完成,而这些 spawnSync 会阻塞整个进程 ——
+ * 探测子命令的超时.doctor 承诺 <2s 完成,而这些 spawnSync 会阻塞整个进程 ——
  * web server 上 /api/doctor 也走这条路,PATH 上有个卡死的 yt-dlp 包装脚本
- * 就能把整个 server 挂住,不只是那一个请求。
+ * 就能把整个 server 挂住,不只是那一个请求.
  */
 const PROBE_TIMEOUT_MS = 2000;
 
@@ -54,8 +54,8 @@ const failedCommandCheck = (label, fix, optional = false) => ({
 });
 
 /**
- * Web 端的子进程检查。CLI 必须继续使用上方 spawnSync 以保持既有输出与返回
- * 时机；HTTP 请求则不能让一个卡住的 PATH 包装脚本阻塞整个 Node 事件循环。
+ * Web 端的子进程检查.CLI 必须继续使用上方 spawnSync 以保持既有输出与返回
+ * 时机;HTTP 请求则不能让一个卡住的 PATH 包装脚本阻塞整个 Node 事件循环.
  */
 const commandCheckAsync = (label, cmd, args, {versionRegex, fix, optional = false}, {
   spawnImpl = spawn,
@@ -96,7 +96,7 @@ const commandCheckAsync = (label, cmd, args, {versionRegex, fix, optional = fals
       try {
         child.kill();
       } catch {
-        // 进程已经自行结束时 kill 可能抛错；检查仍按失败返回。
+        // 进程已经自行结束时 kill 可能抛错;检查仍按失败返回.
       }
       fail();
     }, timeoutMs);
@@ -125,7 +125,7 @@ const rendererCheck = (repo) => {
   return {id: 'renderer', ok: false, line: '渲染器依赖未安装', fix: FIXES.renderer};
 };
 
-/** 可选依赖 yt-dlp:仅提示,从不判定失败(只有 fetch 下载音频用到,用户自装)。 */
+/** 可选依赖 yt-dlp:仅提示,从不判定失败(只有 fetch 下载音频用到,用户自装). */
 const ytDlpCheck = () => {
   const r = spawnSync('yt-dlp', ['--version'], {encoding: 'utf8', timeout: PROBE_TIMEOUT_MS});
   if (!r.error && r.status === 0) {
@@ -140,7 +140,7 @@ const ytDlpCheck = () => {
   };
 };
 
-/** 分析器 Python 环境:仅提示,从不判定失败(uv 会在首次运行时自动构建)。 */
+/** 分析器 Python 环境:仅提示,从不判定失败(uv 会在首次运行时自动构建). */
 const analyzerEnvCheck = (repo) => {
   const venv = path.join(repo, 'analyzer', '.venv');
   if (fs.existsSync(venv)) {
@@ -150,8 +150,8 @@ const analyzerEnvCheck = (repo) => {
 };
 
 /**
- * 只做检查、不打印,供 CLI(runDoctor)与 web API(/api/doctor)共用同一份判定。
- * 必需依赖缺失即 doctor 失败;`optional: true` 的项从不判定失败,只做提示。
+ * 只做检查、不打印,供 CLI(runDoctor)与 web API(/api/doctor)共用同一份判定.
+ * 必需依赖缺失即 doctor 失败;`optional: true` 的项从不判定失败,只做提示.
  * @returns {{id: string, ok: boolean, line: string, fix?: string, optional?: boolean}[]}
  */
 export const collectDoctorChecks = ({repo = REPO} = {}) => [
@@ -164,8 +164,8 @@ export const collectDoctorChecks = ({repo = REPO} = {}) => [
 ];
 
 /**
- * Web 专用的异步探测。同步的 node / 文件系统检查保留原判定，三个外部命令并行
- * 运行，并在返回前按 CLI 的稳定顺序重新组装。
+ * Web 专用的异步探测.同步的 node / 文件系统检查保留原判定,三个外部命令并行
+ * 运行,并在返回前按 CLI 的稳定顺序重新组装.
  */
 export const collectWebDoctorChecks = async ({repo = REPO, ...processOptions} = {}) => {
   const [uv, ffmpeg, ytDlp] = await Promise.all([
@@ -185,7 +185,7 @@ export const collectWebDoctorChecks = async ({repo = REPO, ...processOptions} = 
 /**
  * @param {{repo?: string, checks?: ReturnType<typeof collectDoctorChecks>}} [options]
  *   `checks` 可注入,让测试能覆盖"必需项失败""可选项失败"这些在开发机上永远
- *   走不到的分支 —— 否则这些分支只有在别人的机器坏掉时才第一次被执行。
+ *   走不到的分支 —— 否则这些分支只有在别人的机器坏掉时才第一次被执行.
  */
 export const runDoctor = ({repo = REPO, checks = collectDoctorChecks({repo})} = {}) => {
   let hasFailure = false;

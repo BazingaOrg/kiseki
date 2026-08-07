@@ -37,7 +37,7 @@ test('rejects .. traversal', () => {
 test('rejects percent-encoded traversal (caller must not double-decode, but raw ..%2f string is still just a literal path here)', () => {
   const root = makeTempRoot();
   // 若上层误把 "..%2f" 当作字面路径传入(未先 decodeURIComponent),它不构成
-  // 有效路径分隔符,resolve 后仍在 root 内部但目标不存在 → 404,不会越界。
+  // 有效路径分隔符,resolve 后仍在 root 内部但目标不存在 → 404,不会越界.
   const result = resolveMedia(root, path.join(root, '..%2f..%2fetc%2fpasswd'));
   assert.equal(result.status, 404);
 });

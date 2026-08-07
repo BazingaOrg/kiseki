@@ -1,8 +1,8 @@
 /**
- * 路径沙箱:所有 web API 的唯一入口,校验请求路径不能逃出允许的根目录。
+ * 路径沙箱:所有 web API 的唯一入口,校验请求路径不能逃出允许的根目录.
  * 双重防护:1) path.resolve 展平 `..` 后做前缀比对;2) fs.realpathSync 解开
- * 符号链接后再比对一次,防止根目录内的软链接指向根目录外的文件。
- * 任一阶段失败都返回 null,调用方一律回 403,不泄露失败原因细节。
+ * 符号链接后再比对一次,防止根目录内的软链接指向根目录外的文件.
+ * 任一阶段失败都返回 null,调用方一律回 403,不泄露失败原因细节.
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -21,11 +21,11 @@ export const resolveSafePath = (root, requestedPath) => {
   const absoluteRoot = path.resolve(root);
   const resolved = path.resolve(absoluteRoot, requestedPath);
   // 第一层:纯字符串层面的前缀校验,拦截 `..` 穿越与绝对路径逃逸,
-  // 不要求路径存在——不存在的路径交给调用方 stat 后返回 404。
+  // 不要求路径存在——不存在的路径交给调用方 stat 后返回 404.
   if (!isInside(absoluteRoot, resolved)) return null;
 
   // 第二层:路径若确实存在,再展开符号链接校验一次,拦截根目录内的
-  // 软链接指向根目录外的文件/目录这一逃逸手法。不存在时直接放行第一层结果。
+  // 软链接指向根目录外的文件/目录这一逃逸手法.不存在时直接放行第一层结果.
   if (!fs.existsSync(resolved)) return resolved;
   let real;
   let realRoot;

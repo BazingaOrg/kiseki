@@ -1,12 +1,12 @@
 export const PREVIEW_LINES = 12;
 
-/** 解析 LRC 文本为 [{time, text}](秒),忽略元数据行;用于落盘前 preview。 */
+/** 解析 LRC 文本为 [{time, text}](秒),忽略元数据行;用于落盘前 preview. */
 /**
  * @param {string} text
  * @param {{keepGaps?: boolean}} [options]
- *   `keepGaps` 保留只有时间戳、没有文本的行。这类行在 LRC 里是"上一句到此为止"
+ *   `keepGaps` 保留只有时间戳、没有文本的行.这类行在 LRC 里是"上一句到此为止"
  *   的标记(间奏、留白),对**视频字幕**没有意义(空字幕不该显示,所以默认丢掉),
- *   但对**跟播**是必需的 —— 没有它,间奏那十几秒里上一句会一直挂着高亮不消失。
+ *   但对**跟播**是必需的 —— 没有它,间奏那十几秒里上一句会一直挂着高亮不消失.
  */
 export const parseLrc = (text, {keepGaps = false} = {}) => {
   const entries = [];
@@ -36,7 +36,7 @@ export const formatLrcPageTitle = (total, offset, limit = PREVIEW_LINES) =>
 
 /**
  * 只用于决定是否做繁转简:日文歌词通常含假名,必须原样保留;
- * 有汉字但无假名时按中文处理,英文等其他脚本不处理。
+ * 有汉字但无假名时按中文处理,英文等其他脚本不处理.
  */
 export const detectLyricsScript = (lrc) => {
   const entries = parseLrc(lrc);
@@ -56,7 +56,7 @@ const getSimplifiedChineseConverter = () => {
   return simplifiedChineseConverterPromise;
 };
 
-/** LRCLIB 中文歌词优先简体;英文/日文及其他脚本原样返回。 */
+/** LRCLIB 中文歌词优先简体;英文/日文及其他脚本原样返回. */
 export const preferSimplifiedChineseLrc = async (lrc) => {
   const lyrics = String(lrc ?? '');
   const script = detectLyricsScript(lyrics);

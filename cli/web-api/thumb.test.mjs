@@ -82,7 +82,7 @@ test('falls back to the original file when the generator fails, retaining the so
   const broken = path.join(root, 'broken.jpg');
   fs.writeFileSync(broken, 'not really a jpeg');
   const result = await resolveThumb(root, broken, '400', undefined, {generator: async () => false, cacheDir: path.join(root, 'cache')});
-  // 宁可慢一点把原图发出去,也不要让页面开天窗。
+  // 宁可慢一点把原图发出去,也不要让页面开天窗.
   // 比对走 realpath:沙箱会展开符号链接(macOS 上 /var 实为 /private/var)
   assert.equal(result.status, 200);
   assert.equal(result.streamPath, fs.realpathSync(broken));

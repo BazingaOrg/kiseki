@@ -1,6 +1,6 @@
 /**
- * EXIF 提取与格式化:CLI 侧产出最终展示字符串,渲染器只做哑展示。
- * 不展示 GPS / 软件 / 白平衡等噪音字段。
+ * EXIF 提取与格式化:CLI 侧产出最终展示字符串,渲染器只做哑展示.
+ * 不展示 GPS / 软件 / 白平衡等噪音字段.
  */
 
 import exifr from 'exifr';
@@ -13,11 +13,11 @@ const clean = (value) => {
   return s.length > 0 ? s : null;
 };
 
-/** 相机、镜头或拍摄参数至少一项存在,才足以组成可信的 EXIF 展签。 */
+/** 相机、镜头或拍摄参数至少一项存在,才足以组成可信的 EXIF 展签. */
 export const isDisplayableExif = (formatted) =>
   Boolean(formatted?.camera || formatted?.lens || formatted?.params?.length);
 
-/** Make + Model,去掉 Model 里重复的 Make 前缀,简单大小写保留原样。 */
+/** Make + Model,去掉 Model 里重复的 Make 前缀,简单大小写保留原样. */
 export const formatCamera = (make, model) => {
   const m = clean(make);
   const mod = clean(model);
@@ -32,7 +32,7 @@ export const formatCamera = (make, model) => {
 
 export const formatLens = (lensModel) => clean(lensModel) ?? undefined;
 
-/** 快门:优先分数 1/N,否则秒数。 */
+/** 快门:优先分数 1/N,否则秒数. */
 export const formatExposure = (exposureTime) => {
   if (exposureTime == null || !Number.isFinite(Number(exposureTime))) return null;
   const t = Number(exposureTime);
@@ -100,7 +100,7 @@ export const formatDatetime = (value) => {
 };
 
 /**
- * 从照片文件提取并格式化四行 EXIF。失败或全缺返回 null(调用方回退无 EXIF 布局)。
+ * 从照片文件提取并格式化四行 EXIF.失败或全缺返回 null(调用方回退无 EXIF 布局).
  * @param {string} filePath
  * @returns {Promise<FormattedExif | null>}
  */
@@ -142,7 +142,7 @@ export const extractFormattedExif = async (filePath) => {
     datetime: formatDatetime(raw.DateTimeOriginal ?? raw.CreateDate),
   };
 
-  // 时间单独存在时可能只是转存/保存时间,不足以组成可靠展签。
+  // 时间单独存在时可能只是转存/保存时间,不足以组成可靠展签.
   if (!isDisplayableExif(formatted)) {
     return null;
   }

@@ -153,8 +153,8 @@ test('missing confidence becomes null rather than being dropped', () => {
 });
 
 test('lrc 里只有时间戳的空行转成上一句的 until,不再自己占一行', () => {
-  // 这类行是"上一句到此为止"的标记(间奏、留白)。丢掉它,间奏那十几秒里
-  // 上一句会一直挂着高亮不消失;把它当成一行歌词,列表里又会多出一堆 ⋯。
+  // 这类行是"上一句到此为止"的标记(间奏、留白).丢掉它,间奏那十几秒里
+  // 上一句会一直挂着高亮不消失;把它当成一行歌词,列表里又会多出一堆 ⋯.
   const root = makeTempRoot();
   fs.writeFileSync(path.join(root, 'music.mp3'), '');
   fs.writeFileSync(

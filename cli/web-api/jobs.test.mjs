@@ -188,7 +188,7 @@ const testProcessTable = () => [...activeFakePids]
   .map((pid) => `${pid} 1 ${TEST_EXECUTOR_START}`)
   .join('\n');
 
-/** 真实的 still 输入：buildJobSpec 会扫描素材目录，不能再靠不存在的 /tmp/x。 */
+/** 真实的 still 输入:buildJobSpec 会扫描素材目录,不能再靠不存在的 /tmp/x. */
 const makeStillFixture = () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-still-fixture-'));
   fs.writeFileSync(path.join(folder, 'photo.jpg'), 'fixture');
@@ -201,7 +201,7 @@ test.after(() => {
   fs.rmSync(STILL_FIXTURE, {recursive: true, force: true});
 });
 
-/** 造一个假的 child_process.ChildProcess，并建模 exit 后才会被 close/reap。 */
+/** 造一个假的 child_process.ChildProcess,并建模 exit 后才会被 close/reap. */
 const makeFakeChild = ({autoCloseOnExit = true, pid = 12345, stdioCount = 4} = {}) => {
   const child = new EventEmitter();
   child.pid = pid;
@@ -332,7 +332,7 @@ test('非零退出码 → status failed', async () => {
   assert.equal(manager.getJob(id).exitCode, 1);
 });
 
-test('exit 后仍保持 running，直到 stdio close/reap 才发送唯一终态', () => {
+test('exit 后仍保持 running,直到 stdio close/reap 才发送唯一终态', () => {
   const child = makeFakeChild({autoCloseOnExit: false});
   const manager = createJobManager({spawnImpl: () => child});
   const {id} = manager.createJob({kind: 'render', folder: '/f'});
@@ -348,7 +348,7 @@ test('exit 后仍保持 running，直到 stdio close/reap 才发送唯一终态'
   assert.equal(chunks.filter((chunk) => chunk.startsWith('event: end\n')).length, 1);
 });
 
-test('cancel 进入 stopping；Windows 只使用 taskkill /T 路径', async () => {
+test('cancel 进入 stopping;Windows 只使用 taskkill /T 路径', async () => {
   const child = makeFakeChild();
   const taskkillCalls = [];
   let alive = true;
@@ -499,7 +499,7 @@ test('fd3 解析失败的行被跳过,不影响后续事件', async () => {
 test('createJob 时选项非法直接抛 JobValidationError,不占用并发锁', () => {
   const manager = createJobManager({spawnImpl: makeFakeChild});
   assert.throws(() => manager.createJob({kind: 'render', folder: '/f', options: {format: 'bogus'}}), JobValidationError);
-  // 校验失败不应该锁住"当前任务"位置,后续合法请求应该能正常创建。
+  // 校验失败不应该锁住"当前任务"位置,后续合法请求应该能正常创建.
   const result = manager.createJob({kind: 'render', folder: '/f'});
   assert.ok(result.id);
 });
@@ -522,7 +522,7 @@ test('cancel escalates to SIGKILL when the child ignores SIGTERM', async () => {
   assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
 
-test('取消后 child close 且未快照到后代时可直接完成，不补盲目的 SIGKILL', async () => {
+test('取消后 child close 且未快照到后代时可直接完成,不补盲目的 SIGKILL', async () => {
   const child = makeFakeChild();
   const signals = [];
   const manager = createJobManager({
@@ -537,7 +537,7 @@ test('取消后 child close 且未快照到后代时可直接完成，不补盲�
   assertGracefulTerminationSignals(signals, 12345);
 });
 
-test('取消时 child close 不是终态：已快照后代仍存活则保留 lease 并等待/强杀', async () => {
+test('取消时 child close 不是终态:已快照后代仍存活则保留 lease 并等待/强杀', async () => {
   const child = makeFakeChild({autoCloseOnExit: false});
   const signals = [];
   const processTable = `12345 1 ${TEST_EXECUTOR_START}\n12346 12345 ${TEST_EXECUTOR_START}\n`;
@@ -552,13 +552,13 @@ test('取消时 child close 不是终态：已快照后代仍存活则保留 lea
   child.emit('exit', null);
   child.emit('close', null);
   assert.equal(manager.getJob(id).status, 'stopping');
-  // pollTermination 每 50ms 复核一次；force timer 只负责发 SIGKILL。
+  // pollTermination 每 50ms 复核一次;force timer 只负责发 SIGKILL.
   await new Promise((resolve) => setTimeout(resolve, 70));
   assert.ok(signals.some(([pid, signal]) => pid === 12346 && signal === 'SIGKILL'));
   assert.equal(manager.getJob(id).status, 'failed');
 });
 
-test('重复取消与 shutdown 共用同一个终止流程，不重复发送 TERM', () => {
+test('重复取消与 shutdown 共用同一个终止流程,不重复发送 TERM', () => {
   const child = makeFakeChild({autoCloseOnExit: false});
   const signals = [];
   const manager = createJobManager({
@@ -592,7 +592,7 @@ test('spawn 后父进程登记 executor 失败且身份不可证实时保留 lea
   assert.equal(releases, 0, '已 spawn 的 child 未确认退出前不能直接释放 lease');
 });
 
-test('Windows 终止不读取 ps 快照，taskkill 成功后仍要求 child close 与平台判活', async () => {
+test('Windows 终止不读取 ps 快照,taskkill 成功后仍要求 child close 与平台判活', async () => {
   const child = makeFakeChild({autoCloseOnExit: false});
   let alive = true;
   const manager = createJobManager({
@@ -645,7 +645,7 @@ test('a spawn failure releases the concurrency lock instead of wedging it', () =
   const child = makeFakeChild({pid: null});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
   const first = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
-  // 没有 pid 说明 spawn 根本没创建进程,可直接释放并发锁。
+  // 没有 pid 说明 spawn 根本没创建进程,可直接释放并发锁.
   assert.equal(manager.getJob(first.id).status, 'failed');
   const second = manager.createJob({kind: 'still', folder: STILL_FIXTURE, options: {}});
   assert.ok(second.id, '第一个任务失败后应当能再起一个,而不是一直 409');
@@ -687,7 +687,7 @@ test('killAll escalates every running job so Ctrl+C leaves no orphans', async ()
   });
   manager.createJob({kind: 'render', folder: STILL_FIXTURE, options: {}});
   const resultPromise = manager.killAll({deadlineMs: 1});
-  // killAll 的 deadline 定时器会 unref；测试自己保持事件循环，等待关闭期限真正推进。
+  // killAll 的 deadline 定时器会 unref;测试自己保持事件循环,等待关闭期限真正推进.
   await new Promise((resolve) => setTimeout(resolve, 5));
   const result = await resultPromise;
   assert.equal(result.clean, false);
@@ -826,12 +826,12 @@ test('buildJobSpec:fetch-audio 非法字段被拒绝,且不留临时目录', () 
   assert.deepEqual(fs.readdirSync(tempParent), [], '校验失败不该在临时目录里留垃圾');
 });
 
-/** 只有三路 stdio 的假子进程:yt-dlp 不认识 fd 3,进度写在 stdout 上。 */
+/** 只有三路 stdio 的假子进程:yt-dlp 不认识 fd 3,进度写在 stdout 上. */
 const makeFakeYtDlpChild = () => makeFakeChild({pid: 4321, stdioCount: 3});
 
 const makeTempDir = (prefix) => fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 
-test('fetch-audio:stdout 的百分比被翻译成契约一，任务历史只保留最新 progress 快照', async () => {
+test('fetch-audio:stdout 的百分比被翻译成契约一,任务历史只保留最新 progress 快照', async () => {
   const child = makeFakeYtDlpChild();
   const manager = createJobManager({
     spawnImpl: () => child,
@@ -1010,9 +1010,9 @@ test('yt-dlp 起不来时不该报成"网络或地区限制"', async () => {
 
 test('CLI 入口路径必须真实存在', () => {
   // 这一条是唯一能抓到"路径拼错"的测试:其余用例全都注入 spawnImpl,
-  // 永远碰不到真实文件系统。曾经这里拼出的是 cli/cli/tsuzuri.mjs,
+  // 永远碰不到真实文件系统.曾经这里拼出的是 cli/cli/tsuzuri.mjs,
   // 子进程起手就 Cannot find module 退出 1,stderr 被丢、fd 3 无事件,
-  // 前端只看到一句"失败了"——从网页起任务这个功能整个是坏的。
+  // 前端只看到一句"失败了"——从网页起任务这个功能整个是坏的.
   for (const kind of ['render', 'still', 'lyrics']) {
     const spec = buildJobSpec({kind, folder: STILL_FIXTURE, options: {}});
     assert.equal(spec.command, process.execPath);
@@ -1022,7 +1022,7 @@ test('CLI 入口路径必须真实存在', () => {
 });
 
 test('listDescendants 递归枚举后代,不含自身', () => {
-  // 进程组够不到 puppeteer 自己 detach 出去的 chromium,只能靠 ppid 走树。
+  // 进程组够不到 puppeteer 自己 detach 出去的 chromium,只能靠 ppid 走树.
   const table = ['  100     1', '  200   100', '  300   200', '  400     1', '  500   400'].join('\n');
   const found = listDescendants(100, () => table);
   assert.deepEqual(found.sort(), [200, 300], '只要 100 这一支,不含自身也不含别人的');
@@ -1035,12 +1035,12 @@ test('listDescendants 对畸形输出与环不炸', () => {
   assert.deepEqual(listDescendants(7, () => '    7     7').sort(), []);
 });
 
-test('取消时冻结并快照后代，再逐个发送 SIGTERM', async () => {
+test('取消时冻结并快照后代,再逐个发送 SIGTERM', async () => {
   // 两个时机都是实测逼出来的:
   // 1. 快照必须在树还完整时做 —— render.mjs 一死,chromium 就被 reparent 到
-  //    launchd,从我们的 pid 再也走不到它们。
+  //    launchd,从我们的 pid 再也走不到它们.
   // 2. 后代必须立刻冻结并纳入 TERM 范围,不能等宽限期 —— 实测等 3 秒之后快照里的 pid 全部 ESRCH,
-  //    却又有 13 个新的 chromium 在跑,快照就此失效。
+  //    却又有 13 个新的 chromium 在跑,快照就此失效.
   const child = makeFakeChild();
   const signals = [];
   const manager = createJobManager({
@@ -1055,7 +1055,7 @@ test('取消时冻结并快照后代，再逐个发送 SIGTERM', async () => {
   });
   const {id} = manager.createJob({kind: 'render', folder: '/tmp/x', options: {}});
   manager.cancelJob(id);
-  // 先冻结可见树，再 TERM 自家进程组；后代不会在快照和 TERM 之间 reparent。
+  // 先冻结可见树,再 TERM 自家进程组;后代不会在快照和 TERM 之间 reparent.
   assert.deepEqual(signals[0], [-12345, 'SIGSTOP']);
   assert.deepEqual(
     signals.filter(([pid, signal]) => signal === 'SIGTERM' && pid > 0 && pid !== 12345).map(([pid]) => pid).sort(),
@@ -1071,7 +1071,7 @@ test('取消时冻结并快照后代，再逐个发送 SIGTERM', async () => {
 
 // --- 遗留项:停滞看门狗、任务表上限、临时目录收尾 --------------------------
 
-/** 停滞阈值与轮询间隔都调到毫秒级,免得单测干等两分钟。 */
+/** 停滞阈值与轮询间隔都调到毫秒级,免得单测干等两分钟. */
 const fastStallDeps = (extra = {}) => ({
   killImpl: () => {},
   stallTimeoutMs: 50,
@@ -1081,7 +1081,7 @@ const fastStallDeps = (extra = {}) => ({
 
 test('fetch-audio 长时间无进展会被中止,并说明卡在哪', async () => {
   // 卡在 0% 的下载(代理挂了但 TCP 不断)会永远占着并发锁,
-  // 用户不点取消就再也起不了任何任务。
+  // 用户不点取消就再也起不了任何任务.
   const child = makeFakeYtDlpChild();
   const manager = createJobManager(fastStallDeps({
     spawnImpl: () => child,
@@ -1146,18 +1146,18 @@ test('killAll 无法确认进程树退出时保留 fetch-audio task lease', asyn
   const folder = makeTempDir('tsuzuri-killalldest-');
   manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
 
-  // 下载 staging 位于 task lease，而非可由调用方观察的系统临时目录。
+  // 下载 staging 位于 task lease,而非可由调用方观察的系统临时目录.
   assert.deepEqual(fs.readdirSync(tempParent), []);
   const resultPromise = manager.killAll({deadlineMs: 1});
-  // killAll 的 deadline 定时器会 unref；测试自己保持事件循环，等待关闭期限真正推进。
+  // killAll 的 deadline 定时器会 unref;测试自己保持事件循环,等待关闭期限真正推进.
   await new Promise((resolve) => setTimeout(resolve, 5));
   const result = await resultPromise;
-  assert.equal(result.clean, false, '未确认子进程退出时必须保留 lease，不能抢先删除 staging');
+  assert.equal(result.clean, false, '未确认子进程退出时必须保留 lease,不能抢先删除 staging');
 });
 
 // --- 渲染速度档位 ----------------------------------------------------------
 
-test('speed 档位映射成 TSUZURI_CONCURRENCY，并透传诊断标签', () => {
+test('speed 档位映射成 TSUZURI_CONCURRENCY,并透传诊断标签', () => {
   // balanced 不设并发值是刻意的:直接用 CLI 的默认(一半核心),少一个会跑偏的来源
   const of = (speed) => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed}}).env.TSUZURI_CONCURRENCY;
   assert.equal(of('saver'), '25%');
@@ -1184,7 +1184,7 @@ test('speed 不会漏进 argv —— 它只影响环境变量', () => {
   assert.ok(!spec.args.some((arg) => /speed|concurrency|90/.test(arg)), `argv 被污染了: ${spec.args.join(' ')}`);
 });
 
-test('buildJobEnv: 速度档位透传，saver/full 额外覆盖并发', () => {
+test('buildJobEnv: 速度档位透传,saver/full 额外覆盖并发', () => {
   assert.deepEqual(buildJobEnv({speed: 'saver'}), {TSUZURI_RENDER_SPEED: 'saver', TSUZURI_CONCURRENCY: '25%'});
   assert.deepEqual(buildJobEnv({speed: 'full'}), {TSUZURI_RENDER_SPEED: 'full', TSUZURI_CONCURRENCY: '90%'});
   assert.deepEqual(buildJobEnv({speed: 'balanced'}), {TSUZURI_RENDER_SPEED: 'balanced'});

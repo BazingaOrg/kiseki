@@ -61,7 +61,7 @@ test('q exits the whole interactive menu while Ctrl+C remains an interruption', 
     commandRunner: async () => { throw new PromptQuitError(); },
     output: {write: (text) => { output += text; }},
   }), 0);
-  assert.match(output, /晚安。素材都在原文件夹,随时再来。/);
+  assert.match(output, /晚安.素材都在原位置,随时再来./);
 
   await assert.rejects(runInteractiveMenu({
     menuRunner: async () => { throw new PromptAbortError(); },

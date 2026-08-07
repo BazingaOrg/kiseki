@@ -38,7 +38,7 @@ test('still diagnostics report effective pixels, scale, photo count, and output 
         {outPath: '/tmp/album/output/stills/b.png'},
       ],
     }),
-    '实际静态导出配置：2160×3840 px；输出倍率 2；2 张；输出 /tmp/album/output/stills',
+    '实际静态导出配置:2160×3840 px;输出倍率 2;2 张;输出 /tmp/album/output/stills',
   );
 });
 

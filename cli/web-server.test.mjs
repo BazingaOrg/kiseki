@@ -18,7 +18,7 @@ const listen = (server) =>
   new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
 
 // fetch() 会把用户传入的 Host 头当作禁止覆写的头忽略掉,拿不到伪造效果,
-// 所以这里用 node:http 直连发请求,手动摆一个假的 Host 头来模拟 DNS rebinding。
+// 所以这里用 node:http 直连发请求,手动摆一个假的 Host 头来模拟 DNS rebinding.
 const requestWithHost = (port, hostHeader) =>
   new Promise((resolve, reject) => {
     const req = http.request(
@@ -143,7 +143,7 @@ test('静态资源缓存:assets 产物 immutable,index.html 不缓存,根级文�
 
 const TEST_EXECUTOR_START = 'Mon Jan  1 00:00:00 2024';
 
-/** 造一个假的 child_process.ChildProcess,避免测试真的起渲染进程。 */
+/** 造一个假的 child_process.ChildProcess,避免测试真的起渲染进程. */
 const makeFakeChild = () => {
   const child = new EventEmitter();
   child.pid = 999;
@@ -152,7 +152,7 @@ const makeFakeChild = () => {
   return child;
 };
 
-/** HTTP 路由测试不应碰真实任务 lease 或宿主进程表。 */
+/** HTTP 路由测试不应碰真实任务 lease 或宿主进程表. */
 const makeJobManagerDeps = () => {
   let nextId = 0;
   return {
@@ -317,14 +317,14 @@ test('SSE:客户端断开后 unsubscribe 被调用,server 保持健康(job 仍 r
     sseReq.end();
     await connected;
 
-    // 给 subscribeEvents 一点时间把监听者挂上,再销毁连接触发 req.on('close')。
+    // 给 subscribeEvents 一点时间把监听者挂上,再销毁连接触发 req.on('close').
     await new Promise((resolve) => setImmediate(resolve));
     sseReq.destroy();
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     // job 内部监听者集合是否归零已经在 web-api/jobs.test.mjs 里通过
     // _debugListenerCount 直接断言过;这里换一层验证:HTTP server 在客户端
-    // 断开后没有因为 unsubscribe 抛错而崩溃,依然能正常响应后续请求。
+    // 断开后没有因为 unsubscribe 抛错而崩溃,依然能正常响应后续请求.
     const stillOk = await new Promise((resolve, reject) => {
       const req = http.request(
         {host: '127.0.0.1', port, path: `/api/jobs/${id}`, method: 'GET'},
@@ -392,7 +392,7 @@ test('创建任务后 GET /api/jobs/current → 返回该任务的 id/kind/folde
     assert.equal(res.status, 200);
     // resolveSafePath 会把 folder 解析成真实路径,macOS 上 /tmp 是指向 /private/tmp
     // 的符号链接,所以这里跟 root 比较前也要走一遍 realpath,否则本地必过、CI 也过,
-    // 但字面量比较会因为符号链接被展开而误报。
+    // 但字面量比较会因为符号链接被展开而误报.
     assert.deepEqual(res.body, {job: {id: created.body.id, kind: 'render', folder: fs.realpathSync(root)}});
   } finally {
     server.close();
@@ -471,7 +471,7 @@ test('GET /api/doctor keeps missing dependencies as a cached 200 response', asyn
   }
 });
 
-/** 假的异步进程执行器:单测一律不联网、不起 yt-dlp/curl/ffprobe。 */
+/** 假的异步进程执行器:单测一律不联网、不起 yt-dlp/curl/ffprobe. */
 const missingYtDlpRun = async () => ({status: null, stdout: '', stderr: ''});
 
 test('GET /api/fetch/lyrics-search:folder 越界 → 403', async () => {
@@ -577,7 +577,7 @@ test('POST /api/jobs 接受 fetch-audio 与 lyrics 两个新 kind,非法字段�
 test('GET /api/fetch/* 也要 token:这两条会 spawn 外部进程', async () => {
   // Host 校验只挡 DNS rebinding,挡不住任意网页直接请求 localhost —— 不加这道闸,
   // 一个恶意页面循环请求就能无限起 yt-dlp 把机器拖垮(响应因 CORS 读不到,
-  // 但进程和文件描述符是实打实被耗掉的)。
+  // 但进程和文件描述符是实打实被耗掉的).
   const root = makeTempRoot();
   const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});
   const port = await listen(server);
