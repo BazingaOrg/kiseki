@@ -56,6 +56,15 @@ test('render: draft + trim', () => {
   assert.deepEqual(argv, ['/f', '--draft', '--trim', 'auto']);
 });
 
+test('render: template 透传 --template;null 不带 flag', () => {
+  assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {template: 'slow-cinema'}}), ['/f', '--template', 'slow-cinema']);
+  assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {template: null}}), ['/f']);
+});
+
+test('render: 未知模板 id 校验报错', () => {
+  assert.throws(() => buildJobArgv({kind: 'render', folder: '/f', options: {template: 'nope'}}), /template 必须是以下之一/);
+});
+
 test('render: trim full', () => {
   const argv = buildJobArgv({kind: 'render', folder: '/f', options: {trim: 'full'}});
   assert.deepEqual(argv, ['/f', '--trim', 'full']);

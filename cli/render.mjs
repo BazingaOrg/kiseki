@@ -103,14 +103,15 @@ const normalizeLoudness = (file) => {
 
 /**
  * 渲染时覆盖 inputProps(timeline.json 本身绝不改写):
- * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null.
+ * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null;
+ * template → meta.templateId(呈现层由渲染器注册表解析,见 renderer/src/templates.ts).
  * @param {object} timeline
- * @param {{exif?: boolean, sign?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null}} flags
+ * @param {{exif?: boolean, sign?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null, template?: string | null}} flags
  * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null}} deps
  */
 export const applyRenderVariants = async (
   timeline,
-  {exif = false, sign = false, dark = false, portrait = false, square = false, filter = null} = {},
+  {exif = false, sign = false, dark = false, portrait = false, square = false, filter = null, template = null} = {},
   {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null} = {},
 ) => {
   if (portrait && square) throw new Error('--portrait 与 --square 不能同时使用');
@@ -124,6 +125,9 @@ export const applyRenderVariants = async (
   }
   if (filter) {
     timeline.meta = {...timeline.meta, filter};
+  }
+  if (template) {
+    timeline.meta = {...timeline.meta, templateId: template};
   }
   // 逐张滤镜:CLI --filter > tsuzuri.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
   if (filterConfig) {
@@ -158,12 +162,13 @@ const main = async () => {
   const [timelineArg, outputArg, publicDirArg, ...flagArgs] = process.argv.slice(2);
   if (!timelineArg || !outputArg || !publicDirArg) {
     throw new Error(
-      '用法: render.mjs <timeline.json> <output.mp4> <public-dir> [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--filter <id>] [--filter-intensity <0-1>]\n' +
+      '用法: render.mjs <timeline.json> <output.mp4> <public-dir> [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]\n' +
         '此为内部入口,日常请用 tsuzuri <folder>',
     );
   }
   const filterIndex = flagArgs.indexOf('--filter');
   const filterIntensityIndex = flagArgs.indexOf('--filter-intensity');
+  const templateIndex = flagArgs.indexOf('--template');
   const flags = {
     exif: flagArgs.includes('--exif'),
     sign: flagArgs.includes('--sign'),
@@ -177,6 +182,7 @@ const main = async () => {
           ...(filterIntensityIndex >= 0 ? {intensity: Number(flagArgs[filterIntensityIndex + 1])} : {}),
         }
       : null,
+    template: templateIndex >= 0 ? flagArgs[templateIndex + 1] : null,
   };
 
   const timelinePath = path.resolve(timelineArg);

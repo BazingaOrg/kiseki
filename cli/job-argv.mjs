@@ -1,4 +1,5 @@
 import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
+import {TEMPLATE_IDS, normalizeTemplateId} from './templates.mjs';
 
 export class JobValidationError extends Error {
   constructor(field, message) {
@@ -85,6 +86,13 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
       }
       flags.push('--trim', opts.trim);
     }
+
+    const hasTemplate = opts.template !== undefined && opts.template !== null;
+    const template = hasTemplate ? normalizeTemplateId(opts.template) : null;
+    if (hasTemplate && !template) {
+      throw new JobValidationError('template', `template 必须是以下之一: ${TEMPLATE_IDS.join(', ')}`);
+    }
+    if (template) flags.push('--template', template);
   }
 
   if (kind === 'still') {

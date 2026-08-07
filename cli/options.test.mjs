@@ -5,7 +5,7 @@ import {CliError, parseArgs} from './options.mjs';
 
 test('bare folder argument routes to the render command', () => {
   assert.deepEqual(parseArgs(['album']), {
-    command: 'render', folder: 'album', output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null,
+    command: 'render', folder: 'album', output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4']), {
     command: 'render',
@@ -19,6 +19,7 @@ test('bare folder argument routes to the render command', () => {
     draft: false,
     trim: null,
     filter: null,
+    template: null,
   });
 });
 
@@ -35,6 +36,7 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     draft: false,
     trim: null,
     filter: null,
+    template: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4', '--exif']), {
     command: 'render',
@@ -48,6 +50,7 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     draft: false,
     trim: null,
     filter: null,
+    template: null,
   });
 });
 
@@ -125,7 +128,7 @@ test('a leading `help` token (or -h / --help) routes to the help command', () =>
 });
 
 test('a path-qualified folder named doctor/lyrics/still/fetch/help is the escape hatch, not a verb', () => {
-  const flags = {exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null};
+  const flags = {exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
   assert.deepEqual(parseArgs(['./lyrics']), {command: 'render', folder: './lyrics', output: null, ...flags});
   assert.deepEqual(parseArgs(['./fetch']), {command: 'render', folder: './fetch', output: null, ...flags});
   assert.deepEqual(parseArgs(['./doctor']), {command: 'render', folder: './doctor', output: null, ...flags});
@@ -217,6 +220,17 @@ test('render command accepts --filter with optional --filter-intensity', () => {
 
 test('filter aliases are normalized to the registry id before render args are built', () => {
   assert.deepEqual(parseArgs(['album', '--filter', 'teal_orange']).filter, {id: 'teal-orange'});
+});
+
+test('render command accepts --template with a known id', () => {
+  assert.equal(parseArgs(['album', '--template', 'slow-cinema']).template, 'slow-cinema');
+  assert.equal(parseArgs(['album', '--template', 'album']).template, 'album');
+});
+
+test('render command rejects unknown or missing template id and lists available ids', () => {
+  assert.throws(() => parseArgs(['album', '--template', 'nope']), /未知模板 id: nope/);
+  assert.throws(() => parseArgs(['album', '--template', 'nope']), /slow-cinema/);
+  assert.throws(() => parseArgs(['album', '--template']), /需要模板 id/);
 });
 
 test('render command rejects unknown filter id and lists available ids', () => {

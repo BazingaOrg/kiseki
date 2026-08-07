@@ -14,6 +14,7 @@ import {
   writeFarewell,
 } from './menu.mjs';
 import {FILTER_IDS} from './filters.mjs';
+import {TEMPLATES} from './templates.mjs';
 import {PICK_BACK} from './prompts.mjs';
 
 const interact = async ({lines, confirms = [], picks = []}) => {
@@ -185,7 +186,7 @@ test('runMenu asks for a filter after the format pick and defaults to none on en
     const {result} = await interact({
       lines: ['1', root],
       confirms: [false, false, false],
-      picks: [{index: 0}, {index: 0}],
+      picks: [{index: 0}, {index: 0}, {index: 0}],
     });
     assert.deepEqual(result, [root]);
   } finally {
@@ -200,9 +201,24 @@ test('runMenu wires a chosen filter id into the equivalent argv', async () => {
     const {result} = await interact({
       lines: ['1', root],
       confirms: [false, false, false],
-      picks: [{index: 0}, {index: filterIndex}],
+      picks: [{index: 0}, {index: 0}, {index: filterIndex}],
     });
     assert.deepEqual(result, [root, '--filter', 'mono']);
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('runMenu wires a chosen template into the equivalent argv and defaults to none', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  try {
+    const cinemaIndex = TEMPLATES.findIndex((t) => t.id === 'slow-cinema') + 1; // 0 号是「不应用模板」
+    const {result} = await interact({
+      lines: ['1', root],
+      confirms: [false, false, false],
+      picks: [{index: 0}, {index: cinemaIndex}, {index: 0}],
+    });
+    assert.deepEqual(result, [root, '--template', 'slow-cinema']);
   } finally {
     fs.rmSync(root, {recursive: true, force: true});
   }

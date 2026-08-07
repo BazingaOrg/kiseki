@@ -21,6 +21,7 @@ import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
 import {resolveSafePath} from './web-api/sandbox.mjs';
 import {resolveThumb} from './web-api/thumb.mjs';
+import {TEMPLATES} from './templates.mjs';
 
 const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const STATIC_DIR = path.join(REPO, 'web', 'dist');
@@ -386,6 +387,10 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       const [, id] = url.pathname.match(JOB_ID_RE);
       const job = jobManager.getJob(id);
       sendJson(res, job ? {status: 200, body: job} : {status: 404, body: {error: '任务不存在'}});
+      return;
+    }
+    if (url.pathname === '/api/templates') {
+      sendJson(res, {status: 200, body: {templates: TEMPLATES}});
       return;
     }
     if (url.pathname === '/api/dirs') {

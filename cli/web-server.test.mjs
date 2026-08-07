@@ -100,6 +100,23 @@ test('/api/thumb errors remain errors even when If-None-Match is supplied', asyn
   }
 });
 
+test('/api/templates 返回模板注册表的 id/名称/描述', async () => {
+  const {server} = createTestGalleryServer(makeTempRoot());
+  const port = await listen(server);
+  try {
+    const res = await fetch(`http://127.0.0.1:${port}/api/templates`);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.templates.length >= 3, '至少 3 个 L1 模板');
+    const cinema = body.templates.find((t) => t.id === 'slow-cinema');
+    assert.ok(cinema, '包含 slow-cinema');
+    assert.equal(cinema?.name, '电影舒缓');
+    assert.ok(cinema?.description.length > 0);
+  } finally {
+    server.close();
+  }
+});
+
 test('静态资源缓存:assets 产物 immutable,index.html 不缓存,根级文件带 ETag 可 304', async (t) => {
   const dist = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'web', 'dist');
   if (!fs.existsSync(dist)) {

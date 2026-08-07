@@ -1,4 +1,5 @@
 import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
+import {TEMPLATE_IDS, normalizeTemplateId} from './templates.mjs';
 
 export class CliError extends Error {}
 
@@ -24,19 +25,20 @@ export const STILL_USAGE = `用法: tsuzuri still <photo|folder> ${STILL_OPTIONS
 export const USAGE =
   '用法:\n' +
   '  tsuzuri                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>]  渲染相册视频(默认命令)\n' +
+  '  tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]  渲染相册视频(默认命令)\n' +
   '  tsuzuri still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  tsuzuri doctor                             检查依赖是否就绪\n' +
   '  tsuzuri lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
   '  tsuzuri fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
   '  tsuzuri web [folder]                       启动本地工作台(支持改名/删除,可撤销,不传 folder 则从主目录选)\n' +
+  '  tsuzuri templates                          列出可用的呈现模板\n' +
   '  tsuzuri help                               显示本说明(同 -h / --help)\n' +
   `still 选项: ${STILL_OPTIONS}\n` +
   '目录约定:文件夹内放照片(jpg/png/webp)+ 唯一的音频文件(mp3 等)\n' +
   '若文件夹名恰好叫 doctor / lyrics / still / fetch / web / help,用路径前缀转义,如 tsuzuri ./still';
 
 const parseRenderArgs = (argv) => {
-  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null};
+  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
   let filterId = null;
   let filterIntensity = null;
   for (let i = 0; i < argv.length; i++) {
@@ -62,6 +64,15 @@ const parseRenderArgs = (argv) => {
         throw new CliError(`--filter 需要滤镜 id(可选: ${FILTER_IDS.join(', ')})`);
       }
       filterId = parseFilterId(argv[++i]);
+    } else if (argv[i] === '--template') {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
+        throw new CliError(`--template 需要模板 id(可选: ${TEMPLATE_IDS.join(', ')})`);
+      }
+      const id = normalizeTemplateId(argv[++i]);
+      if (id === null) {
+        throw new CliError(`--template 未知模板 id: ${argv[i]}(可选: ${TEMPLATE_IDS.join(', ')})`);
+      }
+      args.template = id;
     } else if (argv[i] === '--filter-intensity') {
       if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
         throw new CliError('--filter-intensity 需要 0–1 之间的数字');
@@ -237,6 +248,7 @@ export const parseArgs = (argv) => {
   if (first === 'fetch') return parseFetchArgs(rest);
   if (first === 'still') return parseStillArgs(rest);
   if (first === 'web') return parseWebArgs(rest);
+  if (first === 'templates') return {command: 'templates'};
   if (first === 'help' || first === '-h' || first === '--help') return {command: 'help'};
   return parseRenderArgs(argv);
 };

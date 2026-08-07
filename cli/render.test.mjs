@@ -19,7 +19,16 @@ test('no flags leaves the timeline untouched', async () => {
   const result = await applyRenderVariants(tl, {}, {resolvePhotoPath: (src) => src});
   assert.equal(result.meta.background, undefined);
   assert.equal(result.meta.sign, undefined);
+  assert.equal(result.meta.templateId, undefined);
   assert.equal(result.photos[0].exif, undefined);
+});
+
+test('template flag injects templateId into meta', async () => {
+  const result = await applyRenderVariants(timeline(), {template: 'slow-cinema'}, {resolvePhotoPath: (src) => src});
+  assert.equal(result.meta.templateId, 'slow-cinema');
+  // 无模板时 meta 不带 templateId,渲染器回退现有常量
+  const plain = await applyRenderVariants(timeline(), {}, {resolvePhotoPath: (src) => src});
+  assert.equal(plain.meta.templateId, undefined);
 });
 
 test('dark sets meta.background to black', async () => {
@@ -128,7 +137,7 @@ test('Diary clears a photo fade-out before a chapter and layers chapters over su
   const diary = fs.readFileSync(new URL('../renderer/src/Diary.tsx', import.meta.url), 'utf8');
   assert.match(diary, /const visualClips = photos\.filter\(\(clip\) => isPhotoClip\(clip\) \|\| isChapterClip\(clip\)\);/);
   assert.match(diary, /const isPhotoClip = \(clip: VisualClip \| undefined\)/);
-  assert.match(diary, /const dOut = isPhotoClip\(nextClip\) \? getFadeDuration\(nextClip\.transition\) : 0;/);
+  assert.match(diary, /const dOut = isPhotoClip\(nextClip\) \? getFadeDuration\(template\.transition \?\? nextClip\.transition\) : 0;/);
   assert.match(diary, /typeof clip\.src === 'string'/);
   assert.ok(diary.indexOf('<Subtitle') < diary.indexOf('<ChapterCard'));
 });

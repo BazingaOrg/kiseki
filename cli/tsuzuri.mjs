@@ -36,6 +36,7 @@ import {term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
 import {runCommand} from './run-command.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
+import {TEMPLATES} from './templates.mjs';
 import {resolveRenderOutputPath} from './output-naming.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 
@@ -54,6 +55,12 @@ export const runCommandFromArgv = async (
     return 0;
   }
   if (parsed.command === 'doctor') return runDoctor();
+  if (parsed.command === 'templates') {
+    for (const template of TEMPLATES) {
+      console.log(`${template.id.padEnd(12)} ${template.name} — ${template.description}`);
+    }
+    return 0;
+  }
   if (parsed.command === 'fetch') return runFetch(parsed.folder);
   if (parsed.command === 'lyrics') {
     const lyricsFolder = path.resolve(parsed.folder);
@@ -76,7 +83,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
 
-  const {folder: folderArg, output, exif, sign, dark, portrait, square, draft, trim, filter} = parsed;
+  const {folder: folderArg, output, exif, sign, dark, portrait, square, draft, trim, filter, template} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -240,6 +247,7 @@ export const runCommandFromArgv = async (
     ...(draft ? ['--draft'] : []),
     ...(filter ? ['--filter', filter.id] : []),
     ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
+    ...(template ? ['--template', template] : []),
   ]);
   if (renderCode !== 0) return renderCode;
   term.success('视频渲染完成');
