@@ -194,7 +194,7 @@ export const runStill = async (opts) => {
     if (opts.dark) canvas.background = '#000000';
     if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
     if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
-    const {renderStill, selectComposition} = loadRemotionRenderer();
+    const {openBrowser, renderStill, selectComposition} = loadRemotionRenderer();
     progress = createPercentProgress();
     const taskId = resolveAtomicTaskId();
     const stillProgressLabel = (index) =>
@@ -208,6 +208,14 @@ export const runStill = async (opts) => {
     // 诊断须独占一行；不 finish，后面的批量进度仍沿用稳定的 Rendering still stage。
     progress.endLine();
 
+    // 复用同一个 Chromium 渲染全部照片:每张冷启动一次浏览器是批量导出
+    // 的最大开销。selectComposition 与 renderStill 都吃同一个 puppeteerInstance。
+    const browser = await openBrowser('chrome', {logLevel: 'error'});
+    cleanup = () => {
+      Promise.resolve(browser.close({silent: true})).catch(() => {});
+      bundled.cleanup();
+    };
+
     const compositionInputProps = {
       src: jobs[0].src,
       background: canvas.background,
@@ -219,7 +227,7 @@ export const runStill = async (opts) => {
       ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
       filter: resolveJobFilter(jobs[0]),
     };
-    const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error'});
+    const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error', puppeteerInstance: browser});
     term.detail(formatStillDiagnostics({canvas, scale: opts.scale, jobs}));
     for (let i = 0; i < jobs.length; i++) {
       const job = jobs[i];
@@ -264,6 +272,7 @@ export const runStill = async (opts) => {
         scale: opts.scale,
         overwrite: true,
         logLevel: 'error',
+        puppeteerInstance: browser,
         onBrowserLog: ({type, text}) => {
           if (type === 'error' || type === 'warning') {
             progress.println(`[browser ${type}] ${text}`);
