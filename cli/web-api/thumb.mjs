@@ -74,14 +74,78 @@ export const pruneCache = (dir = CACHE_DIR, limit = MAX_CACHE_ENTRIES) => {
   return removed;
 };
 
-const runFfmpeg = (source, destination, width) => new Promise((resolve) => {
-  const child = spawn('ffmpeg', [
-    '-y', '-v', 'error', '-i', `file:${source}`,
-    '-vf', `scale='min(${width},iw)':-1`, '-frames:v', '1', '-q:v', '4', destination,
-  ], {stdio: 'ignore'});
-  child.on('error', () => resolve(false));
-  child.on('close', (code) => resolve(code === 0 && fs.existsSync(destination)));
-});
+/**
+ * 每生成一张缩略图就全目录 readdir + 逐条 statSync 做 LRU 是 O(n²):把
+ * "够不够修剪"的判定换成进程内计数,只有计数超限才真正扫一次盘。冷启动时
+ * 用一次只读名字的 readdir 校准真实数量,避免上一会话留下的缓存漏修剪。
+ * 计数漂移(如外部删文件)最多导致一次多余修剪或一次超限修剪,不影响正确性。
+ */
+export const createPruner = () => {
+  let generatedCount = 0;
+  let sessionChecked = false;
+  return (dir, limit = MAX_CACHE_ENTRIES) => {
+    generatedCount += 1;
+    if (!sessionChecked) {
+      sessionChecked = true;
+      try {
+        generatedCount = fs.readdirSync(dir).filter((name) => CACHE_ENTRY_RE.test(name)).length;
+      } catch {
+        // 目录尚不存在,计数保持 0
+      }
+    }
+    if (generatedCount <= limit) return 0;
+    generatedCount = 0;
+    return pruneCache(dir, limit);
+  };
+};
+
+const defaultPruner = createPruner();
+
+export const THUMB_CONCURRENCY = 4;
+export const THUMB_TIMEOUT_MS = 30_000;
+
+let ffmpegActive = 0;
+const ffmpegWaiters = [];
+
+/**
+ * 并发上限内的调度:首屏/快速滚动时大量缓存未命中,不能瞬间拉起几十个
+ * ffmpeg。超出的请求排队,前面的结束一个放行一个。
+ */
+const withFfmpegSlot = (job) => {
+  if (ffmpegActive >= THUMB_CONCURRENCY) {
+    return new Promise((resolve) => ffmpegWaiters.push(resolve)).then(() => withFfmpegSlot(job));
+  }
+  ffmpegActive += 1;
+  return job().finally(() => {
+    ffmpegActive -= 1;
+    const next = ffmpegWaiters.shift();
+    if (next) next();
+  });
+};
+
+const ffmpegArgs = (source, destination, width) => [
+  '-y', '-v', 'error', '-i', `file:${source}`,
+  '-vf', `scale='min(${width},iw)':-1`, '-frames:v', '1', '-q:v', '4', destination,
+];
+
+/**
+ * @param {{spawn?: Function, timeoutMs?: number}} [options] 测试注入用;超时
+ * 兜底 kill 掉卡死的 ffmpeg 返回 false,调用方回源图,不让请求无限挂着。
+ */
+export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn, timeoutMs = THUMB_TIMEOUT_MS} = {}) =>
+  withFfmpegSlot(() => new Promise((resolve) => {
+    const child = spawnImpl('ffmpeg', ffmpegArgs(source, destination, width), {stdio: 'ignore'});
+    const timer = setTimeout(() => {
+      child.kill('SIGKILL');
+      resolve(false);
+    }, timeoutMs);
+    const done = (ok) => {
+      clearTimeout(timer);
+      resolve(ok);
+    };
+    child.on('error', () => done(false));
+    child.on('close', (code) => done(code === 0 && fs.existsSync(destination)));
+  }));
 
 const readSourceStat = (statSync, filePath) => {
   try { return statSync(filePath, {bigint: true}); } catch {
@@ -155,7 +219,7 @@ export const resolveThumb = async (root, requestedPath, rawWidth, ifNoneMatch, d
       try { rmSync(pending, {force: true}); } catch {}
       return serve(safePath, 'image/jpeg');
     }
-    (deps.prune ?? pruneCache)(cacheDir);
+    (deps.prune ?? defaultPruner)(cacheDir);
     return serve(cached, 'image/jpeg');
   }
 };

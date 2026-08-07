@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import {cacheKey, etagFor, matchesIfNoneMatch, normalizeWidth, pruneCache, resolveThumb} from './thumb.mjs';
+import {cacheKey, createPruner, etagFor, matchesIfNoneMatch, normalizeWidth, pruneCache, resolveThumb, runFfmpeg, THUMB_CONCURRENCY} from './thumb.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-thumb-'));
 
@@ -201,4 +201,70 @@ test('修剪不碰写了一半的临时文件', () => {
 
 test('缓存目录不存在时修剪不报错', () => {
   assert.equal(pruneCache(path.join(makeTempRoot(), 'nope'), 10), 0);
+});
+
+test('ffmpeg 并发被限制在上限内,超出的排队等空位', async () => {
+  const children = [];
+  let active = 0;
+  let maxActive = 0;
+  const fakeSpawn = () => {
+    active += 1;
+    maxActive = Math.max(maxActive, active);
+    const handlers = {};
+    const child = {
+      on: (event, fn) => { handlers[event] = fn; },
+      kill: () => {},
+      close: () => {
+        active -= 1;
+        handlers.close?.(0);
+      },
+    };
+    children.push(child);
+    // 瞬时完成的假 ffmpeg:下一轮微任务自动结束,让排队任务继续放行
+    queueMicrotask(() => child.close());
+    return child;
+  };
+  const jobs = [];
+  for (let i = 0; i < 10; i += 1) {
+    jobs.push(runFfmpeg('/src.jpg', `/dst-${i}.jpg`, 400, {spawn: fakeSpawn, timeoutMs: 5000}));
+  }
+  await Promise.all(jobs);
+  assert.equal(children.length, 10, '10 个请求全部执行');
+  assert.ok(maxActive <= THUMB_CONCURRENCY, `并发峰值 ${maxActive} 超过上限 ${THUMB_CONCURRENCY}`);
+});
+
+test('卡死的 ffmpeg 超时后被 SIGKILL 并以失败返回', async () => {
+  const kills = [];
+  const fakeSpawn = () => ({
+    on: () => {},
+    kill: (signal) => { kills.push(signal); },
+  });
+  const ok = await runFfmpeg('/src.jpg', '/dst.jpg', 400, {spawn: fakeSpawn, timeoutMs: 30});
+  assert.equal(ok, false);
+  assert.deepEqual(kills, ['SIGKILL']);
+});
+
+test('pruner 冷启动校准真实数量,之后只在计数超限时才扫盘修剪', () => {
+  const dir = makeTempRoot();
+  const limit = 5;
+  const named = (i) => path.join(dir, `${i.toString(16).padStart(40, '0')}.jpg`);
+  for (let i = 0; i < 6; i += 1) fs.writeFileSync(named(i), 'x');
+  const pruner = createPruner();
+
+  // 冷启动:校准发现 6 个 > 5 → 立即修剪到 80% = 4
+  assert.equal(pruner(dir, limit), 2);
+  assert.equal(fs.readdirSync(dir).length, 4);
+
+  // 再补 5 个(共 9):计数 1..5 都不到 6,不触发修剪
+  for (let i = 10; i < 15; i += 1) fs.writeFileSync(named(i), 'x');
+  assert.equal(pruner(dir, limit), 0);
+  assert.equal(pruner(dir, limit), 0);
+  assert.equal(pruner(dir, limit), 0);
+  assert.equal(pruner(dir, limit), 0);
+  assert.equal(pruner(dir, limit), 0);
+  assert.equal(fs.readdirSync(dir).length, 9, '计数未超限时绝不扫盘');
+
+  // 第 6 次生成后计数 6 > 5 → 修剪:9 → 4,删 5
+  assert.equal(pruner(dir, limit), 5);
+  assert.equal(fs.readdirSync(dir).length, 4);
 });
