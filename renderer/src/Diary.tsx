@@ -133,6 +133,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           sign={meta.sign}
           signature={meta.sign ? photoSignature : undefined}
           filter={clip.filter ?? meta.filter}
+          motion={template.motion}
         />
       ))}
       {visibleSubtitles.map((l) => (

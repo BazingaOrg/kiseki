@@ -28,6 +28,14 @@ export interface TemplateChapterCardStyle {
   riseDistance?: number;
 }
 
+export interface TemplateMotion {
+  type: 'kenburns';
+  /** 最大缩放倍率(1 = 不动;1.06 = 缓慢推近 6%) */
+  zoom: number;
+  /** 推近时的平移方向;'random' 按照片 src 稳定分配,保证每次渲染一致 */
+  pan: 'center' | 'left' | 'right' | 'up' | 'down' | 'random';
+}
+
 export interface Template {
   id: string;
   name: string;
@@ -36,6 +44,8 @@ export interface Template {
   composition: 'Diary';
   /** 照片切换默认;显式配置的逐 clip transition 会被模板取代,chapter 卡保持自身节奏 */
   transition: TemplateTransition;
+  /** 照片运镜;缺省照片保持静态(克制展陈风格) */
+  motion?: TemplateMotion;
   captions?: TemplateCaptionsStyle;
   chapterCard?: TemplateChapterCardStyle;
 }
@@ -69,9 +79,10 @@ export const TEMPLATES: Template[] = [
   {
     id: 'slow-cinema',
     name: '电影舒缓',
-    description: '缓慢交叉淡化、细字极简字幕',
+    description: '缓慢交叉淡化、细字极简字幕、照片缓推',
     composition: 'Diary',
     transition: 'crossfade',
+    motion: {type: 'kenburns', zoom: 1.06, pan: 'random'},
     captions: {
       fontSize: 32,
       fontWeight: 300,
@@ -98,6 +109,8 @@ const TEMPLATE_TRANSITION_DURATIONS = {album: 0.4, cut: 0, crossfade: 0.6} as co
 export interface ResolvedTemplatePresentation {
   /** 照片切换 spec;undefined 时逐 clip 用 timeline 里的 transition */
   transition: TransitionSpec | undefined;
+  /** 照片运镜;undefined 时照片保持静态 */
+  motion: TemplateMotion | undefined;
   captions: TemplateCaptionsStyle | undefined;
   chapterCard: TemplateChapterCardStyle | undefined;
 }
@@ -105,9 +118,12 @@ export interface ResolvedTemplatePresentation {
 /** 按 meta.templateId 解析呈现层样式;未知/缺省 id 一律回落为"不应用模板"。 */
 export const resolveTemplatePresentation = (templateId: string | undefined): ResolvedTemplatePresentation => {
   const template = templateById(templateId);
-  if (!template) return {transition: undefined, captions: undefined, chapterCard: undefined};
+  if (!template) {
+    return {transition: undefined, motion: undefined, captions: undefined, chapterCard: undefined};
+  }
   return {
     transition: {type: template.transition, duration: TEMPLATE_TRANSITION_DURATIONS[template.transition]},
+    motion: template.motion,
     captions: template.captions,
     chapterCard: template.chapterCard,
   };
