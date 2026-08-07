@@ -32,18 +32,96 @@ _DOWNLOAD_SIZE_HINTS = {
     "large-v3": "3 GB",
 }
 
+# 约定目录完整性必需文件:mlx 权重 + 配置;faster-whisper 是 CTranslate2 目录.
+# 缺这些说明目录是半成品(下载中断残留),不能冒充可用模型.
+_REQUIRED_MODEL_FILES = {
+    "mlx": {"weights.npz", "config.json"},
+    "faster": {"model.bin", "config.json"},
+}
+
+
+def _valid_model_dir(backend: str, directory: Path) -> bool:
+    required = _REQUIRED_MODEL_FILES["mlx" if backend == "mlx" else "faster"]
+    return all((directory / name).is_file() for name in required)
+
+
 def _local_model_dir(backend: str, model: str) -> Path | None:
     """本地模型目录查找:env 指定的路径 > 仓库 models/ 约定目录 > 无(走 HF 下载)。
 
     约定目录名与 HF 仓库同名:models/whisper-<size>-mlx(mlx)、
-    models/faster-whisper-<size>(CTranslate2 格式)。
+    models/faster-whisper-<size>(CTranslate2 格式)。约定目录必须内容完整,
+    半成品(下载中断残留)不算数;env 指定的路径由用户负责,信任原样。
     """
     p = Path(model).expanduser()
     if p.is_dir():
         return p
     name = f"whisper-{model}-mlx" if backend == "mlx" else f"faster-whisper-{model}"
     cand = REPO_ROOT / "models" / name
-    return cand if cand.is_dir() else None
+    if not cand.is_dir():
+        return None
+    return cand if _valid_model_dir(backend, cand) else None
+
+
+def _model_repo_id(backend: str, model: str) -> str:
+    return f"mlx-community/whisper-{model}-mlx" if backend == "mlx" else f"Systran/faster-whisper-{model}"
+
+
+def _model_convention_dir(backend: str, model: str) -> Path:
+    name = f"whisper-{model}-mlx" if backend == "mlx" else f"faster-whisper-{model}"
+    return REPO_ROOT / "models" / name
+
+
+_download_progress_tqdm = None
+
+
+def _make_download_progress():
+    """延迟构造真 tqdm 子类:只有真的开始下载才 import tqdm(分析指纹等路径不该背这个开销)."""
+    global _download_progress_tqdm
+    if _download_progress_tqdm is None:
+        from tqdm import tqdm
+
+        class DownloadProgressTqdm(tqdm):
+            """把 hf 的字节进度条翻译成结构化进度事件(节流到整百分比).
+
+            hf 的 snapshot_download 会用同一个 tqdm_class 建"按文件数"的
+            thread_map 条(unit='it')和"按字节"的传输/重建条(unit='B'),
+            只认字节条;总字节数随文件发现增长,百分比可能回跳,钳制为单调.
+            """
+
+            def __init__(self, *args: Any, **kwargs: Any) -> None:
+                super().__init__(*args, **kwargs)
+                self._last_percent = 0
+
+            def update(self, n: float = 1) -> bool:
+                result = super().update(n)
+                total = self.total or 0
+                if total <= 0 or self.unit != "B":
+                    return result
+                percent = min(self.n / total * 100, 100.0)
+                if percent - self._last_percent >= 1 or percent >= 100:
+                    self._last_percent = int(percent)
+                    term.progress("下载模型", percent / 100)
+                return result
+
+        _download_progress_tqdm = DownloadProgressTqdm
+    return _download_progress_tqdm
+
+
+def _download_model(backend: str, model: str) -> Path:
+    """把模型下到仓库 models/ 约定目录(与文档一致,之后可完全离线).
+
+    用 snapshot_download 的 local_dir + 自定义 tqdm:失败残留 .incomplete 文件,
+    下次自动续传;_local_model_dir 的完整性校验保证半成品不会冒充可用模型.
+    """
+    from huggingface_hub import snapshot_download
+
+    target = _model_convention_dir(backend, model)
+    snapshot_download(
+        _model_repo_id(backend, model),
+        local_dir=str(target),
+        tqdm_class=_make_download_progress(),
+    )
+    return target
 
 
 @dataclass
@@ -172,9 +250,19 @@ def transcribe(audio: Path) -> tuple[str, list[Segment], str]:
         ensure_hf_reachable()
         approx = _DOWNLOAD_SIZE_HINTS.get(model, "数百 MB")
         term.info(
-            f"模型 {model} 如本机未缓存将自动下载(约 {approx},仅首次;"
-            "提前放入仓库 models/ 目录可完全离线)"
+            f"模型 {model} 本机未缓存,首次识别将自动下载(约 {approx});"
+            "提前放入仓库 models/ 目录可完全离线"
         )
+        term.start("下载模型")
+        try:
+            local_dir = _download_model(backend, model)
+        except Exception:
+            term.error(
+                "模型下载失败:网络需要代理、磁盘空间不足或镜像不可用;"
+                "重试会从断点继续,也可把模型手动放入仓库 models/ 目录"
+            )
+            raise
+        term.success(f"模型 {model} 已就绪: {local_dir}")
     else:
         term.detail(f"whisper model: 本地 {local_dir}")
 

@@ -127,3 +127,40 @@ def test_new_timeline_always_uses_static_motion(monkeypatch, tmp_path):
         for photo in timeline["photos"]
     )
     assert timeline["photos"][1]["transition"] == {"type": "album", "duration": 0.4}
+
+
+def test_json_events_mirror_messages_when_enabled(monkeypatch):
+    monkeypatch.setenv("TSUZURI_JSON_PROGRESS", "1")
+    events = []
+    monkeypatch.setattr(term, "_json_write", events.append)
+    stdout, stderr = install_streams(monkeypatch, stdout_tty=False, stderr_tty=False)
+
+    term.info("信息")
+    term.start("开始")
+    term.success("完成")
+    term.warn("提醒")
+    term.error("失败")
+    term.detail("细节一\n细节二")
+    term.progress("下载模型", 0.42)
+
+    assert [event["kind"] for event in events] == [
+        "info", "start", "success", "warn", "error", "detail", "detail", "progress",
+    ]
+    assert events[0] == {"kind": "info", "text": "信息"}
+    assert events[-2] == {"kind": "detail", "text": "细节二"}
+    assert events[-1] == {"kind": "progress", "label": "下载模型", "percent": 0.42}
+    # 终端文本输出不受 JSON 出口影响
+    assert stdout.getvalue() == "● 信息\n● 开始\n● 完成\n└ 细节一\n└ 细节二\n"
+    assert stderr.getvalue() == "● 提醒\n● 失败\n"
+
+
+def test_json_events_off_by_default(monkeypatch):
+    monkeypatch.delenv("TSUZURI_JSON_PROGRESS", raising=False)
+    events = []
+    monkeypatch.setattr(term, "_json_write", events.append)
+    install_streams(monkeypatch, stdout_tty=False, stderr_tty=False)
+
+    term.info("信息")
+    term.progress("下载模型", 0.5)
+
+    assert events == []
