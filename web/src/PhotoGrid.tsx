@@ -6,7 +6,7 @@
  *    ARIA 自己写必然做不全,这是明确的"用库不造轮子"。
  * 3. 大图底部挂 EXIF 展签,按需请求 /api/exif —— 与成片上印的是同一份格式化结果。
  */
-import {useEffect, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import {ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn, ZoomOut} from 'lucide-react';
 import Lightbox from 'yet-another-react-lightbox';
 import Counter from 'yet-another-react-lightbox/plugins/counter';
@@ -149,6 +149,63 @@ const PhotoItem = ({path, asset, busy, onOpen, onRename, onDelete}: {path: strin
   );
 };
 
+/**
+ * 大分组(数千张)全量挂载 DOM 会让整页卡死:按批挂载,哨兵进入视口(提前
+ * 600px 预取)时再追加一批,直到渲染完。paths 本身不裁剪 —— lightbox 的
+ * 导航索引和计数始终基于完整列表,分批只影响 DOM 挂载量。
+ */
+const PHOTO_CHUNK_SIZE = 150;
+
+const PhotoChunkGrid = ({paths, assetsByPath, busy, onOpen, onRename, onDelete}: {
+  paths: string[];
+  assetsByPath: Map<string, AssetItem>;
+  busy: boolean;
+  onOpen: (index: number) => void;
+  onRename?: (item: AssetItem, stem: string) => void;
+  onDelete?: (item: AssetItem) => void;
+}) => {
+  const [limit, setLimit] = useState(PHOTO_CHUNK_SIZE);
+  const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const sentinel = sentinelRef.current;
+    if (!sentinel) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (!entries.some((entry) => entry.isIntersecting)) return;
+        setLimit((current) => {
+          const next = Math.min(current + PHOTO_CHUNK_SIZE, paths.length);
+          if (next >= paths.length) observer.disconnect();
+          return next;
+        });
+      },
+      {rootMargin: '600px 0px'},
+    );
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [paths.length]);
+
+  const done = limit >= paths.length;
+
+  return (
+    <>
+      <div className="photo-grid">
+        {paths.slice(0, limit).map((photoPath, index) => <PhotoItem
+          key={photoPath}
+          path={photoPath}
+          asset={assetsByPath.get(photoPath)}
+          busy={busy}
+          onOpen={() => onOpen(index)}
+          onRename={onRename}
+          onDelete={onDelete}
+        />)}
+      </div>
+      {/* 哨兵始终挂载:渲染完(或列表又变长)时 effect 会重建观察,不依赖条件挂载 */}
+      {!done && <div ref={sentinelRef} className="photo-grid-sentinel" aria-hidden="true" />}
+    </>
+  );
+};
+
 export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRename, onDelete}: PhotoGridProps) => {
   const [open, setOpen] = useState<OpenState | null>(null);
 
@@ -181,17 +238,14 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRena
               {group.showCount !== false && `${group.paths.length} 张 · `}{group.hint}
             </span>
           </div>}
-          <div className="photo-grid">
-            {group.paths.map((photoPath, index) => <PhotoItem
-              key={photoPath}
-              path={photoPath}
-              asset={assetsByPath.get(photoPath)}
-              busy={busy}
-              onOpen={() => setOpen({groupKey: group.key, index})}
-              onRename={onRename}
-              onDelete={onDelete}
-            />)}
-          </div>
+          <PhotoChunkGrid
+            paths={group.paths}
+            assetsByPath={assetsByPath}
+            busy={busy}
+            onOpen={(index) => setOpen({groupKey: group.key, index})}
+            onRename={onRename}
+            onDelete={onDelete}
+          />
         </div>;
       })}
 
