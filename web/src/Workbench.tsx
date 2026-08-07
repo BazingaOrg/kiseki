@@ -18,6 +18,7 @@ import {CommandHint} from './ui';
 import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
+import {clearLastJobRecord, readLastJobRecord} from './lastJob';
 import {clearRecognizedLyrics, mutateAsset, undoAssetDelete} from './api';
 import type {AssetItem} from './types';
 
@@ -94,6 +95,12 @@ export const Workbench = ({
   const [activeKind, setActiveKind] = useState<JobKind | null>(null);
   const [jobLock, setJobLock] = useState<JobLock>('checking');
   const jobBusy = jobLock !== 'free' || job.busy;
+  // 服务端重启导致运行中任务丢失时的明确告知(与"素材夹状态没刷新"共用提示条样式)
+  const [restartNotice, setRestartNotice] = useState<string | null>(null);
+
+  // 落盘记录里的 kind 来自旧版本页面时可能不认识,未知类型原样显示兜底
+  const jobKindLabel = (kind: string) =>
+    ({render: '渲染', still: '导出静态图', 'fetch-audio': '获取音频', lyrics: '识别歌词'})[kind] ?? kind;
 
   const invalidateProbe = useCallback(() => {
     ++probeGenerationRef.current;
@@ -129,6 +136,20 @@ export const Workbench = ({
         if (runningJob === null) {
           // 这里只确认服务端锁已释放。不要抹掉终态面板，用户仍需看到这次
           // done/failed/cancelled 的事件与错误，并主动决定是否重新调整参数。
+          // 本地留有"有任务在跑"的记录而服务端已无任务:查这个 id 是否还被
+          // 服务端认识 —— 404 说明服务重启过、任务已丢,明确告知;正常结束
+          // 会在 end 事件里清掉记录,这里不会有残留。
+          const lastJob = readLastJobRecord();
+          if (lastJob) {
+            clearLastJobRecord();
+            fetch(`/api/jobs/${encodeURIComponent(lastJob.id)}`)
+              .then((res) => {
+                if (isCurrent() && res.status === 404) {
+                  setRestartNotice(`服务已重启,之前${jobKindLabel(lastJob.kind)}的任务已终止,需要重新开始。`);
+                }
+              })
+              .catch(() => undefined);
+          }
           release();
           setJobLock('free');
           return;
@@ -368,9 +389,15 @@ export const Workbench = ({
             <button className="link-button" onClick={onProjectRefresh}>重试</button>
           </p>
         )}
+        {restartNotice && (
+          <p className="locked-note hint-error" role="status">
+            {restartNotice}
+            <button className="link-button" onClick={() => setRestartNotice(null)}>知道了</button>
+          </p>
+        )}
 
         <main className="workbench-main">
-          {undoRecords.map(({id, action}) => <div className="asset-undo" key={id}><span>{action === 'rename' ? '文件已重命名，可以撤销。' : '文件已移到项目回收区。'}</span><button className="link-button" disabled={assetBusy || jobBusy} onClick={() => handleUndo(id)}>撤销</button></div>)}
+          {undoRecords.map(({id, action}) => <div className="asset-undo" key={id}><span>{action === 'rename' ? '文件已重命名，当前服务运行期间可以撤销。' : '文件已移到项目回收区，当前服务运行期间可以撤销。'}</span><button className="link-button" disabled={assetBusy || jobBusy} onClick={() => handleUndo(id)}>撤销</button></div>)}
           {section === 'materials' && (
             <Materials
               project={project}

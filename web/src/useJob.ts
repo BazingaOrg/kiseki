@@ -7,6 +7,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 import {getToken} from './api';
+import {clearLastJobRecord, writeLastJobRecord} from './lastJob';
 
 /** 契约一的两种事件形状 */
 export type JobEvent =
@@ -129,6 +130,8 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
         if (!mountedRef.current || run !== runRef.current || sourceRef.current !== source) return;
         const payload = JSON.parse((event as MessageEvent).data) as {status: JobStatus};
         setStatus(payload.status);
+        // 正常终态(done/failed/cancelled)到了,落盘记录作废,刷新后不该再提示
+        clearLastJobRecord();
         closeSource(source);
         onEnd?.();
       });
@@ -176,6 +179,7 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
         // EventSource 建不起来,服务端 job 却已经在跑,runningJobId 从此占死。
         startingRef.current = false;
         jobIdRef.current = id;
+        writeLastJobRecord({id, kind: args.kind, folder: args.folder, at: Date.now()});
         if (!mountedRef.current || run !== runRef.current) return false;
 
         if (cancelPendingRef.current) {

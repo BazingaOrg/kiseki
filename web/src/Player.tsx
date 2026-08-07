@@ -113,6 +113,7 @@ export const Player = ({video}: {video: string | null}) => {
         {pictureInPictureAvailable && <ControlButton label={isPictureInPicture ? '退出画中画' : '画中画'} onClick={togglePictureInPicture}><PictureInPicture aria-hidden="true" size={17} /></ControlButton>}
         <ControlButton label={isFullscreen ? '退出全屏' : '全屏'} onClick={toggleFullscreen}><Maximize aria-hidden="true" size={17} /></ControlButton>
       </div>
+      <p className="player-shortcuts">键盘:空格/k 播放暂停 · ←/→ 快退快进 · M 静音 · F 全屏</p>
       {state.status === 'loading' && <span className="media-loading" role="status">正在加载视频</span>}
       {state.status === 'buffering' && <span className="media-buffering" role="status">正在缓冲</span>}
       {state.error && <p className="media-error" role="alert">{state.error}</p>}

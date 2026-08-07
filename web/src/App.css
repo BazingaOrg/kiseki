@@ -1081,6 +1081,16 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   background: #000;
 }
 
+.player-shortcuts {
+  margin: 0;
+  padding: 0.3rem 0.55rem 0.45rem;
+  font-size: 0.72rem;
+  text-align: center;
+  color: var(--color-faint-text);
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-divider);
+}
+
 .player-video {
   display: block;
   width: 100%;
