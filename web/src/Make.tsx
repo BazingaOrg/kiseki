@@ -137,7 +137,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
         </label>
         <label className="make-checkbox">
           <input type="checkbox" checked={options.dark} onChange={(e) => set('dark', e.target.checked)} />
-          黑底
+          暗色
         </label>
         {kind === 'render' && (
           <label className="make-checkbox">
@@ -419,7 +419,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, 
         <ActionCard
           kind="still"
           icon={<ImageDown size={20} strokeWidth={1.5} />}
-          title="导出静态作品图"
+          title="导出静态图"
           description="按成片同款视觉导出单张照片，可带 EXIF 展签与签名落款。"
           capability={capabilities.exportStill}
           folder={project.path}

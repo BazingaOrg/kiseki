@@ -212,7 +212,7 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRena
   const allGroups: PhotoGroup[] = suppliedGroups ?? [
     {
       key: 'stills',
-      title: '导出作品',
+      title: '导出静态图',
       hint: '按成片同款视觉导出的静态图',
       paths: project.output.stills,
     },

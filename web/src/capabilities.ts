@@ -127,7 +127,7 @@ export const deriveCapabilities = (
     browsePhotos: make([
       photoCount > 0 || stillCount > 0
         ? null
-        : {reason: '这个文件夹里既没有照片，也没有导出的作品图。', remedy: MATERIALS},
+        : {reason: '这个文件夹里既没有照片，也没有导出的静态图。', remedy: MATERIALS},
     ]),
 
     followLyrics: make([
@@ -148,12 +148,12 @@ export const deriveCapabilities = (
       ambiguousAudio,
       ambiguousLyrics,
       depBlocker(doctor, 'uv', '音频分析'),
-      depBlocker(doctor, 'ffmpeg', '成片封装'),
+      depBlocker(doctor, 'ffmpeg', '视频封装'),
       depBlocker(doctor, 'renderer', '视频渲染'),
     ]),
 
     // 导出静态图不碰音频,也不需要 uv/ffmpeg —— 只要有照片和渲染器就行
-    exportStill: make([noPhotos, depBlocker(doctor, 'renderer', '导出作品图')]),
+    exportStill: make([noPhotos, depBlocker(doctor, 'renderer', '导出静态图')]),
 
     // analyzer 用 soundfile 读音频,读不了的容器(.m4a 等)会退回 ffmpeg 解码,
     // 所以歌词识别同样要 ffmpeg —— 见 analyzer/analyze.py 的 load_audio

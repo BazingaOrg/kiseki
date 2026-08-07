@@ -99,7 +99,7 @@ export const Player = ({video}: {video: string | null}) => {
     >
       {/* 挂载前保留原生 controls，确保自定义层未就绪时仍有可用的播放路径。 */}
       <video key={video} {...mediaProps} className="player-video" controls={!customControlsReady} playsInline />
-      <div className="video-controls" aria-label="视频控制">
+      <div className="video-controls" aria-label="成片控制">
         <ControlButton label={state.playing ? '暂停' : '播放'} onClick={toggle}>
           {state.playing ? <Pause aria-hidden="true" size={18} /> : <Play aria-hidden="true" size={18} />}
         </ControlButton>

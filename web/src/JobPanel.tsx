@@ -21,7 +21,7 @@ const STAGE_LABELS: Record<string, string> = {
   'Bundling code': '打包渲染器',
   'Rendering frames': '渲染画面',
   'Encoding video': '编码视频',
-  'Rendering still': '导出照片',
+  'Rendering still': '导出静态图',
 };
 
 /**

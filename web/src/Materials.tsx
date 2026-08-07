@@ -170,7 +170,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
             歌手
             <input value={artist} onChange={(event) => setArtist(event.target.value)} placeholder="请确认或填写" />
           </label>
-          <p className="hint">将保存为：{fileStem || '请填写歌名和歌手'}.m4a</p>
+          <p className="hint">将保存为：{fileStem || '歌名 - 歌手'}.m4a</p>
           <div className="audio-confirm-actions">
             <button className="link-button" onClick={() => setSelected(null)}>取消</button>
             <button
@@ -239,7 +239,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
         <input
           className="fetch-input"
           value={query}
-          placeholder="留空自动匹配；也可输入歌名 歌手"
+          placeholder="留空自动匹配，也可输入歌名 歌手"
           onChange={(event) => {
             searchGeneration.current += 1;
             queryRef.current = event.target.value;

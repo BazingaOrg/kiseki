@@ -50,6 +50,6 @@ test('Materials keeps raw input and discards stale search results without writin
   assert.match(lyricsSearch, /generation !== searchGeneration\.current \|\| queryRef\.current !== querySnapshot/);
   assert.match(lyricsSearch, /onChange=\{\(event\) => \{[\s\S]*?searchGeneration\.current \+= 1;[\s\S]*?queryRef\.current = event\.target\.value;/);
   assert.doesNotMatch(lyricsSearch, /setQuery\(outcome\.data\.query\)/);
-  assert.match(lyricsSearch, /placeholder="留空自动匹配；也可输入歌名 歌手"/);
+  assert.match(lyricsSearch, /placeholder="留空自动匹配，也可输入歌名 歌手"/);
   assert.match(lyricsSearch, /normalizeSearchQuery\(query\) \? '手动关键词' : '自动匹配'/);
 });

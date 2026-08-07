@@ -28,10 +28,10 @@ interface ResultsProps {
 }
 
 const photoTabMeta = (sourceCount: number, outputCount: number) => {
-  if (sourceCount > 0 && outputCount > 0) return {text: `素材 ${sourceCount} · 作品 ${outputCount}`, description: `素材 ${sourceCount} 张，作品 ${outputCount} 张`};
+  if (sourceCount > 0 && outputCount > 0) return {text: `素材 ${sourceCount} · 静态图 ${outputCount}`, description: `素材 ${sourceCount} 张，静态图 ${outputCount} 张`};
   if (sourceCount > 0) return {text: `${sourceCount} 张素材`, description: `${sourceCount} 张素材`};
-  if (outputCount > 0) return {text: `${outputCount} 张作品`, description: `${outputCount} 张作品`};
-  return {text: '暂无', description: '暂无图片'};
+  if (outputCount > 0) return {text: `${outputCount} 张静态图`, description: `${outputCount} 张静态图`};
+  return {text: '暂无', description: '暂无照片'};
 };
 
 export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: ResultsProps) => {
@@ -54,7 +54,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
   const tabs = [
     {key: 'videos' as const, label: '成片', meta: project.output.videos.length > 0 ? `${project.output.videos.length} 个` : '暂无', description: project.output.videos.length > 0 ? `${project.output.videos.length} 个成片` : '暂无成片'},
     {key: 'music' as const, label: '音乐与歌词', meta: audioAssets.state === 'ready' ? '已就绪' : audioAssets.state === 'empty' ? '暂无' : '需处理', description: audioAssets.state === 'ready' ? '音乐与歌词已就绪' : audioAssets.state === 'empty' ? '暂无音乐与歌词' : '音乐与歌词需处理'},
-    {key: 'photos' as const, label: '图片', meta: photoMeta.text, description: photoMeta.description},
+    {key: 'photos' as const, label: '照片', meta: photoMeta.text, description: photoMeta.description},
   ];
 
   const lyrics = project.lyrics ?? [];
@@ -148,7 +148,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
               <PhotoGrid
                 project={project}
                 groups={[
-                  {key: 'stills', title: '导出作品', hint: '按成片同款视觉导出的静态图', paths: project.output.stills, assets: project.assets?.stills.items ?? fallbackAssetCollection('still', project.output.stills).items},
+                  {key: 'stills', title: '导出静态图', hint: '按成片同款视觉导出的静态图', paths: project.output.stills, assets: project.assets?.stills.items ?? fallbackAssetCollection('still', project.output.stills).items},
                   {key: 'photos', title: '素材照片', hint: '这个文件夹里的原始照片', paths: project.photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', project.photos).items},
                 ]}
                 busy={assetBusy}
