@@ -120,6 +120,7 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir
         portrait: options.format === 'portrait',
         square: options.format === 'square',
         draft: options.draft,
+        template: options.template ?? null,
         filter: options.filter ? {id: options.filter, ...(options.filterIntensity != null ? {intensity: options.filterIntensity} : {})} : null,
         filterConfig: readFilterConfig(folder),
         photoNames: fs.existsSync(folder) ? scanFolderLoose(folder).photos : [],

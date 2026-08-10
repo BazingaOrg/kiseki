@@ -52,11 +52,14 @@ export const resolveOutputVariantSuffix = ({
   portrait = false,
   square = false,
   draft = false,
+  template = null,
   filter = null,
   filterConfig = null,
   photoNames = [],
 } = {}) => `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}` +
   `${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}` +
+  // 呈现模板只影响视频(still 不传 template);换模板重渲染不能覆盖上一份成片
+  `${template && SAFE_SUFFIX.test(template) ? `-template-${template}` : ''}` +
   resolveFilterOutputSuffix({filter, filterConfig, photoNames});
 
 /**

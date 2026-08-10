@@ -34,7 +34,7 @@ node cli/tsuzuri.mjs help
 
 不带参数会打开常驻交互菜单；每个流程完成、取消或报错后回到菜单，输入 `q` 退出。带参数的命令执行一次后退出。`<folder>` 制作视频，`lyrics` 只预览歌词，`fetch` 交互补齐在线音频或歌词，`still` 导出 PNG，`doctor` 检查依赖，`templates` 列出呈现模板，`web [folder]` 启动本地工作台；完整语法以 `help` 为准。视频可用 `--template <id>` 选呈现模板（转场/字幕/章节卡的"长相"），`templates` 可查看可用模板；滤镜、暗色等素材基调选项与模板互相独立。
 
-默认视频为 `osaka-trip/output/osaka-trip.mp4`，静态图默认位于 `output/stills/`。未使用 `-o` 时，EXIF、签名、暗色、画幅、草稿和实际生效的滤镜会追加到默认文件名；显式 `-o` 保持原样优先。
+默认视频为 `osaka-trip/output/osaka-trip.mp4`，静态图默认位于 `output/stills/`。未使用 `-o` 时，EXIF、签名、暗色、画幅、草稿、模板和实际生效的滤镜会追加到默认文件名；显式 `-o` 保持原样优先。
 
 `web` 首次使用需构建前端：`npm --prefix web install && npm --prefix web run build`。网页可查看和制作素材，也可改名或删除资产；写入受启动时的素材根目录、服务 token、冲突与任务检查保护，删除先移入回收区并仅提供进程内撤销。详见[项目状态](docs/tsuzuri-status.md)。
 

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {normalizeFilterIntensity, resolveFilterOutputSuffix, resolveRenderOutputPath} from './output-naming.mjs';
+import {normalizeFilterIntensity, resolveFilterOutputSuffix, resolveOutputVariantSuffix, resolveRenderOutputPath} from './output-naming.mjs';
 
 test('default, implicit renderer intensity, and ineffective explicit config leave the suffix unchanged', () => {
   assert.equal(resolveFilterOutputSuffix(), '');
@@ -35,4 +35,28 @@ test('render output resolver preserves explicit paths and composes every default
     '/tmp/summer-album/output/summer-album-exif-sign-dark-portrait-draft-teal-orange-0.8.mp4',
   );
   assert.equal(resolveRenderOutputPath({...options, output: './film.mp4'}), `${process.cwd()}/film.mp4`);
+});
+
+test('template appends a suffix so re-rendering with another template cannot overwrite the previous cut', () => {
+  assert.equal(
+    resolveRenderOutputPath({folder: '/tmp/summer-album', template: 'slow-cinema'}),
+    '/tmp/summer-album/output/summer-album-template-slow-cinema.mp4',
+  );
+  // 与滤镜同序:草稿之后、滤镜之前
+  assert.equal(
+    resolveRenderOutputPath({folder: '/tmp/summer-album', draft: true, template: 'news-cut', filter: {id: 'mono'}}),
+    '/tmp/summer-album/output/summer-album-draft-template-news-cut-mono.mp4',
+  );
+  // 显式 -o 依旧优先,模板不进文件名
+  assert.equal(
+    resolveRenderOutputPath({folder: '/tmp/summer-album', template: 'album', output: './final.mp4'}),
+    `${process.cwd()}/final.mp4`,
+  );
+});
+
+test('still 调用不传 template,输出名不带模板后缀(模板是渲染专用)', () => {
+  assert.equal(
+    resolveOutputVariantSuffix({sign: true}),
+    '-sign',
+  );
 });

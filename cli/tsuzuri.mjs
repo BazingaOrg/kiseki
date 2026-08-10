@@ -103,7 +103,7 @@ export const runCommandFromArgv = async (
   // name even when fetch is about to supply a currently missing audio file.
   const preflight = scanFolderLoose(folder);
   const outputPath = resolveRenderOutputPath({
-    folder, output, exif, sign, dark, portrait, square, draft, filter,
+    folder, output, exif, sign, dark, portrait, square, draft, filter, template,
     filterConfig: readFilterConfig(folder), photoNames: preflight.photos,
   });
   const project = resolveProjectPaths(folder, outputPath);
