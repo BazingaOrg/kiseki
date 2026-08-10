@@ -36,7 +36,7 @@ export interface TemplateMotion {
   pan: 'center' | 'left' | 'right' | 'up' | 'down' | 'random';
 }
 
-export type TemplateComposition = 'Diary' | 'PolaroidWall';
+export type TemplateComposition = 'Diary' | 'Filmstrip' | 'PolaroidWall';
 
 export interface Template {
   id: string;
@@ -55,6 +55,20 @@ export interface Template {
 }
 
 export const TEMPLATES: Template[] = [
+  {
+    id: 'filmstrip',
+    name: '走带',
+    description: '底部走带画廊、前后照片小帧预览',
+    composition: 'Filmstrip',
+    transition: 'crossfade',
+    captions: {
+      fontSize: 30,
+      fontWeight: 500,
+      letterSpacing: '0.12em',
+      letterSpacingCompact: '0.06em',
+      riseDistance: 6,
+    },
+  },
   {
     id: 'news-cut',
     name: '新闻快切',
