@@ -224,7 +224,7 @@ test('filter aliases are normalized to the registry id before render args are bu
 
 test('render command accepts --template with a known id', () => {
   assert.equal(parseArgs(['album', '--template', 'slow-cinema']).template, 'slow-cinema');
-  assert.equal(parseArgs(['album', '--template', 'album']).template, 'album');
+  assert.equal(parseArgs(['album', '--template', 'polaroid']).template, 'polaroid');
 });
 
 test('render command rejects unknown or missing template id and lists available ids', () => {

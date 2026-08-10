@@ -18,7 +18,7 @@ test('template registry has unique ids and required display fields', () => {
       assert.ok(['center', 'left', 'right', 'up', 'down', 'random'].includes(template.motion.pan), `${template.id} 的运镜方向不合法`);
     }
   }
-  assert.ok(ids.size >= 4, '至少要有 4 个模板(含 polaroid)');
+  assert.ok(ids.size >= 3, '至少要有 3 个模板(album 与默认重复已砍)');
   assert.equal(templateById('polaroid')?.composition, 'PolaroidWall');
 });
 

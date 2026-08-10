@@ -49,7 +49,7 @@ test('template appends a suffix so re-rendering with another template cannot ove
   );
   // 显式 -o 依旧优先,模板不进文件名
   assert.equal(
-    resolveRenderOutputPath({folder: '/tmp/summer-album', template: 'album', output: './final.mp4'}),
+    resolveRenderOutputPath({folder: '/tmp/summer-album', template: 'polaroid', output: './final.mp4'}),
     `${process.cwd()}/final.mp4`,
   );
 });

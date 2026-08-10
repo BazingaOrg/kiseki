@@ -4,7 +4,7 @@ import test from 'node:test';
 import {normalizeTemplateId, resolveTemplateComposition, TEMPLATE_IDS, TEMPLATES} from './templates.mjs';
 
 test('registry lists every template with a composition', () => {
-  assert.ok(TEMPLATE_IDS.length >= 4, '至少 4 个模板(含 polaroid)');
+  assert.ok(TEMPLATE_IDS.length >= 3, '至少 3 个模板(album 与默认重复已砍)');
   for (const template of TEMPLATES) {
     assert.ok(['Diary', 'PolaroidWall'].includes(template.composition), `${template.id} 的 composition 不合法`);
   }

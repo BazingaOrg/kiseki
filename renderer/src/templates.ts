@@ -56,13 +56,6 @@ export interface Template {
 
 export const TEMPLATES: Template[] = [
   {
-    id: 'album',
-    name: '相册翻页',
-    description: '翻页式切换、题签字幕、默认呈现',
-    composition: 'Diary',
-    transition: 'album',
-  },
-  {
     id: 'news-cut',
     name: '新闻快切',
     description: '干脆的硬切、黑体醒目大号字幕',
