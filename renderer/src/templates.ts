@@ -36,12 +36,14 @@ export interface TemplateMotion {
   pan: 'center' | 'left' | 'right' | 'up' | 'down' | 'random';
 }
 
+export type TemplateComposition = 'Diary' | 'PolaroidWall';
+
 export interface Template {
   id: string;
   name: string;
   description: string;
-  /** L1 只有 Diary;L2 可指向新 composition */
-  composition: 'Diary';
+  /** 模板对应的渲染 composition:Diary 是默认单页布局,PolaroidWall 是拍立得卡片布局 */
+  composition: TemplateComposition;
   /** 照片切换默认;显式配置的逐 clip transition 会被模板取代,chapter 卡保持自身节奏 */
   transition: TemplateTransition;
   /** 照片运镜;缺省照片保持静态(克制展陈风格) */
@@ -77,6 +79,20 @@ export const TEMPLATES: Template[] = [
     chapterCard: {
       fontSize: 34,
       letterSpacing: '0.06em',
+    },
+  },
+  {
+    id: 'polaroid',
+    name: '拍立得',
+    description: '白色相框、错落旋转的拍立得卡片',
+    composition: 'PolaroidWall',
+    transition: 'cut',
+    captions: {
+      fontSize: 30,
+      fontWeight: 500,
+      letterSpacing: '0.14em',
+      letterSpacingCompact: '0.08em',
+      riseDistance: 6,
     },
   },
   {

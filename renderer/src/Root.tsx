@@ -1,6 +1,7 @@
 import React from 'react';
 import {Composition} from 'remotion';
 import {Diary} from './Diary';
+import {PolaroidWall} from './PolaroidWall';
 import {Still, defaultStillProps} from './Still';
 import fixture from '../../examples/fixture/timeline.json';
 import type {Timeline} from './types';
@@ -41,6 +42,21 @@ export const RemotionRoot: React.FC = () => {
           fps: 1,
           width: props.width,
           height: props.height,
+        })}
+      />
+      <Composition
+        id="PolaroidWall"
+        component={PolaroidWall}
+        defaultProps={defaultTimeline}
+        width={CANVAS.width}
+        height={CANVAS.height}
+        fps={CANVAS.fps}
+        durationInFrames={Math.round(defaultTimeline.meta.duration * defaultTimeline.meta.fps)}
+        calculateMetadata={({props}) => ({
+          durationInFrames: Math.round(props.meta.duration * props.meta.fps),
+          fps: props.meta.fps,
+          width: props.meta.width,
+          height: props.meta.height,
         })}
       />
     </>

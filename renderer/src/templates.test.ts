@@ -10,7 +10,7 @@ test('template registry has unique ids and required display fields', () => {
     ids.add(template.id);
     assert.ok(template.name.length > 0, `${template.id} 缺名称`);
     assert.ok(template.description.length > 0, `${template.id} 缺描述`);
-    assert.equal(template.composition, 'Diary', `${template.id} 的 composition 只支持 Diary`);
+    assert.ok(['Diary', 'PolaroidWall'].includes(template.composition), `${template.id} 的 composition 不合法`);
     assert.ok(['album', 'cut', 'crossfade'].includes(template.transition), `${template.id} 的转场不合法`);
     if (template.motion) {
       assert.equal(template.motion.type, 'kenburns', `${template.id} 的运镜类型不合法`);
@@ -18,7 +18,8 @@ test('template registry has unique ids and required display fields', () => {
       assert.ok(['center', 'left', 'right', 'up', 'down', 'random'].includes(template.motion.pan), `${template.id} 的运镜方向不合法`);
     }
   }
-  assert.ok(ids.size >= 3, '至少要有 3 个 L1 模板');
+  assert.ok(ids.size >= 4, '至少要有 4 个模板(含 polaroid)');
+  assert.equal(templateById('polaroid')?.composition, 'PolaroidWall');
 });
 
 test('resolveTemplatePresentation resolves a known template and falls back without one', () => {

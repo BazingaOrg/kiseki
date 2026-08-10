@@ -12,6 +12,7 @@ import {FIXES} from './dependencies.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
+import {resolveTemplateComposition} from './templates.mjs';
 import {term} from './term.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
 
@@ -216,7 +217,8 @@ const main = async () => {
 
     const composition = await selectComposition({
       serveUrl: bundled.serveUrl,
-      id: 'Diary',
+      // 模板决定 composition:Diary(默认单页)或 PolaroidWall(拍立得卡片)
+      id: resolveTemplateComposition(flags.template),
       inputProps,
       logLevel: 'error',
     });
