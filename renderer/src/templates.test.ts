@@ -27,13 +27,15 @@ test('resolveTemplatePresentation resolves a known template and falls back witho
   assert.equal(cut.captions?.fontWeight, 700);
   assert.ok(cut.chapterCard, 'news-cut 应有章节卡样式');
   assert.equal(cut.motion, undefined, 'news-cut 不带运镜');
+  assert.equal(cut.fontFamily, 'sans', 'news-cut 用黑体');
 
   const cinema = resolveTemplatePresentation('slow-cinema');
   assert.deepEqual(cinema.transition, {type: 'crossfade', duration: 0.6});
   assert.deepEqual(cinema.motion, {type: 'kenburns', zoom: 1.06, pan: 'random'});
+  assert.equal(cinema.fontFamily, 'serif', 'slow-cinema 保持衬线');
 
   const plain = resolveTemplatePresentation(undefined);
-  assert.deepEqual(plain, {transition: undefined, motion: undefined, captions: undefined, chapterCard: undefined});
+  assert.deepEqual(plain, {transition: undefined, motion: undefined, fontFamily: 'serif', captions: undefined, chapterCard: undefined});
 
   // 未知 id 同样回落为"不应用模板",不会让渲染崩溃
   assert.deepEqual(resolveTemplatePresentation('nope'), plain);

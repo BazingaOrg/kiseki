@@ -6,7 +6,7 @@
  */
 export const TEMPLATES = [
   {id: 'album', name: '相册翻页', description: '翻页式切换、题签字幕、默认呈现'},
-  {id: 'news-cut', name: '新闻快切', description: '干脆的硬切、醒目大号字幕'},
+  {id: 'news-cut', name: '新闻快切', description: '干脆的硬切、黑体醒目大号字幕'},
   {id: 'slow-cinema', name: '电影舒缓', description: '缓慢交叉淡化、细字极简字幕、照片缓推'},
 ];
 

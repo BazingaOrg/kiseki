@@ -35,6 +35,7 @@ const captionCardStyle = (template: Template | undefined) => ({
   fontSize: `${(template?.captions?.fontSize ?? 36) * CARD_CAPTION_SCALE}px`,
   fontWeight: template?.captions?.fontWeight ?? 500,
   letterSpacing: template?.captions?.letterSpacing ?? '0.12em',
+  ...(template?.fontFamily === 'sans' ? {fontFamily: 'var(--font-sans)'} : {}),
 });
 
 const chapterCardStyle = (template: Template | undefined) => ({

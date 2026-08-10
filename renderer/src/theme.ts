@@ -141,12 +141,23 @@ export const OUTRO = {
   riseDistance: 6,
 } as const;
 
+/** 字族 × 语言路由:serif(展陈题签)与 sans(新闻/现代)两套,模板声明用哪套。 */
 export const FONT_FAMILY = {
-  ja: `'Noto Serif JP', 'Noto Serif SC', 'Noto Serif', serif`,
-  zh: `'Noto Serif SC', 'Noto Serif JP', 'Noto Serif', serif`,
-  en: `'Noto Serif', serif`,
-  mixed: `'Noto Serif', 'Noto Serif JP', 'Noto Serif SC', serif`,
+  serif: {
+    ja: `'Noto Serif JP', 'Noto Serif SC', 'Noto Serif', serif`,
+    zh: `'Noto Serif SC', 'Noto Serif JP', 'Noto Serif', serif`,
+    en: `'Noto Serif', serif`,
+    mixed: `'Noto Serif', 'Noto Serif JP', 'Noto Serif SC', serif`,
+  },
+  sans: {
+    ja: `'Noto Sans JP', 'Noto Sans SC', 'Noto Sans', sans-serif`,
+    zh: `'Noto Sans SC', 'Noto Sans JP', 'Noto Sans', sans-serif`,
+    en: `'Noto Sans', sans-serif`,
+    mixed: `'Noto Sans', 'Noto Sans JP', 'Noto Sans SC', sans-serif`,
+  },
 } as const;
+
+export type FontFamily = keyof typeof FONT_FAMILY;
 
 /** still 导出布局(1080p 基准比例;非 1080p 输出随画布自然缩放)。 */
 export const STILL = {

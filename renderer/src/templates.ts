@@ -46,6 +46,8 @@ export interface Template {
   transition: TemplateTransition;
   /** 照片运镜;缺省照片保持静态(克制展陈风格) */
   motion?: TemplateMotion;
+  /** 字族:衬线(展陈题签)或黑体(新闻/现代);缺省衬线 */
+  fontFamily?: 'serif' | 'sans';
   captions?: TemplateCaptionsStyle;
   chapterCard?: TemplateChapterCardStyle;
 }
@@ -61,9 +63,10 @@ export const TEMPLATES: Template[] = [
   {
     id: 'news-cut',
     name: '新闻快切',
-    description: '干脆的硬切、醒目大号字幕',
+    description: '干脆的硬切、黑体醒目大号字幕',
     composition: 'Diary',
     transition: 'cut',
+    fontFamily: 'sans',
     captions: {
       fontSize: 44,
       fontWeight: 700,
@@ -111,6 +114,8 @@ export interface ResolvedTemplatePresentation {
   transition: TransitionSpec | undefined;
   /** 照片运镜;undefined 时照片保持静态 */
   motion: TemplateMotion | undefined;
+  /** 字族;缺省衬线 */
+  fontFamily: 'serif' | 'sans';
   captions: TemplateCaptionsStyle | undefined;
   chapterCard: TemplateChapterCardStyle | undefined;
 }
@@ -119,11 +124,12 @@ export interface ResolvedTemplatePresentation {
 export const resolveTemplatePresentation = (templateId: string | undefined): ResolvedTemplatePresentation => {
   const template = templateById(templateId);
   if (!template) {
-    return {transition: undefined, motion: undefined, captions: undefined, chapterCard: undefined};
+    return {transition: undefined, motion: undefined, fontFamily: 'serif', captions: undefined, chapterCard: undefined};
   }
   return {
     transition: {type: template.transition, duration: TEMPLATE_TRANSITION_DURATIONS[template.transition]},
     motion: template.motion,
+    fontFamily: template.fontFamily ?? 'serif',
     captions: template.captions,
     chapterCard: template.chapterCard,
   };

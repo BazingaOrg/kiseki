@@ -71,7 +71,7 @@ L1 目录（全部为现有代码的参数重排，零新组件）：
 
 - P0.5（已完成）：**模板卡片示意预览**——直接 import renderer 注册表的真实样式值拼 CSS 示意卡（与滤镜预览同模式，标注"示意"），不做真实 still 渲染（成本/收益比不划算，列为长期）；**预设系统**——用户级一键组合（模板+滤镜+暗色+开关）按素材夹存 localStorage（presets.ts），同名覆盖、模板 id 净化
 - L2 第一步（已完成）：**照片运镜**——`TemplateMotion`（kenburns: zoom + pan，'random' 按照片 src 稳定哈希确定性分配），slow-cinema 获得 `{zoom: 1.06, pan: 'random'}`，album/news-cut 保持静态。历史背景：Ken Burns 在 2026-07-11 视觉修订（f975b8c）随"克制化审美"被移除，config 键 motion/kenburns_from/kenburns_to 随后弃用；本方案以"运镜是模板呈现能力、默认模板无运镜"的方式回归，不复活 config 键
-- L1.5：黑体字体资产
+- L1.5（已完成）：**黑体字体资产**——Noto Sans JP/SC/Latin VF woff2（经代理下载，共 12MB，比 serif 的 TTF 小一半）随 bundle 加载；`FONT_FAMILY` 重构为 serif/sans 两套 × ja/zh/en/mixed 路由；模板可声明 `fontFamily: 'serif' | 'sans'`，news-cut 用黑体；字体路由抽成纯模块 `fontFamily.ts` 可直测。模板默认文件名追加 `-template-<id>`（B1，换模板不再覆盖成片）
 - L2 后续：布局模板（拍立得墙/大字报，新 composition）、视差、本地模板目录 + 导入导出
 - 长期：模板真实预览图（复用 still 管线按素材夹缓存，需处理任务锁与浏览器并发）
 

@@ -145,9 +145,10 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           sideInset={subtitleSideInset}
           palette={palette}
           captions={template.captions}
+          fontFamily={template.fontFamily}
         />
       ))}
-      {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} />)}
+      {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />)}
       {whiteFade > 0 ? (
         <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} />
       ) : null}
