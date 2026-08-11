@@ -15,6 +15,7 @@ import {
   searchAudioCandidates,
   searchLyricsCandidates,
   searchYtDlpAsync,
+  validateLyricsCandidate,
 } from './fetch.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-fetch-'));
@@ -142,6 +143,7 @@ test('lyrics-search:候选按契约形状返回,查询词从文件名推出', as
     artist: 'Artist',
     duration: 180,
     delta: null,
+    metadataMatch: true,
     synced: true,
   });
   assert.deepEqual(queries[0][0], '/search');
@@ -215,6 +217,47 @@ test('lyrics-search:equal duration deltas retain provider order, and missing loc
 
   const unknown = await searchLyricsCandidates(root, folder, {run: fakeRun({}), fetcher: async () => records, query: 'manual'});
   assert.deepEqual(unknown.body.candidates.map(({id}) => id), ['1', '2', '3']);
+});
+
+test('lyrics-search:matching title and artist outrank a same-duration unrelated version', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const run = fakeRun({ffprobe: {status: 0, stdout: JSON.stringify({format: {duration: '180', tags: {title: 'Song', artist: 'Artist'}}}), stderr: ''}});
+  const records = [
+    {...SYNCED_RECORD, id: 1, trackName: 'Other', artistName: 'Cover', duration: 180},
+    {...SYNCED_RECORD, id: 2, duration: 181},
+  ];
+  const result = await searchLyricsCandidates(root, folder, {run, fetcher: async () => records, query: 'manual'});
+  assert.deepEqual(result.body.candidates.map(({id}) => id), ['2', '1']);
+  assert.deepEqual(result.body.candidates.map(({metadataMatch}) => metadataMatch), [true, false]);
+});
+
+test('lyrics validation distinguishes stable offset from version drift', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const record = {...SYNCED_RECORD, syncedLyrics: '[00:10.00]还记得昨天那个夏天\n[00:20.00]微风吹过的一瞬间\n[00:30.00]似乎吹翻一切\n[00:40.00]只剩寂寞跟沉淀\n'};
+  const stable = await validateLyricsCandidate(root, {folder, id: 42}, {
+    fetcher: async () => record,
+    recognize: async () => [
+      {start: 16.8, text: '还记得昨天那个夏天'},
+      {start: 26.9, text: '微风吹过的一瞬间'},
+      {start: 36.7, text: '似乎吹翻一切'},
+      {start: 46.8, text: '只剩寂寞跟沉淀'},
+    ],
+  });
+  assert.equal(stable.body.status, 'offset');
+  assert.equal(stable.body.anchorCount, 4);
+
+  const mismatch = await validateLyricsCandidate(root, {folder, id: 42}, {
+    fetcher: async () => record,
+    recognize: async () => [
+      {start: 16, text: '还记得昨天那个夏天'},
+      {start: 31, text: '微风吹过的一瞬间'},
+      {start: 46, text: '似乎吹翻一切'},
+      {start: 61, text: '只剩寂寞跟沉淀'},
+    ],
+  });
+  assert.equal(mismatch.body.status, 'mismatch');
 });
 
 test('lyrics-search:LRCLIB 出错 → 502 且带上原因', async () => {

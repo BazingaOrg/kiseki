@@ -21,87 +21,83 @@ const writeDerived = (folder) => {
   for (const name of ['timeline.json', 'analysis.json', 'beats.json', 'lyrics.json']) fs.writeFileSync(path.join(metadata, name), name);
 };
 
-test('delete manifest and undo retain paired lyrics and derived metadata until full restore', () => {
+test('delete permanently removes paired lyrics, derived metadata, and the temporary transaction', () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
     fs.writeFileSync(path.join(folder, 'song.lrc'), 'lyrics');
     writeDerived(folder);
-    const {undoId} = mutateAsset({folder, assetId: 'audio:song.mp3', action: 'delete', leaseManager: leaseManager()});
-    const operation = path.join(folder, '.tsuzuri-trash', undoId);
-    const manifest = JSON.parse(fs.readFileSync(path.join(operation, 'manifest.json'), 'utf8'));
-    assert.equal(manifest.action, 'delete');
-    assert.deepEqual(manifest.files.map(({from}) => from).sort(), ['song.lrc', 'song.mp3']);
-    assert.deepEqual(manifest.derived.map(({from}) => from).sort(), [
-      'output/metadata/analysis.json', 'output/metadata/beats.json', 'output/metadata/lyrics.json', 'output/metadata/timeline.json',
-    ]);
+    const result = mutateAsset({folder, assetId: 'audio:song.mp3', action: 'delete', leaseManager: leaseManager()});
+    assert.deepEqual(result, {});
     assert.equal(fs.existsSync(path.join(folder, 'song.mp3')), false);
-    undoAssetDelete({folder, undoId, leaseManager: leaseManager()});
-    assert.equal(fs.readFileSync(path.join(folder, 'song.mp3'), 'utf8'), 'audio');
-    assert.equal(fs.readFileSync(path.join(folder, 'song.lrc'), 'utf8'), 'lyrics');
-    assert.equal(fs.readFileSync(path.join(folder, 'output', 'metadata', 'analysis.json'), 'utf8'), 'analysis.json');
+    assert.equal(fs.existsSync(path.join(folder, 'song.lrc')), false);
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'analysis.json')), false);
     assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
 });
 
-test('rename uses one recoverable operation for file, per-photo config, and invalidated metadata', () => {
+test('lyrics can be renamed or deleted and only lyrics-dependent timeline is invalidated', () => {
+  const folder = fixture();
+  try {
+    fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
+    fs.writeFileSync(path.join(folder, 'song.lrc'), '[00:00.00]lyrics');
+    writeDerived(folder);
+    mutateAsset({folder, assetId: 'lyrics:song.lrc', action: 'rename', stem: 'edited', leaseManager: leaseManager()});
+    assert.equal(fs.existsSync(path.join(folder, 'edited.lrc')), true);
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'timeline.json')), false);
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'analysis.json')), true);
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'beats.json')), true);
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'lyrics.json')), true);
+    mutateAsset({folder, assetId: 'lyrics:edited.lrc', action: 'delete', leaseManager: leaseManager()});
+    assert.equal(fs.existsSync(path.join(folder, 'edited.lrc')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+  } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
+test('rename updates per-photo config and permanently invalidates derived metadata', () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
     fs.writeFileSync(path.join(folder, 'tsuzuri.json'), JSON.stringify({perPhoto: {'photo.jpg': {filter: 'mono'}}}));
     writeDerived(folder);
-    const {undoId} = mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
-    const operation = path.join(folder, '.tsuzuri-trash', undoId);
-    const manifest = JSON.parse(fs.readFileSync(path.join(operation, 'manifest.json'), 'utf8'));
-    assert.equal(manifest.action, 'rename');
-    assert.deepEqual(manifest.files, [{from: 'photo.jpg', to: 'renamed.jpg', storedInOperation: false}]);
-    assert.deepEqual(manifest.config, {path: 'tsuzuri.json', backup: 'metadata/tsuzuri.json'});
-    assert.equal(fs.existsSync(path.join(operation, 'derived', 'timeline.json')), true);
-    undoAssetDelete({folder, undoId, leaseManager: leaseManager()});
-    assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
-    assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), false);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder, 'tsuzuri.json'), 'utf8')).perPhoto, {'photo.jpg': {filter: 'mono'}});
-    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'timeline.json')), true);
+    mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
+    assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), false);
+    assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder, 'tsuzuri.json'), 'utf8')).perPhoto, {'renamed.jpg': {filter: 'mono'}});
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'timeline.json')), false);
     assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
 });
 
-test('rename undo restores paired lyrics from project paths and derived metadata from the operation', () => {
+test('audio rename permanently keeps its paired lyrics in sync', () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
     fs.writeFileSync(path.join(folder, 'song.lrc'), 'lyrics');
     writeDerived(folder);
-    const {undoId} = mutateAsset({folder, assetId: 'audio:song.mp3', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
-    const operation = path.join(folder, '.tsuzuri-trash', undoId);
-    const manifest = JSON.parse(fs.readFileSync(path.join(operation, 'manifest.json'), 'utf8'));
-    assert.deepEqual(manifest.files.map(({to, storedInOperation}) => ({to, storedInOperation})).sort((a, b) => a.to.localeCompare(b.to)), [
-      {to: 'renamed.lrc', storedInOperation: false},
-      {to: 'renamed.mp3', storedInOperation: false},
-    ]);
-    undoAssetDelete({folder, undoId, leaseManager: leaseManager()});
-    assert.equal(fs.readFileSync(path.join(folder, 'song.mp3'), 'utf8'), 'audio');
-    assert.equal(fs.readFileSync(path.join(folder, 'song.lrc'), 'utf8'), 'lyrics');
-    assert.equal(fs.readFileSync(path.join(folder, 'output', 'metadata', 'analysis.json'), 'utf8'), 'analysis.json');
+    mutateAsset({folder, assetId: 'audio:song.mp3', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
+    assert.equal(fs.readFileSync(path.join(folder, 'renamed.mp3'), 'utf8'), 'audio');
+    assert.equal(fs.readFileSync(path.join(folder, 'renamed.lrc'), 'utf8'), 'lyrics');
+    assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'analysis.json')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
 });
 
-test('undo keeps its record when cleanup finds an undeclared trash entry', () => {
+test('delete rolls back when the transaction lease cannot be released', () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
-    const {undoId} = mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'delete', leaseManager: leaseManager()});
-    const operation = path.join(folder, '.tsuzuri-trash', undoId);
-    fs.writeFileSync(path.join(operation, 'unexpected.txt'), 'unexpected');
-    assert.throws(() => undoAssetDelete({folder, undoId, leaseManager: leaseManager()}), /尚未清理/);
+    assert.throws(() => mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'delete', leaseManager: {acquire: () => ({}), release: () => false}}), /租约|lease/);
     assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
-    assert.equal(fs.existsSync(operation), true);
+    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }

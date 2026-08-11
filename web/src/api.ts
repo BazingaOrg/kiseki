@@ -5,7 +5,7 @@
  * 统一返回 ApiResult 而不是抛异常:yt-dlp 没装时后端回 503 并带上安装提示,
  * 那段文案要**原样**给到用户(能复制去粘贴),塞进 Error.message 会丢掉结构。
  */
-import type {AudioCandidate, LyricsCandidate} from './types';
+import type {AudioCandidate, LyricsCandidate, LyricsValidation} from './types';
 
 export type ApiResult<T> =
   | {ok: true; data: T}
@@ -65,12 +65,13 @@ export const searchLyrics = (
 export const installLyrics = async (
   folder: string,
   id: LyricsCandidate['id'],
+  offset = 0,
 ): Promise<ApiResult<{file: string}>> => {
   try {
     const res = await fetch('/api/fetch/lyrics', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()},
-      body: JSON.stringify({folder, id}),
+      body: JSON.stringify({folder, id, offset}),
     });
     if (!res.ok) return await readFailure(res);
     return {ok: true, data: (await res.json()) as {file: string}};
@@ -86,6 +87,9 @@ const postAsset = async <T>(url: string, body: object): Promise<ApiResult<T>> =>
     return {ok: true, data: (await res.json()) as T};
   } catch { return {ok: false, message: '连不上 tsuzuri 服务，确认它还在跑。', fix: null}; }
 };
+
+export const validateLyrics = (folder: string, id: LyricsCandidate['id']) =>
+  postAsset<LyricsValidation>('/api/fetch/lyrics-validate', {folder, id});
 
 export const mutateAsset = (folder: string, assetId: string, action: 'rename' | 'delete', stem?: string) =>
   postAsset<{assetId?: string; name?: string; undoId?: string}>('/api/assets/mutate', {folder, assetId, action, stem});

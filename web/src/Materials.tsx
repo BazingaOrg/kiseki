@@ -12,13 +12,13 @@ import type {FormEvent} from 'react';
 import {Search} from 'lucide-react';
 
 import type {ApiResult} from './api';
-import {installLyrics, normalizeSearchQuery, searchAudio, searchLyrics} from './api';
+import {installLyrics, normalizeSearchQuery, searchAudio, searchLyrics, validateLyrics} from './api';
 import type {Capabilities, Remedy} from './capabilities';
 import {JobPanel} from './JobPanel';
 import {basename} from './media';
 import {PhotoGrid} from './PhotoGrid';
 import {AssetCollection, fallbackAssetCollection} from './AssetCollection';
-import type {AssetItem, AudioCandidate, LyricsCandidate, ProjectResponse} from './types';
+import type {AssetItem, AudioCandidate, LyricsCandidate, LyricsValidation, ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import type {JobRequest} from './useJob';
 import type {useJob} from './useJob';
@@ -200,6 +200,8 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
   const [searching, setSearching] = useState(false);
   const [result, setResult] = useState<ApiResult<{candidates: LyricsCandidate[]; query: string}> | null>(null);
   const [installing, setInstalling] = useState<LyricsCandidate['id'] | null>(null);
+  const [validating, setValidating] = useState(false);
+  const [validation, setValidation] = useState<LyricsValidation | null>(null);
   const [failure, setFailure] = useState<{message: string; fix: string | null} | null>(null);
   const [selected, setSelected] = useState<LyricsCandidate | null>(null);
   // 保留原始用户输入；空串始终表示自动匹配，不能被推断词改写成手动搜索。
@@ -221,13 +223,23 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
     setSearching(false);
   };
 
-  const install = async (candidate: LyricsCandidate) => {
+  const install = async (candidate: LyricsCandidate, offset = 0) => {
     if (locked || installing !== null) return;
     setInstalling(candidate.id);
-    const outcome = await installLyrics(project.path, candidate.id);
+    const outcome = await installLyrics(project.path, candidate.id, offset);
     setInstalling(null);
     // 成功后不必收拾本地状态:歌词到位,这整块 UI 会被 onDone 触发的刷新换掉
     if (outcome.ok) onDone();
+    else setFailure({message: outcome.message, fix: outcome.fix});
+  };
+
+  const validate = async (candidate: LyricsCandidate) => {
+    if (locked || validating || installing !== null) return;
+    setValidating(true);
+    setFailure(null);
+    const outcome = await validateLyrics(project.path, candidate.id);
+    setValidating(false);
+    if (outcome.ok) setValidation(outcome.data);
     else setFailure({message: outcome.message, fix: outcome.fix});
   };
 
@@ -246,6 +258,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
             setQuery(event.target.value);
             setResult(null);
             setSelected(null);
+            setValidation(null);
             setFailure(null);
             setSearching(false);
           }}
@@ -271,12 +284,13 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
         <ul className="fetch-candidates">
           {candidates.map((candidate) => {
             const off = candidate.delta !== null && candidate.delta > DURATION_WARN_SECONDS;
+            const uncertain = !candidate.metadataMatch;
             return (
               <li key={candidate.id}>
                 <button
                   className={candidate.id === selected?.id ? 'fetch-candidate fetch-candidate-selected' : 'fetch-candidate'}
                   disabled={installing !== null}
-                  onClick={() => setSelected(candidate)}
+                  onClick={() => { setSelected(candidate); setValidation(null); }}
                 >
                   <span className="fetch-candidate-title">{candidate.title}</span>
                   <span className="fetch-candidate-meta">
@@ -289,6 +303,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
                       ) : (
                         <span> · 时长吻合</span>
                       ))}
+                    {uncertain && <span className="fetch-warn"> · 歌名或歌手未完全对上</span>}
                     {installing === candidate.id && <span> · 正在写入…</span>}
                   </span>
                 </button>
@@ -309,19 +324,25 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
               ) : (
                 <span> · 时长吻合</span>
               ))}
+            {!selected.metadataMatch && <span className="fetch-warn"> · 请确认歌名和歌手，同时长也可能是其他版本</span>}
           </p>
+          {validation?.status === 'matched' && <p className="lyrics-validation lyrics-validation-ok">已用本地人声校验 {validation.anchorCount} 个锚点，时间轴基本吻合。</p>}
+          {validation?.status === 'offset' && <p className="lyrics-validation lyrics-validation-warn">检测到稳定偏移 {validation.recommendedOffset! >= 0 ? '+' : ''}{validation.recommendedOffset!.toFixed(1)}s，保存时会自动校准。</p>}
+          {validation?.status === 'mismatch' && <p className="lyrics-validation lyrics-validation-error">锚点偏移不断变化，这很可能是另一个演唱或编曲版本，不建议保存。</p>}
+          {validation?.status === 'inconclusive' && <p className="lyrics-validation lyrics-validation-warn">可匹配的人声锚点不足，无法可靠判断这份时间轴。</p>}
           <div className="audio-confirm-actions">
             <button className="link-button" onClick={() => setSelected(null)}>取消</button>
-            <button
-              className="fetch-button"
-              disabled={locked || installing !== null}
-              onClick={() => {
-                install(selected);
+            {validation && !['matched', 'offset'].includes(validation.status) && <button className="link-button" disabled={locked || installing !== null} onClick={() => { install(selected); setSelected(null); }}>仍然保存</button>}
+            {validation && ['matched', 'offset'].includes(validation.status) ? (
+              <button className="fetch-button" disabled={locked || installing !== null} onClick={() => {
+                install(selected, validation.status === 'offset' ? (validation.recommendedOffset ?? 0) : 0);
                 setSelected(null);
-              }}
-            >
-              {installing !== null ? '正在写入…' : '保存这份歌词'}
-            </button>
+              }}>{installing !== null ? '正在写入…' : validation.status === 'offset' ? '校准并保存' : '保存这份歌词'}</button>
+            ) : (
+              <button className="fetch-button" disabled={locked || validating || installing !== null} onClick={() => validate(selected)}>
+                {validating ? '正在识别人声…' : '校验时间轴'}
+              </button>
+            )}
           </div>
         </div>
       )}

@@ -194,7 +194,6 @@ export const Workbench = ({
   useEffect(() => {
     if (jobLock === 'owned' && !job.busy) probeCurrentJob();
   }, [job.busy, jobLock, probeCurrentJob]);
-  const [undoRecords, setUndoRecords] = useState<Array<{id: string; action: 'rename' | 'delete'}>>([]);
   const [assetBusy, setAssetBusy] = useState(false);
   const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean; confirmLabel?: string} | null>(null);
 
@@ -238,12 +237,10 @@ export const Workbench = ({
     setAssetBusy(false);
     if (!result.ok) {
       if (result.recoveryUndoId) {
-        setUndoRecords((records) => records.some((record) => record.id === result.recoveryUndoId) ? records : [...records, {id: result.recoveryUndoId!, action: 'delete'}]);
-        setDialog({title: '需要恢复清除结果', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleUndo(result.recoveryUndoId!)) setDialog(null); }});
+        setDialog({title: '需要恢复未完成的操作', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleRecovery(result.recoveryUndoId!)) setDialog(null); }});
       } else setDialog({title: '操作未完成', message: result.message});
       return false;
     }
-    if (result.data.undoId) setUndoRecords((records) => [...records, {id: result.data.undoId!, action}]);
     onProjectRefresh();
     return true;
   };
@@ -251,7 +248,7 @@ export const Workbench = ({
     if (action === 'delete') {
       setDialog({
         title: '删除这个文件？',
-        message: `“${item.name}”会移入项目回收区，当前服务运行期间可以撤销。`,
+        message: `“${item.name}”将被永久删除，此操作无法恢复。`,
         destructive: true,
         confirm: async () => {
           if (await performAsset(item, action, stem)) setDialog(null);
@@ -261,7 +258,7 @@ export const Workbench = ({
     }
     void performAsset(item, action, stem);
   };
-  const handleUndo = async (undoId: string): Promise<boolean> => {
+  const handleRecovery = async (undoId: string): Promise<boolean> => {
     if (assetBusy || jobBusy) return false;
     setAssetBusy(true);
     const result = await undoAssetDelete(project.path, undoId);
@@ -269,12 +266,10 @@ export const Workbench = ({
     if (!result.ok) {
       const recoveryUndoId = result.recoveryUndoId ?? undoId;
       if (result.recoveryRequired || result.recoveryUndoId) {
-        setUndoRecords((records) => records.some((record) => record.id === recoveryUndoId) ? records : [...records, {id: recoveryUndoId, action: 'delete'}]);
-        setDialog({title: '撤销未完成', message: result.message, confirmLabel: '再次尝试恢复', confirm: async () => { if (await handleUndo(recoveryUndoId)) setDialog(null); }});
-      } else setDialog({title: '撤销未完成', message: result.message});
+        setDialog({title: '恢复未完成', message: result.message, confirmLabel: '再次尝试恢复', confirm: async () => { if (await handleRecovery(recoveryUndoId)) setDialog(null); }});
+      } else setDialog({title: '恢复未完成', message: result.message});
       return false;
     }
-    setUndoRecords((records) => records.filter((record) => record.id !== undoId));
     onProjectRefresh();
     return true;
   };
@@ -285,19 +280,17 @@ export const Workbench = ({
     setAssetBusy(false);
     if (!result.ok) {
       if (result.recoveryUndoId) {
-        setUndoRecords((records) => records.some((record) => record.id === result.recoveryUndoId) ? records : [...records, {id: result.recoveryUndoId!, action: 'delete'}]);
-        setDialog({title: '需要恢复清除结果', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleUndo(result.recoveryUndoId!)) setDialog(null); }});
+        setDialog({title: '需要恢复未完成的操作', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleRecovery(result.recoveryUndoId!)) setDialog(null); }});
       } else setDialog({title: '操作未完成', message: result.message});
       return false;
     }
-    setUndoRecords((records) => [...records, {id: result.data.undoId, action: 'delete'}]);
     onProjectRefresh();
     return true;
   };
   const handleClearRecognizedLyrics = () => {
     setDialog({
       title: '清除识别结果？',
-      message: '会移除本地识别歌词及依赖的时间线；不会删除 .lrc、分析缓存或节拍，可在当前服务运行期间撤销。',
+      message: '会移除本地识别歌词及依赖的时间线；不会删除 .lrc、分析缓存或节拍。',
       destructive: true,
       confirmLabel: '清除',
       confirm: async () => { if (await performClearRecognizedLyrics()) setDialog(null); },
@@ -397,7 +390,6 @@ export const Workbench = ({
         )}
 
         <main className="workbench-main">
-          {undoRecords.map(({id, action}) => <div className="asset-undo" key={id}><span>{action === 'rename' ? '文件已重命名，当前服务运行期间可以撤销。' : '文件已移到项目回收区，当前服务运行期间可以撤销。'}</span><button className="link-button" disabled={assetBusy || jobBusy} onClick={() => handleUndo(id)}>撤销</button></div>)}
           {section === 'materials' && (
             <Materials
               project={project}

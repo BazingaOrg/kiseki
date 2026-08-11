@@ -384,7 +384,7 @@
   max-width: 940px;
   width: 100%;
   margin: 0 auto;
-  padding: 2.5rem 2rem 5rem;
+  padding: 2rem 1.5rem 4rem;
 }
 
 .section + .section {
@@ -533,8 +533,6 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .make-preset-name:focus {
   border-color: var(--color-secondary-text);
 }
-.asset-undo { display: flex; align-items: center; gap: var(--space-row); margin-bottom: 1rem; padding: 0.65rem 0.8rem; background: var(--color-surface); border: 1px solid var(--color-divider); border-radius: var(--radius-panel); font-size: 0.85rem; }
-
 /* ── 项目内弹窗 ───────────────────────────────────────── */
 
 .dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1.25rem; background: rgba(26, 24, 21, 0.42); animation: dialog-fade-in 160ms ease-out; }
@@ -542,8 +540,8 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .dialog h2 { margin: 0; font-size: 1rem; font-weight: 500; }
 .dialog p { margin: 0.65rem 0 0; color: var(--color-secondary-text); font-size: 0.85rem; line-height: 1.65; overflow-wrap: anywhere; }
 .dialog-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.75rem; margin-top: 1.25rem; }
-.dialog-delete { background: var(--color-status-error); border-color: var(--color-status-error); }
-.dialog-delete:hover:not(:disabled) { background: var(--color-status-error); border-color: var(--color-status-error); filter: brightness(0.88); }
+.dialog-delete { background: var(--color-destructive); border-color: var(--color-destructive); }
+.dialog-delete:hover:not(:disabled) { background: var(--color-destructive); border-color: var(--color-destructive); filter: brightness(0.9); }
 @keyframes dialog-fade-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes dialog-in { from { opacity: 0; transform: translateY(4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
 
@@ -679,6 +677,16 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .fetch-warn {
   color: var(--color-text);
 }
+
+.lyrics-validation {
+  margin: 0.75rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.6;
+}
+
+.lyrics-validation-ok { color: var(--color-status-success); }
+.lyrics-validation-warn { color: var(--color-status-warn); }
+.lyrics-validation-error { color: var(--color-status-error); }
 
 .fetch-warn::before {
   content: ' · ';
@@ -1575,18 +1583,21 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 /* Lightbox 只通过实例 class 变更 YARL,避免影响未来的其他查看器。 */
 .tsuzuri-lightbox {
-  --yarl__color_backdrop: rgba(26, 24, 21, 0.96);
+  --yarl__color_backdrop: #090806;
   --yarl__color_button: #fffdf8;
   --yarl__color_button_active: #fffdf8;
   --yarl__color_button_disabled: rgba(255, 253, 248, 0.34);
-  --yarl__icon_size: 18px;
-  --yarl__toolbar_padding: 12px 16px;
+  --yarl__icon_size: 16px;
+  --yarl__toolbar_padding: 0;
   --yarl__navigation_button_padding: 8px;
 }
 
 .tsuzuri-lightbox .yarl__toolbar {
+  top: max(20px, env(safe-area-inset-top));
+  right: max(24px, env(safe-area-inset-right));
   align-items: center;
   gap: 0.125rem;
+  padding: 3px;
   border: 1px solid rgba(255, 253, 248, 0.22);
   border-radius: 999px;
   background: rgba(35, 32, 28, 0.7);
@@ -1596,8 +1607,8 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .tsuzuri-lightbox .yarl__button,
 .tsuzuri-lightbox-tool {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   padding: 0;
   display: inline-grid;
   place-items: center;
@@ -1611,8 +1622,8 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .tsuzuri-lightbox-tool svg,
 .tsuzuri-lightbox .yarl__button svg {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   stroke-width: 1.75;
 }
 
@@ -1723,8 +1734,9 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 }
 
 @media (max-width: 700px) {
-  .tsuzuri-lightbox {
-    --yarl__toolbar_padding: 10px 12px;
+  .tsuzuri-lightbox .yarl__toolbar {
+    top: max(12px, env(safe-area-inset-top));
+    right: max(16px, env(safe-area-inset-right));
   }
 
   .tsuzuri-lightbox .yarl__slide_image {
@@ -1916,7 +1928,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   }
 
   .workbench-main {
-    padding: 2rem 1.25rem 4rem;
+    padding: 1.5rem 1rem 3rem;
   }
 
   .fetch-candidates {

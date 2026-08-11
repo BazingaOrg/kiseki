@@ -125,7 +125,16 @@ export interface LyricsCandidate {
   artist: string;
   duration: number | null;
   delta: number | null;
+  /** 候选的歌名/歌手与本地音频标签是否同时可信匹配。 */
+  metadataMatch: boolean;
   synced: boolean;
+}
+
+export interface LyricsValidation {
+  status: 'matched' | 'offset' | 'mismatch' | 'inconclusive';
+  anchorCount: number;
+  recommendedOffset: number | null;
+  spread: number | null;
 }
 
 export interface ExifData {

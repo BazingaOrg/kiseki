@@ -12,7 +12,6 @@ import {readFilterConfig, resolveProjectPaths, scanFolderLoose} from '../project
 import {parseLrc} from '../lrc.mjs';
 import {readUsableRecognizedLyrics} from '../recognized-lyrics.mjs';
 import {resolveSafePath} from './sandbox.mjs';
-import {LYRIC_MUTATION_HINT} from './assets.mjs';
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -34,10 +33,7 @@ const assetItem = ({kind, origin, folder, relativePath, manageable = true, actio
 
 const assetCollection = ({kind, origin, folder, relativePaths}) => {
   const items = relativePaths.map((relativePath) => {
-    return assetItem({
-      kind, origin, folder, relativePath, manageable: kind !== 'lyrics',
-      actionHint: kind === 'lyrics' ? LYRIC_MUTATION_HINT : null,
-    });
+    return assetItem({kind, origin, folder, relativePath});
   });
   return {
     kind,

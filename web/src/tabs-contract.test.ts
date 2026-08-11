@@ -23,11 +23,12 @@ test('recognized lyric preview exposes replace and clear actions only through ca
   assert.match(materials, /<JobPanel verb="识别"/);
 });
 
-test('recovery retry keeps its dialog open until undo reports success', async () => {
+test('internal recovery retry keeps its dialog open until recovery succeeds', async () => {
   const workbench = await source('Workbench.tsx');
   assert.match(workbench, /const recoveryUndoId = result\.recoveryUndoId \?\? undoId/);
   assert.match(workbench, /confirmLabel: '再次尝试恢复'/);
-  assert.match(workbench, /if \(await handleUndo\(recoveryUndoId\)\) setDialog\(null\)/);
+  assert.match(workbench, /if \(await handleRecovery\(recoveryUndoId\)\) setDialog\(null\)/);
+  assert.doesNotMatch(workbench, /asset-undo|>撤销</);
 });
 
 test('narrow topbar and media status rules preserve truncation and status visibility', async () => {

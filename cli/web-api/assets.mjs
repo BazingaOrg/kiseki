@@ -69,13 +69,6 @@ const pairedLyrics = (folder, audio) => currentAssets(folder)
   .filter((item) => item.kind === 'lyrics' && stem(item.relativePath) === stem(audio.relativePath))
   .map((item) => resolveAsset(folder, `lyrics:${item.relativePath}`));
 
-/** 歌词资产的本批限制说明,素材列表与变更拒绝共用同一份文案. */
-export const LYRIC_MUTATION_HINT = '歌词文件此批只读,音频操作仅联动同 stem 歌词';
-
-const assertManageable = (folder, asset) => {
-  if (asset.kind === 'lyrics') throw new AssetMutationError(409, LYRIC_MUTATION_HINT);
-};
-
 const resolveMetadataFile = (folder, target, required) => {
   if (!pathExists(target)) {
     if (required) throw new AssetMutationError(409, '识别结果不存在或已变化');
@@ -91,9 +84,9 @@ const resolveMetadataFile = (folder, target, required) => {
 };
 
 const invalidateDerived = (folder, operationDir, kind) => {
-  if (kind !== 'photo' && kind !== 'audio') return [];
+  if (kind !== 'photo' && kind !== 'audio' && kind !== 'lyrics') return [];
   const paths = resolveProjectPaths(folder);
-  const names = kind === 'photo'
+  const names = kind === 'photo' || kind === 'lyrics'
     ? [paths.timelinePath]
     : [paths.timelinePath, paths.analysisPath, paths.beatsPath, paths.lyricsPath];
   const moved = [];
@@ -315,6 +308,18 @@ const removeOperationDir = (record) => {
   try { fs.rmdirSync(root); } catch (error) { if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error; }
 };
 
+const commitPermanentOperation = (record) => {
+  const root = path.join(record.folder, '.tsuzuri-trash');
+  if (record.operationDir !== trashDir(record.folder, record.id) || !inside(root, record.operationDir)) {
+    throw new AssetMutationError(409, '临时删除记录路径已变化');
+  }
+  assertCanonicalDirectory(root, record.folder, '临时删除记录路径已变化');
+  assertCanonicalDirectory(record.operationDir, record.folder, '临时删除记录路径已变化');
+  fs.rmSync(record.operationDir, {recursive: true});
+  try { fs.rmdirSync(root); } catch (error) { if (error.code !== 'ENOTEMPTY' && error.code !== 'ENOENT') throw error; }
+  undoRecords.delete(record.id);
+};
+
 const withMutationLease = (folder, task, leaseManager = createTaskLeaseManager()) => {
   let lease;
   let released = false;
@@ -344,6 +349,13 @@ const withMutationLease = (folder, task, leaseManager = createTaskLeaseManager()
         }
         throw releaseError ?? new Error('任务 lease 释放失败');
       }
+      if (result?.commitAfterRelease) {
+        try { result.commitAfterRelease(); } catch (error) {
+          const record = result.recoveryRecord;
+          if (record) throw recoveryFailure(record, '操作已执行，但永久删除的临时记录清理失败', error);
+          throw error;
+        }
+      }
       return result?.data ?? result;
     });
   } catch (error) {
@@ -358,7 +370,6 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
   folder = canonicalFolder;
   assertNoRunningJob(isJobRunning);
   const asset = resolveAsset(folder, assetId);
-  assertManageable(folder, asset);
   if (action === 'rename') {
     if (typeof newStem !== 'string' || !newStem.trim() || ['.', '..'].includes(newStem.trim()) || !STEM_RE.test(newStem) || newStem.includes(path.sep)) {
       throw new AssetMutationError(400, '文件名无效');
@@ -403,8 +414,14 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
       if (configBackup) fs.writeFileSync(configBackup.jsonPath, configBackup.rawText, 'utf8');
       throw error;
     }
-    undoRecords.set(id, {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: false})), derived, config: configBackup});
-    return {assetId: `${asset.kind}:${path.relative(folder, destination)}`, name, undoId: id};
+    const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: false})), derived, config: configBackup};
+    undoRecords.set(id, record);
+    return {
+      data: {assetId: `${asset.kind}:${path.relative(folder, destination)}`, name},
+      recoveryRecord: record,
+      rollbackLeaseFailure: () => undoAssetDeleteCore({folder, undoId: id, isJobRunning}),
+      commitAfterRelease: () => commitPermanentOperation(record),
+    };
   }
   if (action !== 'delete') throw new AssetMutationError(400, '不支持的操作');
   const id = crypto.randomUUID();
@@ -425,8 +442,14 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
     }
     throw error;
   }
-  undoRecords.set(id, {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived, config: null});
-  return {undoId: id};
+  const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived, config: null};
+  undoRecords.set(id, record);
+  return {
+    data: {},
+    recoveryRecord: record,
+    rollbackLeaseFailure: () => undoAssetDeleteCore({folder, undoId: id, isJobRunning}),
+    commitAfterRelease: () => commitPermanentOperation(record),
+  };
 }, leaseManager);
 
 export const clearRecognizedLyrics = ({folder, isJobRunning, leaseManager}) => withMutationLease(folder, (canonicalFolder) => {

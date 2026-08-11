@@ -11,7 +11,9 @@
  */
 import {spawn as spawnActual} from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import {fileURLToPath} from 'node:url';
 
 import {FIXES} from '../dependencies.mjs';
 import {
@@ -26,16 +28,20 @@ import {
   searchLyricsRecords,
 } from '../fetch.mjs';
 import {preferSimplifiedChineseLrc} from '../lrc.mjs';
+import {parseLrc} from '../lrc.mjs';
 import {scanFolderLoose} from '../project.mjs';
 import {AUDIO_PROVIDER_LIMIT, checkYtDlp, normalizeSearchQuery, parseSearchCandidates} from '../ytdlp.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
+import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
 const LRCLIB_UA = 'tsuzuri (https://github.com/tsuzuri)';
 const DEFAULT_TIMEOUT_MS = 20000;
+const ANALYZER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../analyzer');
+const validationRecognitionCache = new Map();
 
 /**
  * 异步跑一个外部命令,把结果整理成 spawnSync 那样的 {status, stdout, stderr},
@@ -102,15 +108,32 @@ export const searchYtDlpAsync = async (query, run = runProcess) => {
   return {ok: true, candidates: parseSearchCandidates(result.stdout)};
 };
 
-const rankWebLyricsCandidates = (records, audioDuration) => {
+const normalizeMatchText = (value) => String(value ?? '')
+  .normalize('NFKC')
+  .toLocaleLowerCase()
+  .replace(/[\s\p{P}\p{S}]+/gu, '');
+
+const textMatchScore = (candidate, expected) => {
+  const left = normalizeMatchText(candidate);
+  const right = normalizeMatchText(expected);
+  if (!left || !right) return 0;
+  if (left === right) return 3;
+  if (left.includes(right) || right.includes(left)) return 2;
+  return 0;
+};
+
+export const rankWebLyricsCandidates = (records, {audioDuration, title, artist}) => {
   const seen = new Set();
   const candidates = filterSyncedRecords(records).flatMap((record, index) => {
     const id = canonicalLyricsId(record.id);
     if (id === null || seen.has(id)) return [];
     seen.add(id);
-    return [{record, id, delta: durationDelta(record.duration, audioDuration), index}];
+    const titleScore = textMatchScore(record.trackName, title);
+    const artistScore = textMatchScore(record.artistName, artist);
+    return [{record, id, delta: durationDelta(record.duration, audioDuration), matchScore: titleScore * 2 + artistScore, index}];
   });
   candidates.sort((left, right) => {
+    if (left.matchScore !== right.matchScore) return right.matchScore - left.matchScore;
     if (left.delta === null) return right.delta === null ? left.index - right.index : 1;
     if (right.delta === null) return -1;
     return left.delta - right.delta || left.index - right.index;
@@ -126,6 +149,30 @@ export const probeAudioAsync = async (file, run = runProcess) => {
     {timeout: 10000},
   );
   return probeAudio(file, () => result);
+};
+
+const identityFromFilename = (audio) => {
+  const base = path.basename(audio, path.extname(audio));
+  const separator = base.lastIndexOf(' - ');
+  return separator > 0
+    ? {title: base.slice(0, separator).trim(), artist: base.slice(separator + 3).trim()}
+    : {title: base.trim(), artist: null};
+};
+
+const recognizeForValidation = async (audioPath, run = runProcess) => {
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-lyrics-validation-'));
+  const output = path.join(temporary, 'recognized.json');
+  try {
+    const result = await run('uv', [
+      'run', '--project', ANALYZER_DIR, 'tsuzuri-analyze', audioPath,
+      '--lyrics-only', '--lyrics-output', output,
+    ], {timeout: 180000});
+    if (result.status !== 0 || !fs.existsSync(output)) throw new Error('本地识别未完成');
+    const parsed = JSON.parse(fs.readFileSync(output, 'utf8'));
+    return Array.isArray(parsed?.segments) ? parsed.segments : [];
+  } finally {
+    fs.rmSync(temporary, {recursive: true, force: true});
+  }
 };
 
 /**
@@ -206,8 +253,11 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   const {folder, audio} = resolved;
 
   const probe = await probeAudioAsync(path.join(folder, audio), run);
+  const inferred = identityFromFilename(audio);
+  const expectedTitle = probe.title || inferred.title;
+  const expectedArtist = probe.artist || inferred.artist;
   const override = normalizeSearchQuery(queryOverride);
-  const query = override || normalizeSearchQuery(buildLyricsQuery({title: probe.title, artist: probe.artist, audioFile: audio}));
+  const query = override || normalizeSearchQuery(buildLyricsQuery({title: expectedTitle, artist: expectedArtist, audioFile: audio}));
   let records;
   try {
     records = await searchLyricsRecords(
@@ -223,17 +273,18 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
     return {status: 502, body: {error: `歌词搜索失败: ${error.message}`}};
   }
 
-  const synced = rankWebLyricsCandidates(records, probe.duration);
+  const synced = rankWebLyricsCandidates(records, {audioDuration: probe.duration, title: expectedTitle, artist: expectedArtist});
   return {
     status: 200,
     body: {
       query,
-      candidates: synced.map(({record, id, delta}) => ({
+      candidates: synced.map(({record, id, delta, matchScore}) => ({
         id,
         title: record.trackName,
         artist: record.artistName,
         duration: record.duration,
         delta,
+        metadataMatch: matchScore >= 4,
           // filterSyncedRecords 之后一定是带时间轴的,这个字段恒为 true,留着是为了
           // 前端不必假设过滤规则.不下发 CLI 那句成品文案:那是终端排版,网页拿
           // delta 自己组织更合适,多一个没人消费的字段只会变成漂移源.
@@ -241,6 +292,41 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
       })),
     },
   };
+};
+
+/** POST /api/fetch/lyrics-validate {folder,id}:保存前用本地人声锚点验证候选版本。 */
+export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, recognize, isJobRunning} = {}) => {
+  const requestedId = canonicalLyricsId(body?.id);
+  if (requestedId === null) return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
+  const resolved = resolveAudioFolder(root, body?.folder);
+  if (resolved.error) return resolved.error;
+  if (isJobRunning?.()) return {status: 409, body: {error: '任务运行中，暂不校验歌词'}};
+  let record;
+  try {
+    record = await (fetcher ?? createLrclibFetch(run))(`/get/${requestedId}`, {});
+  } catch (error) {
+    return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
+  }
+  if (filterSyncedRecords(record ? [record] : []).length === 0) return {status: 404, body: {error: '这条记录没有同步歌词'}};
+  if (canonicalLyricsId(record.id) !== requestedId) return {status: 502, body: {error: 'LRCLIB 返回的记录 id 与请求不一致'}};
+  let segments;
+  try {
+    if (recognize) segments = await recognize(path.join(resolved.folder, resolved.audio), run);
+    else {
+      const cacheKey = `${resolved.folder}:${resolved.audioIdentity}`;
+      let recognition = validationRecognitionCache.get(cacheKey);
+      if (!recognition) {
+        recognition = recognizeForValidation(path.join(resolved.folder, resolved.audio), run);
+        validationRecognitionCache.set(cacheKey, recognition);
+        recognition.catch(() => validationRecognitionCache.delete(cacheKey));
+      }
+      segments = await recognition;
+    }
+  } catch (error) {
+    return {status: 500, body: {error: `时间轴校验失败: ${error.message}`}};
+  }
+  const validation = validateLyricsAlignment(segments, parseLrc(record.syncedLyrics));
+  return {status: 200, body: {...validation, anchorCount: validation.anchors.length}};
 };
 
 /**
@@ -271,7 +357,11 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
     return {status: 502, body: {error: 'LRCLIB 返回的记录 id 与请求不一致'}};
   }
 
-  const preferred = await preferSimplifiedChineseLrc(record.syncedLyrics);
+  const requestedOffset = Number(body?.offset ?? 0);
+  if (!Number.isFinite(requestedOffset) || Math.abs(requestedOffset) > 30) {
+    return {status: 400, body: {error: '歌词偏移必须在 ±30 秒内', field: 'offset'}};
+  }
+  const preferred = await preferSimplifiedChineseLrc(shiftLrc(record.syncedLyrics, requestedOffset));
   const filename = `${path.basename(audio, path.extname(audio))}.lrc`;
   let lease;
   let response;
