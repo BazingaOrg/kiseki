@@ -48,10 +48,10 @@ test('material and result tabs share restrained motion styles', async () => {
 });
 
 test('featured render styles use abstract explanatory previews with motion safeguards', async () => {
-  const [appCss, make] = await Promise.all([source('App.css'), source('Make.tsx')]);
+  const [appCss, make, materials, fieldHelp] = await Promise.all([source('App.css'), source('Make.tsx'), source('Materials.tsx'), source('FieldHelp.tsx')]);
   const preview = make.slice(make.indexOf('const PreviewArtwork'), make.indexOf('const KIND_VERB'));
   assert.match(make, /FEATURED_TEMPLATE_IDS = \['slow-cinema', 'filmstrip', 'polaroid'\]/);
-  assert.match(make, />成片风格</);
+  assert.match(make, />成片风格 <FieldHelp label="了解成片风格">/);
   assert.match(make, />不套用风格</);
   assert.match(make, />成片时长</);
   assert.match(make, /智能收尾（推荐）[\s\S]*完整歌曲/);
@@ -60,6 +60,30 @@ test('featured render styles use abstract explanatory previews with motion safeg
   assert.match(make, /trim: preset\.options\.trim \?\? 'auto'/);
   assert.match(make, /根据照片数量，在音乐合适的节拍处结束/);
   assert.match(make, /始终渲染到歌曲结束，成片可能更长/);
+  assert.match(make, /<FieldHelp label="了解成片风格">卡片使用抽象图形演示布局和动效，选中后会循环播放。只影响布局、转场和字幕，滤镜单独设置。<\/FieldHelp>/);
+  assert.match(make, /<FieldHelp label="了解渲染速度">只影响电脑资源占用，不影响成片质量。省着点约占四分之一，均衡约占一半，快则尽量使用全部资源。<\/FieldHelp>/);
+  assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。<\/FieldHelp>/);
+  assert.match(make, /<p className="make-field-hint">\s*\{TRIM_LABELS\.find/);
+  assert.doesNotMatch(make, /改变照片布局、转场和字幕样式|抽象图形仅说明布局与动效|非品牌官方模拟，效果会受原片色彩和曝光影响。/);
+  assert.doesNotMatch(make, /title=\{item\.hint\}/);
+  assert.match(fieldHelp, /import \{Info\} from 'lucide-react';/);
+  assert.match(fieldHelp, /aria-expanded=\{open\}/);
+  assert.match(fieldHelp, /aria-controls=\{tooltipId\}/);
+  assert.match(fieldHelp, /aria-describedby=\{tooltipId\}/);
+  assert.match(fieldHelp, /role="tooltip"/);
+  assert.match(fieldHelp, /onMouseEnter=\{\(\) => setOpen\(true\)\}/);
+  assert.match(fieldHelp, /onMouseLeave=\{\(\) => \{\s*if \(!rootRef\.current\?\.contains\(document\.activeElement\)\) setOpen\(false\);/);
+  assert.match(fieldHelp, /onClick=\{\(\) => setOpen\(true\)\}/);
+  assert.match(fieldHelp, /event\.key === 'Escape'/);
+  assert.match(fieldHelp, /document\.addEventListener\('pointerdown'/);
+  assert.match(materials, /<FieldHelp label="了解本地识别">用 whisper/);
+  assert.doesNotMatch(materials, /CircleHelp|fetch-path-help/);
+  assert.doesNotMatch(appCss, /fetch-path-help|fetch-path-tooltip|make-template-intro/);
+  assert.match(appCss, /@media \(max-width: 600px\) \{\s*\.field-help-tooltip \{\s*position: fixed;[\s\S]*right: 1rem;[\s\S]*bottom: 1rem;[\s\S]*left: 1rem;/);
+  assert.match(appCss, /\.make-field-label \{\s*display: block;/);
+  assert.match(appCss, /\.make-field-label-with-help \{\s*display: flex;[\s\S]*align-items: center;[\s\S]*gap: 0\.3rem;/);
+  assert.equal([...make.matchAll(/make-field-label make-field-label-with-help/g)].length, 3);
+  assert.doesNotMatch(make, /约四分之一核心|约一半核心|几乎占满，风扇会转起来/);
   assert.doesNotMatch(make, /晴天 海边 午后|SAMPLE_CAPTION/);
   assert.match(preview, /template-preview-caption">字幕</);
   assert.match(preview, /variant="three" className="template-preview-scene template-preview-scene-three"/);
@@ -82,5 +106,5 @@ test('filter picker exposes only grouped classic styles and preserves a selected
   assert.match(make, /filter\.id === options\.filter && filter\.group === 'legacy'/);
   assert.match(make, /<optgroup label="旧项目滤镜">/);
   assert.match(make, /FILTERS\.filter\(\(filter\) => filter\.group === group\.id\)/);
-  assert.match(make, /非品牌官方模拟，效果会受原片色彩和曝光影响。/);
+  assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果/);
 });

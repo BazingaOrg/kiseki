@@ -11,6 +11,7 @@ import {thumbUrl} from './media';
 import {deletePreset, loadPresets, savePreset, type RenderPreset} from './presets';
 import type {ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
+import {FieldHelp} from './FieldHelp';
 import type {JobOptions} from './useJob';
 import type {useJob} from './useJob';
 import {useTransitionPresence} from './useTransitionPresence';
@@ -93,10 +94,10 @@ const TRIM_LABELS: {value: NonNullable<JobOptions['trim']>; label: string; hint:
   {value: 'full', label: '完整歌曲', hint: '始终渲染到歌曲结束，成片可能更长'},
 ];
 
-const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string; hint: string}[] = [
-  {value: 'saver', label: '省着点', hint: '约四分之一核心，边渲染边干别的'},
-  {value: 'balanced', label: '均衡', hint: '约一半核心'},
-  {value: 'full', label: '快', hint: '几乎占满，风扇会转起来'},
+const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string}[] = [
+  {value: 'saver', label: '省着点'},
+  {value: 'balanced', label: '均衡'},
+  {value: 'full', label: '快'},
 ];
 
 const FILTER_GROUPS = [
@@ -190,8 +191,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
     <div className="make-form">
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label">成片风格</span>
-          <p className="make-field-hint make-template-intro">改变照片布局、转场和字幕样式，不影响照片内容与滤镜。</p>
+          <span className="make-field-label make-field-label-with-help">成片风格 <FieldHelp label="了解成片风格">卡片使用抽象图形演示布局和动效，选中后会循环播放。只影响布局、转场和字幕，滤镜单独设置。</FieldHelp></span>
           <label className="make-radio make-template-default">
             <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
             <span className="make-template-card-body">
@@ -211,7 +211,6 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
               </label>
             ))}
           </div>
-          <p className="make-field-hint">抽象图形仅说明布局与动效；点选后会持续播放，以成片为准。</p>
         </div>
       )}
 
@@ -282,10 +281,10 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
       {/* 只给渲染:still 不走 resolveRenderSettings,并发对它无效,摆在那只会误导 */}
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label">渲染速度</span>
+          <span className="make-field-label make-field-label-with-help">渲染速度 <FieldHelp label="了解渲染速度">只影响电脑资源占用，不影响成片质量。省着点约占四分之一，均衡约占一半，快则尽量使用全部资源。</FieldHelp></span>
           <div className="make-radio-group">
             {SPEED_LABELS.map((item) => (
-              <label className="make-radio" key={item.value} title={item.hint}>
+              <label className="make-radio" key={item.value}>
                 <input
                   type="radio"
                   name="render-speed"
@@ -296,9 +295,6 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
               </label>
             ))}
           </div>
-          <p className="make-field-hint">
-            {SPEED_LABELS.find((item) => item.value === (options.speed ?? 'balanced'))?.hint}
-          </p>
         </div>
       )}
 
@@ -318,7 +314,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
       )}
 
       <div className="make-field">
-        <span className="make-field-label">滤镜</span>
+        <span className="make-field-label make-field-label-with-help">滤镜 <FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。</FieldHelp></span>
         <select
           className="make-select"
           value={options.filter ?? ''}
@@ -351,7 +347,6 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
             aria-label="滤镜强度"
           />
         )}
-        <p className="make-field-hint">非品牌官方模拟，效果会受原片色彩和曝光影响。</p>
       </div>
 
       {options.filter && photos[0] && (
