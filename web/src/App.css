@@ -1177,15 +1177,19 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .player {
   position: relative;
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
   overflow: hidden;
+  border: 1px solid var(--color-divider);
   border-radius: var(--radius-media);
   background: #171512;
-  box-shadow: var(--shadow-photo);
 }
 
 .player:fullscreen {
   display: grid;
   place-items: center;
+  border: 0;
   background: #000;
 }
 
@@ -1202,13 +1206,107 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .player-video {
   display: block;
   width: 100%;
-  max-height: min(68vh, 720px);
+  max-height: min(60vh, 600px);
   object-fit: contain;
   background: #000;
 }
 
 .player:fullscreen .player-video {
   max-height: 100vh;
+}
+
+.result-video-with-playlist {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(240px, 0.85fr);
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.result-video-with-playlist .player {
+  max-width: none;
+  margin: 0;
+}
+
+.result-video-picker {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+}
+
+.result-video-picker-inner {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+  padding: 0.75rem;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-media);
+  background: var(--color-background);
+}
+
+.result-video-position {
+  margin: 0;
+  color: var(--color-secondary-text);
+  font-size: 0.78rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.result-video-picker .asset-collection {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  margin-top: 0.35rem;
+}
+
+.result-video-picker .asset-list {
+  flex: 1;
+  min-height: 0;
+  margin-top: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.result-video-picker .asset-row {
+  padding-inline: 0.5rem;
+  border-radius: var(--radius-control);
+}
+
+.result-video-picker .asset-row-current {
+  background: var(--color-surface);
+}
+
+.result-video-picker .asset-row-current .asset-name::before {
+  content: '▶';
+  display: inline-block;
+  margin-right: 0.45rem;
+  color: var(--color-text);
+  font-size: 0.62rem;
+  transform: translateY(-0.04em);
+}
+
+@media (max-width: 760px) {
+  .result-video-with-playlist {
+    display: block;
+  }
+
+  .player {
+    max-width: none;
+  }
+
+  .result-video-picker {
+    margin-top: 1rem;
+  }
+
+  .result-video-picker-inner {
+    position: static;
+    max-height: min(42vh, 320px);
+  }
+
+  .result-video-picker .asset-list {
+    overflow-y: auto;
+  }
 }
 
 .video-controls {

@@ -19,12 +19,11 @@ interface AssetCollectionProps {
  */
 export const AssetCollection = ({collection, empty, ambiguous, busy = false, onRename, onDelete, currentId, onSelect}: AssetCollectionProps) => {
   if (collection.state === 'empty') return <p className="hint">{empty}</p>;
+  const ambiguousMessage = collection.state === 'ambiguous' ? ambiguous(collection.items.length) : '';
 
   return (
     <div className="asset-collection">
-      {collection.state === 'ambiguous' && (
-        <p className="hint hint-error">{ambiguous(collection.items.length)}</p>
-      )}
+      {ambiguousMessage && <p className="hint hint-error">{ambiguousMessage}</p>}
       <ul className="asset-list">
         {collection.items.map((item) => <AssetRow key={item.id} item={item} busy={busy} current={item.id === currentId} onSelect={onSelect} onRename={onRename} onDelete={onDelete} />)}
       </ul>

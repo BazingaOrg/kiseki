@@ -4,11 +4,11 @@ import test from 'node:test';
 
 const source = (name: string) => readFile(new URL(`./${name}`, import.meta.url), 'utf8');
 
-test('materials panels remain mounted and results keeps its audio node outside tab branches', async () => {
+test('materials panels remain mounted and results contains output panels only', async () => {
   const [materials, results] = await Promise.all([source('Materials.tsx'), source('Results.tsx')]);
   assert.equal((materials.match(/getPanelProps\('(photos|music|lyrics)'\)/g) ?? []).length, 3);
-  assert.match(results, /<audio \{\.\.\.audioProps\} \/>/);
-  assert.equal((results.match(/getPanelProps\('(videos|music|photos)'\)/g) ?? []).length, 3);
+  assert.doesNotMatch(results, /getPanelProps\('music'\)|<audio/);
+  assert.equal((results.match(/getPanelProps\('(videos|photos)'\)/g) ?? []).length, 2);
 });
 
 test('recognized lyric preview exposes replace and clear actions only through callbacks', async () => {
