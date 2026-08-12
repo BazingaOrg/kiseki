@@ -1,13 +1,13 @@
 /**
  * GET /api/dirs?path=<abs> —— 目录浏览,只返回文件夹用于导航,顶层附带
- * 简单的"像不像 tsuzuri 素材夹"提示(是否已有 tsuzuri.toml/output/等特征).
+ * 简单的"像不像 kiseki 素材夹"提示(是否已有 kiseki.toml/output/等特征).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 import {resolveSafePath} from './sandbox.mjs';
 
-const PROJECT_HINTS = ['tsuzuri.toml', 'tsuzuri.json', 'output'];
+const PROJECT_HINTS = ['kiseki.toml', 'kiseki.json', 'output'];
 
 /**
  * @param {string} root 允许浏览的根目录

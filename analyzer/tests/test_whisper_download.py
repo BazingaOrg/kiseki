@@ -68,7 +68,7 @@ def test_download_targets_convention_dir_with_repo_per_backend(monkeypatch, tmp_
 
 
 def test_download_progress_throttles_to_whole_percents(monkeypatch):
-    monkeypatch.setenv("TSUZURI_JSON_PROGRESS", "1")
+    monkeypatch.setenv("KISEKI_JSON_PROGRESS", "1")
     events = []
     monkeypatch.setattr(term, "_json_write", events.append)
 
@@ -93,7 +93,7 @@ def test_download_progress_throttles_to_whole_percents(monkeypatch):
 
 
 def test_download_progress_stays_monotonic_when_total_grows(monkeypatch):
-    monkeypatch.setenv("TSUZURI_JSON_PROGRESS", "1")
+    monkeypatch.setenv("KISEKI_JSON_PROGRESS", "1")
     events = []
     monkeypatch.setattr(term, "_json_write", events.append)
 

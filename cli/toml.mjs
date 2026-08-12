@@ -3,7 +3,7 @@
  * 只支持顶层 `key = value` 的一行一项配置,值类型为 bool / int / float / string.
  * 不支持 [table]、数组、内联表、多行字符串、点号键——出现即报错,不做静默降级.
  *
- * 之所以自己写而不用现成 TOML 库:tsuzuri.toml 只需要这个极小子集,手写解析器
+ * 之所以自己写而不用现成 TOML 库:kiseki.toml 只需要这个极小子集,手写解析器
  * 能精确控制"字符串内的 # 不是注释"这类边界情况(旧实现 cli/still.mjs 用
  * `raw.includes(' #')` 简单查找,会把 `outro_text = "a # b"` 这种合法配置错误截断).
  */

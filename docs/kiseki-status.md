@@ -1,10 +1,10 @@
-# tsuzuri 项目状态
+# kiseki 项目状态
 
-tsuzuri 是本地工作台：读取照片、唯一音频和可选 LRC，分析并规划时间线，输出视频或静态 PNG。`fetch` 是可选在线备料；分析和渲染仍在本机完成。
+kiseki 是本地工作台：读取照片、唯一音频和可选 LRC，分析并规划时间线，输出视频或静态 PNG。`fetch` 是可选在线备料；分析和渲染仍在本机完成。
 
 ## 本地工作台
 
-`web [folder]` 启动素材、制作、成果三段工作台。素材可改名或删除；服务端按启动时根目录与 token 限制写入，并继续检查扫描身份、软链接、冲突和任务锁。删除先移入 `.tsuzuri-trash`，撤销仅在当前 server 进程中可用。
+`web [folder]` 启动素材、制作、成果三段工作台。素材可改名或删除；服务端按启动时根目录与 token 限制写入，并继续检查扫描身份、软链接、冲突和任务锁。删除先移入 `.kiseki-trash`，撤销仅在当前 server 进程中可用。
 
 视频与 still 可从同一素材夹制作；无音频但有照片时仍可导出 still，只有 still 时也可进入成果。视频与 still 共用画布、字体、照片和配色；still 的 `--scale 1-4` 表示静态导出像素倍率，不是增强。
 
@@ -29,6 +29,6 @@ Web doctor 异步检查外部依赖，成功结果短暂缓存并合并同时请
 
 ## 本轮最终验证
 
-2026-07-28，基线 HEAD 为 `8a40d07`，在当前工作树验证：CLI `460/460`、Analyzer `150`、Renderer `9/9` 加 typecheck、Web `40/40` 加 typecheck 与 production build 均通过；没有 skip 或 only。本记录不将浏览器真实媒体播放或成片视觉质量视为已验收。
+2026-08-12，基线 HEAD 为 `49eff53`，在全量改名后的当前工作树验证：CLI `583/583`、Analyzer `161`、Renderer `20/20` 加 typecheck、Web `52/52` 加 typecheck 与 production build 均通过；新 CLI、renderer 转发与三个 analyzer console scripts 的入口 smoke 通过。另目检 1280×720 与 390×844 欢迎页 Logo，以及 3000×1700 README 架构图；浏览器真实媒体播放、完整素材操作与成片视觉质量仍未验收。
 
 历史方案中“只读画廊”和 `Cache-Control: private, max-age=86400` 是当时审计/性能基线的保留文字，不代表当前工作台或缩略图实现；当前行为以上文的本地工作台与 `private, no-cache`、ETag/304 说明为准。

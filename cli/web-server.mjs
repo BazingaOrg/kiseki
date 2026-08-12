@@ -36,9 +36,9 @@ const STATIC_MIME_TYPES = {
 };
 
 const PLACEHOLDER_HTML =
-  '<!doctype html><html><head><meta charset="utf-8"><title>tsuzuri 工作台</title></head>' +
+  '<!doctype html><html><head><meta charset="utf-8"><title>kiseki 工作台</title></head>' +
   '<body style="font-family: sans-serif; padding: 2rem;">' +
-  '<h1>tsuzuri 本地工作台</h1>' +
+  '<h1>kiseki 本地工作台</h1>' +
   '<p>前端页面尚未构建。API 已就绪:/api/dirs、/api/project、/media。</p>' +
   '</body></html>';
 
@@ -103,7 +103,7 @@ const serveFile = (req, res, filePath) => {
 const serveIndexHtml = (res, token) => {
   const html = fs.readFileSync(INDEX_HTML, 'utf8');
   const escapedToken = token.replaceAll('"', '&quot;');
-  const withToken = html.replace('</head>', `<meta name="tsuzuri-token" content="${escapedToken}">\n</head>`);
+  const withToken = html.replace('</head>', `<meta name="kiseki-token" content="${escapedToken}">\n</head>`);
   res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache'});
   res.end(withToken);
 };
@@ -179,7 +179,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
   const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {})});
 
   const checkToken = (req, res) => {
-    if (req.headers['x-tsuzuri-token'] !== token) {
+    if (req.headers['x-kiseki-token'] !== token) {
       res.writeHead(403);
       res.end();
       return false;

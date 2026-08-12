@@ -4,7 +4,7 @@
  * 查服务端是否还认识它 —— 404 说明服务重启过、任务已丢,该明确告知而不是
  * 静默回到"可以开工";正常结束会在 end 事件里清掉记录,不会误报。
  */
-const LAST_JOB_KEY = 'tsuzuri-last-job';
+const LAST_JOB_KEY = 'kiseki-last-job';
 
 export interface LastJobRecord {
   id: string;

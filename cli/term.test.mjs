@@ -20,7 +20,7 @@ import {parseArgs} from './options.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {computeInputHash, copyLegacyJson, ensureProjectDirs, resolveProjectPaths, scanFolderLoose} from './project.mjs';
 import {createTerminal, dim, paint, promptPrefix} from './term.mjs';
-import {runCommandFromArgv} from './tsuzuri.mjs';
+import {runCommandFromArgv} from './kiseki.mjs';
 
 const stream = (isTTY) => ({
   isTTY,
@@ -31,7 +31,7 @@ const stream = (isTTY) => ({
 });
 
 test('lyrics --replace skips the optional fetch offer without changing the normal lyrics path', async () => {
-  const folder = mkdtempSync(join(tmpdir(), 'tsuzuri-lyrics-entry-'));
+  const folder = mkdtempSync(join(tmpdir(), 'kiseki-lyrics-entry-'));
   try {
     const fetchCalls = [];
     const lyricsCalls = [];
@@ -130,7 +130,7 @@ test('multiline CJK messages repeat their prefix', () => {
   assert.equal(stderr.output, '● 错误甲\n● 错误乙\n');
 });
 
-test('TSUZURI_JSON_PROGRESS 关闭时终端输出与开启前逐字节一致', () => {
+test('KISEKI_JSON_PROGRESS 关闭时终端输出与开启前逐字节一致', () => {
   const run = (env) => {
     const stdout = stream(true);
     const stderr = stream(true);
@@ -145,21 +145,21 @@ test('TSUZURI_JSON_PROGRESS 关闭时终端输出与开启前逐字节一致', (
   };
 
   const withoutFlag = run({TERM: 'xterm-256color'});
-  const flagOff = run({TERM: 'xterm-256color', TSUZURI_JSON_PROGRESS: '0'});
-  const flagUnset = run({TERM: 'xterm-256color', TSUZURI_JSON_PROGRESS: undefined});
+  const flagOff = run({TERM: 'xterm-256color', KISEKI_JSON_PROGRESS: '0'});
+  const flagUnset = run({TERM: 'xterm-256color', KISEKI_JSON_PROGRESS: undefined});
 
   assert.deepEqual(flagOff, withoutFlag);
   assert.deepEqual(flagUnset, withoutFlag);
 });
 
-test('TSUZURI_JSON_PROGRESS=1 时每次调用向 JSON 出口发一条对应 kind 的事件', () => {
+test('KISEKI_JSON_PROGRESS=1 时每次调用向 JSON 出口发一条对应 kind 的事件', () => {
   const stdout = stream(true);
   const stderr = stream(true);
   const events = [];
   const output = createTerminal({
     stdout,
     stderr,
-    env: {TERM: 'xterm-256color', TSUZURI_JSON_PROGRESS: '1'},
+    env: {TERM: 'xterm-256color', KISEKI_JSON_PROGRESS: '1'},
     jsonWrite: (event) => events.push(event),
   });
 
@@ -196,7 +196,7 @@ test('多行消息按行拆成多条 JSON 事件,与终端换行行为一致', (
   const output = createTerminal({
     stdout,
     stderr,
-    env: {TSUZURI_JSON_PROGRESS: '1'},
+    env: {KISEKI_JSON_PROGRESS: '1'},
     jsonWrite: (event) => events.push(event),
   });
 
@@ -216,7 +216,7 @@ test('开关开启但 fd 3 未打开时,默认 JSON 写入器吞掉 EBADF 且不
   const stderr = stream(true);
   // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...).
   // 测试进程通常没有打开 fd 3,预期抛 EBADF 并被内部吞掉.
-  const output = createTerminal({stdout, stderr, env: {TSUZURI_JSON_PROGRESS: '1'}});
+  const output = createTerminal({stdout, stderr, env: {KISEKI_JSON_PROGRESS: '1'}});
 
   assert.doesNotThrow(() => {
     output.info('信息');
@@ -303,7 +303,7 @@ test('an output suffix is appended to the default filename but not to an explici
 });
 
 test('legacy JSON is copied once without removing or overwriting files', () => {
-  const root = mkdtempSync(join(tmpdir(), 'tsuzuri-layout-'));
+  const root = mkdtempSync(join(tmpdir(), 'kiseki-layout-'));
   try {
     const paths = resolveProjectPaths(root);
     writeFileSync(join(root, 'beats.json'), 'legacy beats');
@@ -324,7 +324,7 @@ test('legacy JSON is copied once without removing or overwriting files', () => {
 });
 
 test('input hash changes when user lyrics change', () => {
-  const root = mkdtempSync(join(tmpdir(), 'tsuzuri-hash-'));
+  const root = mkdtempSync(join(tmpdir(), 'kiseki-hash-'));
   try {
     writeFileSync(join(root, 'song.mp3'), 'audio');
     writeFileSync(join(root, 'lyrics.lrc'), '[00:01.00]first');
@@ -338,7 +338,7 @@ test('input hash changes when user lyrics change', () => {
 });
 
 test('input hash is metadata-based: mtime change alone is detected without content read', () => {
-  const root = mkdtempSync(join(tmpdir(), 'tsuzuri-hash-mtime-'));
+  const root = mkdtempSync(join(tmpdir(), 'kiseki-hash-mtime-'));
   try {
     const photo = join(root, 'photo.jpg');
     writeFileSync(photo, 'same-bytes');
@@ -353,7 +353,7 @@ test('input hash is metadata-based: mtime change alone is detected without conte
 });
 
 test('scanFolderLoose ignores directory and dangling symlinks even with image extensions', () => {
-  const root = mkdtempSync(join(tmpdir(), 'tsuzuri-symlink-'));
+  const root = mkdtempSync(join(tmpdir(), 'kiseki-symlink-'));
   try {
     const realDir = join(root, 'real-dir');
     mkdirSync(realDir);
@@ -372,16 +372,16 @@ test(
   'the executable still runs through a package-style symlink',
   {skip: process.platform === 'win32'},
   () => {
-    const root = mkdtempSync(join(tmpdir(), 'tsuzuri-bin-'));
+    const root = mkdtempSync(join(tmpdir(), 'kiseki-bin-'));
     try {
-      const script = fileURLToPath(new URL('./tsuzuri.mjs', import.meta.url));
-      const link = join(root, 'tsuzuri');
+      const script = fileURLToPath(new URL('./kiseki.mjs', import.meta.url));
+      const link = join(root, 'kiseki');
       symlinkSync(script, link);
 
       const result = spawnSync(link, {encoding: 'utf8'});
 
       assert.equal(result.status, 1, `stdout:\n${result.stdout}\nstderr:\n${result.stderr}`);
-      assert.match(result.stderr, /● tsuzuri: 用法/);
+      assert.match(result.stderr, /● kiseki: 用法/);
     } finally {
       rmSync(root, {recursive: true, force: true});
     }
@@ -392,7 +392,7 @@ test(
   'analyzer failure reports its stage and preserves the exit code',
   {skip: process.platform === 'win32'},
   () => {
-    const root = mkdtempSync(join(tmpdir(), 'tsuzuri-cli-'));
+    const root = mkdtempSync(join(tmpdir(), 'kiseki-cli-'));
     try {
       const album = join(root, 'album');
       const bin = join(root, 'bin');
@@ -404,7 +404,7 @@ test(
       writeFileSync(uv, '#!/bin/sh\nexit 7\n');
       chmodSync(uv, 0o755);
 
-      const script = fileURLToPath(new URL('./tsuzuri.mjs', import.meta.url));
+      const script = fileURLToPath(new URL('./kiseki.mjs', import.meta.url));
       const result = spawnSync(process.execPath, [script, album], {
         encoding: 'utf8',
         env: {...process.env, PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`},
@@ -423,7 +423,7 @@ test(
   'a single LRC is forwarded to the analyzer and generated paths use metadata',
   {skip: process.platform === 'win32'},
   () => {
-    const root = mkdtempSync(join(tmpdir(), 'tsuzuri-lrc-cli-'));
+    const root = mkdtempSync(join(tmpdir(), 'kiseki-lrc-cli-'));
     try {
       const album = join(root, 'album');
       const bin = join(root, 'bin');
@@ -434,16 +434,16 @@ test(
       writeFileSync(join(album, 'song.mp3'), 'audio');
       writeFileSync(join(album, 'lyrics.lrc'), '[00:00.00]歌词');
       const uv = join(bin, 'uv');
-      writeFileSync(uv, '#!/bin/sh\nprintf "%s\\n" "$@" > "$TSUZURI_TEST_ARGS"\nexit 7\n');
+      writeFileSync(uv, '#!/bin/sh\nprintf "%s\\n" "$@" > "$KISEKI_TEST_ARGS"\nexit 7\n');
       chmodSync(uv, 0o755);
 
-      const script = fileURLToPath(new URL('./tsuzuri.mjs', import.meta.url));
+      const script = fileURLToPath(new URL('./kiseki.mjs', import.meta.url));
       const result = spawnSync(process.execPath, [script, album], {
         encoding: 'utf8',
         env: {
           ...process.env,
           PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-          TSUZURI_TEST_ARGS: argsLog,
+          KISEKI_TEST_ARGS: argsLog,
         },
       });
       const forwarded = readFileSync(argsLog, 'utf8');
@@ -464,7 +464,7 @@ test(
   'analysis cache skips added photos but invalidates for changed audio and legacy projects',
   {skip: process.platform === 'win32'},
   () => {
-    const root = mkdtempSync(join(tmpdir(), 'tsuzuri-analysis-cli-'));
+    const root = mkdtempSync(join(tmpdir(), 'kiseki-analysis-cli-'));
     try {
       const album = join(root, 'album');
       const bin = join(root, 'bin');
@@ -479,14 +479,14 @@ test(
         '#!/usr/bin/env node\n' +
           'const fs = require("fs");\n' +
           'const args = process.argv.slice(2);\n' +
-          'fs.appendFileSync(process.env.TSUZURI_TEST_CALLS, JSON.stringify(args) + "\\n");\n' +
+          'fs.appendFileSync(process.env.KISEKI_TEST_CALLS, JSON.stringify(args) + "\\n");\n' +
           'const valueAfter = (flag) => args[args.indexOf(flag) + 1];\n' +
-          'if (args.includes("tsuzuri-analysis-fingerprint")) {\n' +
-          '  if (fs.existsSync(process.env.TSUZURI_TEST_FP_FAIL ?? "")) process.exit(1);\n' +
+          'if (args.includes("kiseki-analysis-fingerprint")) {\n' +
+          '  if (fs.existsSync(process.env.KISEKI_TEST_FP_FAIL ?? "")) process.exit(1);\n' +
           '  console.log("{\\"version\\":1,\\"beat_features_version\\":1,\\"backend\\":\\"cpu\\",\\"model\\":\\"small\\",\\"demucs_available\\":false}");\n' +
           '  process.exit(0);\n' +
           '}\n' +
-          'if (args.includes("tsuzuri-analyze")) {\n' +
+          'if (args.includes("kiseki-analyze")) {\n' +
           '  fs.writeFileSync(valueAfter("-o"), "{\\"version\\":1}");\n' +
           '  fs.writeFileSync(valueAfter("--lyrics-output"), "{\\"version\\":1,\\"segments\\":[]}");\n' +
           '  process.exit(0);\n' +
@@ -494,47 +494,47 @@ test(
           'process.exit(7);\n',
       );
       chmodSync(uv, 0o755);
-      const script = fileURLToPath(new URL('./tsuzuri.mjs', import.meta.url));
+      const script = fileURLToPath(new URL('./kiseki.mjs', import.meta.url));
       const env = {
         ...process.env,
         PATH: `${bin}${delimiter}${process.env.PATH ?? ''}`,
-        TSUZURI_TEST_CALLS: calls,
+        KISEKI_TEST_CALLS: calls,
       };
       const run = (extra = {}) => spawnSync(process.execPath, [script, album], {encoding: 'utf8', env: {...env, ...extra}});
       const readCalls = () => readFileSync(calls, 'utf8').trim().split('\n').map(JSON.parse);
-      const readPipelineCalls = () => readCalls().filter((args) => !args.includes('tsuzuri-analysis-fingerprint'));
+      const readPipelineCalls = () => readCalls().filter((args) => !args.includes('kiseki-analysis-fingerprint'));
 
       const legacy = run();
       assert.equal(legacy.status, 7);
-      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [true, false]);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('kiseki-analyze')), [true, false]);
       assert.ok(existsSync(join(album, 'output', 'metadata', 'analysis.json')));
 
       writeFileSync(calls, '');
       writeFileSync(join(album, 'photo-2.jpg'), 'photo 2');
       const photosChanged = run();
       assert.equal(photosChanged.status, 7);
-      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [false]);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('kiseki-analyze')), [false]);
       assert.match(photosChanged.stdout, /音频和歌词未变,跳过音频分析/);
 
       writeFileSync(calls, '');
       writeFileSync(join(album, 'song.mp3'), 'changed audio');
       const audioChanged = run();
       assert.equal(audioChanged.status, 7);
-      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [true, false]);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('kiseki-analyze')), [true, false]);
 
       // 瞬时指纹失败:重分析但保留 manifest;环境恢复后素材未变 → 命中缓存
       writeFileSync(calls, '');
       writeFileSync(join(root, 'fp-fail'), '');
-      const transientFail = run({TSUZURI_TEST_FP_FAIL: join(root, 'fp-fail')});
+      const transientFail = run({KISEKI_TEST_FP_FAIL: join(root, 'fp-fail')});
       assert.equal(transientFail.status, 7);
-      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [true, false]);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('kiseki-analyze')), [true, false]);
       assert.ok(existsSync(join(album, 'output', 'metadata', 'analysis.json')));
       assert.match(transientFail.stderr, /运行时指纹获取失败/);
 
       writeFileSync(calls, '');
       const recovered = run();
       assert.equal(recovered.status, 7);
-      assert.deepEqual(readPipelineCalls().map((args) => args.includes('tsuzuri-analyze')), [false]);
+      assert.deepEqual(readPipelineCalls().map((args) => args.includes('kiseki-analyze')), [false]);
       assert.match(recovered.stdout, /音频和歌词未变,跳过音频分析/);
     } finally {
       rmSync(root, {recursive: true, force: true});
@@ -546,7 +546,7 @@ test(
   'CLI trim precedence and choices pass the intended planner overrides',
   {skip: process.platform === 'win32'},
   () => {
-    const root = mkdtempSync(join(tmpdir(), 'tsuzuri-trim-cli-'));
+    const root = mkdtempSync(join(tmpdir(), 'kiseki-trim-cli-'));
     try {
       const bin = join(root, 'bin');
       const callsPath = join(root, 'calls.json');
@@ -555,7 +555,7 @@ test(
       writeFileSync(
         join(bin, 'uv'),
         '#!/usr/bin/env node\n' +
-          'if (process.argv.includes("tsuzuri-analysis-fingerprint")) console.log("{\\"version\\":1,\\"beat_features_version\\":1,\\"backend\\":\\"cpu\\",\\"model\\":\\"small\\",\\"demucs_available\\":false}");\n',
+          'if (process.argv.includes("kiseki-analysis-fingerprint")) console.log("{\\"version\\":1,\\"beat_features_version\\":1,\\"backend\\":\\"cpu\\",\\"model\\":\\"small\\",\\"demucs_available\\":false}");\n',
       );
       chmodSync(join(bin, 'uv'), 0o755);
       writeFileSync(
@@ -567,20 +567,20 @@ test(
           'const after = (args, flag) => args[args.indexOf(flag) + 1];\n' +
           'const runCommandImpl = (_label, _command, args) => {\n' +
           '  calls.push(args);\n' +
-          '  if (args.includes("tsuzuri-analyze")) { fs.mkdirSync(new URL(`file://${after(args, "-o")}`).pathname.replace(/\\/[^/]+$/, ""), {recursive:true}); fs.writeFileSync(after(args, "-o"), "{\\"version\\":1}"); fs.writeFileSync(after(args, "--lyrics-output"), "{\\"version\\":1,\\"segments\\":[]}"); }\n' +
-          '  if (args.includes("tsuzuri-plan")) { const out = after(args, "-o"); fs.mkdirSync(new URL(`file://${out}`).pathname.replace(/\\/[^/]+$/, ""), {recursive:true}); fs.writeFileSync(out, JSON.stringify({meta:{version:1,duration:24,audio:"./song.mp3",width:1920,height:1080,fps:60,background:"#FFFFFF",photo_scale:0.8,trim:{mode:"auto",applied:true,full_duration:60,trimmed_duration:24}},photos:[{src:"./photo.jpg",start:0,end:24},{kind:"chapter",text:"第2天",start:2,end:4,src:"./chapter.jpg"},{kind:"future",src:"./future.jpg"}],subtitles:[]})); fs.writeFileSync(after(args, "--status-output"), JSON.stringify({outcome:"generated"})); }\n' +
+          '  if (args.includes("kiseki-analyze")) { fs.mkdirSync(new URL(`file://${after(args, "-o")}`).pathname.replace(/\\/[^/]+$/, ""), {recursive:true}); fs.writeFileSync(after(args, "-o"), "{\\"version\\":1}"); fs.writeFileSync(after(args, "--lyrics-output"), "{\\"version\\":1,\\"segments\\":[]}"); }\n' +
+          '  if (args.includes("kiseki-plan")) { const out = after(args, "-o"); fs.mkdirSync(new URL(`file://${out}`).pathname.replace(/\\/[^/]+$/, ""), {recursive:true}); fs.writeFileSync(out, JSON.stringify({meta:{version:1,duration:24,audio:"./song.mp3",width:1920,height:1080,fps:60,background:"#FFFFFF",photo_scale:0.8,trim:{mode:"auto",applied:true,full_duration:60,trimmed_duration:24}},photos:[{src:"./photo.jpg",start:0,end:24},{kind:"chapter",text:"第2天",start:2,end:4,src:"./chapter.jpg"},{kind:"future",src:"./future.jpg"}],subtitles:[]})); fs.writeFileSync(after(args, "--status-output"), JSON.stringify({outcome:"generated"})); }\n' +
           '  return args.includes("render.mjs") ? 1 : 0;\n' +
           '};\n' +
           'try { await runCommandFromArgv([folder, ...cli], {trimInteractive: choice !== "none", trimPromptRunner: async (run) => run({pick: async () => ({index: choice === "full" ? 1 : 0})}), runCommandImpl}); } catch (error) { calls.push(["error", error.message]); }\n' +
           'fs.writeFileSync(callsPath, JSON.stringify(calls));\n',
       );
-      const script = fileURLToPath(new URL('./tsuzuri.mjs', import.meta.url));
+      const script = fileURLToPath(new URL('./kiseki.mjs', import.meta.url));
       const run = ({name, toml, preference, cli = [], choice = 'none'}) => {
         const album = join(root, name);
         mkdirSync(album);
         writeFileSync(join(album, 'photo.jpg'), 'photo');
         writeFileSync(join(album, 'song.mp3'), 'audio');
-        if (toml) writeFileSync(join(album, 'tsuzuri.toml'), toml);
+        if (toml) writeFileSync(join(album, 'kiseki.toml'), toml);
         if (preference) {
           mkdirSync(join(album, 'output', 'metadata'), {recursive: true});
           writeFileSync(join(album, 'output', 'metadata', 'preferences.json'), JSON.stringify({version: 1, trim: preference}));
@@ -591,8 +591,8 @@ test(
         assert.equal(result.status, 0, result.stderr);
         const calls = JSON.parse(readFileSync(callsPath, 'utf8'));
         assert.equal(calls.some((call) => call[0] === 'error'), false, JSON.stringify(calls));
-        assert.ok(calls.some((args) => args.includes('tsuzuri-plan')), JSON.stringify(calls));
-        return {plannerCalls: calls.filter((args) => args.includes('tsuzuri-plan')), stdout: result.stdout};
+        assert.ok(calls.some((args) => args.includes('kiseki-plan')), JSON.stringify(calls));
+        return {plannerCalls: calls.filter((args) => args.includes('kiseki-plan')), stdout: result.stdout};
       };
       const trimArg = (args) => args.includes('--trim') ? args[args.indexOf('--trim') + 1] : null;
 
@@ -607,8 +607,8 @@ test(
       assert.match(full.stdout, /└ 已按完整歌曲重新规划/);
       assert.match(full.stdout, /● 已记住你的选择/);
       assert.doesNotMatch(full.stdout, /按裁剪选择重新规划照片时间线/);
-      assert.equal(existsSync(join(root, 'accept-auto', 'tsuzuri.toml')), false);
-      assert.equal(existsSync(join(root, 'choose-full', 'tsuzuri.toml')), false);
+      assert.equal(existsSync(join(root, 'accept-auto', 'kiseki.toml')), false);
+      assert.equal(existsSync(join(root, 'choose-full', 'kiseki.toml')), false);
     } finally {
       rmSync(root, {recursive: true, force: true});
     }

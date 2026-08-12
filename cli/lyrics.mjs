@@ -1,5 +1,5 @@
 /**
- * tsuzuri lyrics <folder> — 只跑歌词识别(跳过节拍分析),终端预览结果.
+ * kiseki lyrics <folder> — 只跑歌词识别(跳过节拍分析),终端预览结果.
  *
  * 每次运行都会重新识别(LRC 即时,Whisper 较慢),方便渲染前先检查歌词对不对.
  */
@@ -165,9 +165,9 @@ export const runLyrics = (
 ) => {
   const folder = path.resolve(folderArg);
   const inheritedTask = [
-    'TSUZURI_LEASE_TASK_ID',
-    'TSUZURI_LEASE_TASK_TOKEN',
-    'TSUZURI_LEASE_TASK_ROOT',
+    'KISEKI_LEASE_TASK_ID',
+    'KISEKI_LEASE_TASK_TOKEN',
+    'KISEKI_LEASE_TASK_ROOT',
   ].some((key) => process.env[key] !== undefined)
     ? acquireCommandLease({kind: 'lyrics', folder, manager: leaseManager})
     : null;
@@ -199,7 +199,7 @@ export const runLyrics = (
     throw new CliError('没有可替换的本地识别歌词');
   }
   if (isRecognizedLyricsManageable({lyricsPath: project.lyricsPath, lrcFiles}) && !replace) {
-    throw new CliError('已有可用的本地识别歌词;如要替换,请使用 tsuzuri lyrics <folder> --replace');
+    throw new CliError('已有可用的本地识别歌词;如要替换,请使用 kiseki lyrics <folder> --replace');
   }
 
   const analyzer = path.join(REPO, 'analyzer');
@@ -212,7 +212,7 @@ export const runLyrics = (
   const oldRecognizedIdentity = replace ? {lyrics: recognizedIdentity(project.lyricsPath), timeline: fileIdentityOrAbsent(project.timelinePath)} : null;
   term.start('识别歌词');
   const analyzeArgs = [
-    'run', '--project', analyzer, 'tsuzuri-analyze', path.join(folder, audio),
+    'run', '--project', analyzer, 'kiseki-analyze', path.join(folder, audio),
     '--lyrics-only',
     '--lyrics-output', stagedPath,
   ];

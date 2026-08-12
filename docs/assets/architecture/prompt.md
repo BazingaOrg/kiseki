@@ -1,4 +1,4 @@
-# tsuzuri architecture redraw context
+# kiseki architecture redraw context
 
 ## Must preserve
 
@@ -27,4 +27,4 @@
 - Fetch selection, overwrite prompts, filename confirmation, LRCLIB candidates, and Chinese lyric conversion belong in `README.md`, `README.en.md`, and `docs/plans/2026-07-14-fetch-audio-lyrics.md`.
 - Timeline fields and validation belong in `docs/specs/timeline-schema.md`.
 - Configuration and renderer options belong in `docs/config.md`.
-- Runtime caveats and platform constraints belong in `docs/tsuzuri-status.md`.
+- Runtime caveats and platform constraints belong in `docs/kiseki-status.md`.

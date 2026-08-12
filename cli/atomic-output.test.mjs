@@ -6,25 +6,25 @@ import test from 'node:test';
 
 import {commitAtomicOutput, createPartialOutput, installAtomicOutputs, isAtomicPartialName, outputArtifactPaths, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 
-const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-atomic-output-'));
+const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-atomic-output-'));
 
 test('partial output stays beside final output and preserves its extension', () => {
   const partial = createPartialOutput('/tmp/album/output/movie.mp4', 'lease-1');
-  assert.equal(partial, '/tmp/album/output/.tsuzuri-partial-lease-1-movie.mp4');
+  assert.equal(partial, '/tmp/album/output/.kiseki-partial-lease-1-movie.mp4');
   assert.equal(isAtomicPartialName(path.basename(partial)), true);
 });
 
 test('partial and backup are both derivable from the task id and final output', () => {
   assert.deepEqual(outputArtifactPaths('/tmp/album/output/movie.mp4', 'lease-1'), {
     finalPath: '/tmp/album/output/movie.mp4',
-    partialPath: '/tmp/album/output/.tsuzuri-partial-lease-1-movie.mp4',
-    backupPath: '/tmp/album/output/.tsuzuri-backup-lease-1-movie.mp4',
+    partialPath: '/tmp/album/output/.kiseki-partial-lease-1-movie.mp4',
+    backupPath: '/tmp/album/output/.kiseki-backup-lease-1-movie.mp4',
   });
 });
 
 test('lease task id wins and direct calls generate an id', () => {
-  assert.equal(resolveAtomicTaskId({env: {TSUZURI_TASK_ID: 'lease-1'}, randomUUID: () => 'random'}), 'lease-1');
-  assert.equal(resolveAtomicTaskId({env: {TSUZURI_TASK_ID: 'legacy', TSUZURI_LEASE_TASK_ID: 'lease-1'}, randomUUID: () => 'random'}), 'lease-1');
+  assert.equal(resolveAtomicTaskId({env: {KISEKI_TASK_ID: 'lease-1'}, randomUUID: () => 'random'}), 'lease-1');
+  assert.equal(resolveAtomicTaskId({env: {KISEKI_TASK_ID: 'legacy', KISEKI_LEASE_TASK_ID: 'lease-1'}, randomUUID: () => 'random'}), 'lease-1');
   assert.equal(resolveAtomicTaskId({env: {}, randomUUID: () => 'random'}), 'random');
 });
 
@@ -70,7 +70,7 @@ test('partial cleanup only removes a generated partial path', () => {
     fs.writeFileSync(partial, 'partial');
     removePartialOutput(partial);
     assert.equal(fs.existsSync(partial), false);
-    assert.throws(() => removePartialOutput(path.join(dir, 'still.png')), /不是 tsuzuri partial/);
+    assert.throws(() => removePartialOutput(path.join(dir, 'still.png')), /不是 kiseki partial/);
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
   }

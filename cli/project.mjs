@@ -51,7 +51,7 @@ export const scanFolderLoose = (folder) => {
 };
 
 /**
- * Scan a folder for the photo/audio/lyrics inputs tsuzuri needs.
+ * Scan a folder for the photo/audio/lyrics inputs kiseki needs.
  * `requirePhotos: false` lets commands that don't render a video (e.g. `lyrics`)
  * reuse the same audio/lrc discovery rules without requiring photos to be present.
  * `videos` lists unsupported video files so callers can warn about them.
@@ -166,7 +166,7 @@ export const computeInputHash = (folder, files) => {
 const trimKeyPattern = /^\s*(?:trim|"trim"|'trim')\s*=/;
 
 export const hasExplicitTrimConfig = (folder) => {
-  const tomlPath = path.join(folder, 'tsuzuri.toml');
+  const tomlPath = path.join(folder, 'kiseki.toml');
   if (!fs.existsSync(tomlPath)) return false;
   return fs.readFileSync(tomlPath, 'utf8').split(/\r?\n/).some((line) => trimKeyPattern.test(line));
 };
@@ -175,57 +175,57 @@ const isValidIntensity = (value) =>
   typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 
 /**
- * 素材夹逐张滤镜偏好:`<folder>/tsuzuri.json`,结构
+ * 素材夹逐张滤镜偏好:`<folder>/kiseki.json`,结构
  * `{ filter?, intensity?, perPhoto?: { "<照片文件名>": { filter?, intensity? } } }`.
- * tsuzuri.toml 是画布用的扁平配置,不适合嵌套的 perPhoto 结构,故用独立 JSON 文件.
+ * kiseki.toml 是画布用的扁平配置,不适合嵌套的 perPhoto 结构,故用独立 JSON 文件.
  * 文件不存在时返回 null;字段非法时抛 CliError,便于用户第一时间发现拼写错误.
  */
 export const readFilterConfig = (folder) => {
-  const jsonPath = path.join(folder, 'tsuzuri.json');
+  const jsonPath = path.join(folder, 'kiseki.json');
   if (!fs.existsSync(jsonPath)) return null;
   let raw;
   try {
     raw = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
   } catch {
-    throw new CliError(`tsuzuri.json 不是合法 JSON: ${jsonPath}`);
+    throw new CliError(`kiseki.json 不是合法 JSON: ${jsonPath}`);
   }
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
-    throw new CliError(`tsuzuri.json 顶层必须是对象: ${jsonPath}`);
+    throw new CliError(`kiseki.json 顶层必须是对象: ${jsonPath}`);
   }
   const config = {};
   if (raw.filter !== undefined) {
     const filter = normalizeFilterId(raw.filter);
     if (!filter) {
-      throw new CliError(`tsuzuri.json 里 filter 未知滤镜 id: ${raw.filter}(可选: ${FILTER_IDS.join(', ')})`);
+      throw new CliError(`kiseki.json 里 filter 未知滤镜 id: ${raw.filter}(可选: ${FILTER_IDS.join(', ')})`);
     }
     config.filter = filter;
   }
   if (raw.intensity !== undefined) {
     if (!isValidIntensity(raw.intensity)) {
-      throw new CliError(`tsuzuri.json 里 intensity 需要 0–1 之间的数字,收到 ${raw.intensity}`);
+      throw new CliError(`kiseki.json 里 intensity 需要 0–1 之间的数字,收到 ${raw.intensity}`);
     }
     config.intensity = raw.intensity;
   }
   if (raw.perPhoto !== undefined) {
     if (typeof raw.perPhoto !== 'object' || raw.perPhoto === null || Array.isArray(raw.perPhoto)) {
-      throw new CliError(`tsuzuri.json 里 perPhoto 必须是对象: ${jsonPath}`);
+      throw new CliError(`kiseki.json 里 perPhoto 必须是对象: ${jsonPath}`);
     }
     const perPhoto = {};
     for (const [photoName, entry] of Object.entries(raw.perPhoto)) {
       if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) {
-        throw new CliError(`tsuzuri.json 里 perPhoto.${photoName} 必须是对象`);
+        throw new CliError(`kiseki.json 里 perPhoto.${photoName} 必须是对象`);
       }
       const photoConfig = {};
       if (entry.filter !== undefined) {
         const filter = normalizeFilterId(entry.filter);
         if (!filter) {
-          throw new CliError(`tsuzuri.json 里 perPhoto.${photoName}.filter 未知滤镜 id: ${entry.filter}(可选: ${FILTER_IDS.join(', ')})`);
+          throw new CliError(`kiseki.json 里 perPhoto.${photoName}.filter 未知滤镜 id: ${entry.filter}(可选: ${FILTER_IDS.join(', ')})`);
         }
         photoConfig.filter = filter;
       }
       if (entry.intensity !== undefined) {
         if (!isValidIntensity(entry.intensity)) {
-          throw new CliError(`tsuzuri.json 里 perPhoto.${photoName}.intensity 需要 0–1 之间的数字,收到 ${entry.intensity}`);
+          throw new CliError(`kiseki.json 里 perPhoto.${photoName}.intensity 需要 0–1 之间的数字,收到 ${entry.intensity}`);
         }
         photoConfig.intensity = entry.intensity;
       }
@@ -237,17 +237,17 @@ export const readFilterConfig = (folder) => {
 };
 
 /**
- * 照片文件名变更时同步 tsuzuri.json 的 perPhoto 键.先完整校验旧配置,再用同目录
+ * 照片文件名变更时同步 kiseki.json 的 perPhoto 键.先完整校验旧配置,再用同目录
  * 临时文件替换;调用方若随后文件移动失败,可以把 returned raw 写回去回滚.
  */
 export const renamePerPhotoConfig = (folder, fromName, toName) => {
-  const jsonPath = path.join(folder, 'tsuzuri.json');
+  const jsonPath = path.join(folder, 'kiseki.json');
   if (!fs.existsSync(jsonPath) || fromName === toName) return null;
   const rawText = fs.readFileSync(jsonPath, 'utf8');
   const config = readFilterConfig(folder);
   if (!config?.perPhoto || !Object.prototype.hasOwnProperty.call(config.perPhoto, fromName)) return null;
   if (Object.prototype.hasOwnProperty.call(config.perPhoto, toName)) {
-    throw new CliError(`tsuzuri.json 的 perPhoto 已有目标照片配置: ${toName}`);
+    throw new CliError(`kiseki.json 的 perPhoto 已有目标照片配置: ${toName}`);
   }
   const raw = JSON.parse(rawText);
   raw.perPhoto[toName] = raw.perPhoto[fromName];

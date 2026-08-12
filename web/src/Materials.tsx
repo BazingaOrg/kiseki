@@ -568,7 +568,7 @@ export const Materials = ({
 
       {project.unsupportedVideos.length > 0 && (
         <p className="note">
-          忽略了 {project.unsupportedVideos.length} 个视频文件，tsuzuri 目前只处理照片。
+          忽略了 {project.unsupportedVideos.length} 个视频文件，kiseki 目前只处理照片。
         </p>
       )}
     </Section>

@@ -12,7 +12,7 @@ const FORMATS = ['landscape', 'portrait', 'square'];
 const TRIM_VALUES = ['auto', 'full'];
 
 /**
- * 把 {kind, folder, options} 组装成 tsuzuri CLI 的 argv 数组.
+ * 把 {kind, folder, options} 组装成 kiseki CLI 的 argv 数组.
  * 本函数不做 fs 校验，只接受结构化白名单字段，不接受原始 argv 或命令字符串。
  * @param {{kind: 'render'|'still', folder: string, options?: object}} params
  * @returns {string[]}
@@ -107,7 +107,7 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
 };
 
 /**
- * 渲染速度档位 → TSUZURI_CONCURRENCY.
+ * 渲染速度档位 → KISEKI_CONCURRENCY.
  *
  * 走环境变量而不是新增一个 CLI flag:这个旋钮本来就存在、已文档化,渲染那侧
  * (`resolveRenderSettings`)读的就是它,加个 flag 等于让同一件事有两个入口.
@@ -134,8 +134,8 @@ export const buildJobEnv = (options = {}) => {
   }
   const concurrencyEnv = SPEED_ENV[speed];
   return {
-    TSUZURI_RENDER_SPEED: speed,
-    ...(concurrencyEnv === null ? {} : {TSUZURI_CONCURRENCY: concurrencyEnv}),
+    KISEKI_RENDER_SPEED: speed,
+    ...(concurrencyEnv === null ? {} : {KISEKI_CONCURRENCY: concurrencyEnv}),
   };
 };
 

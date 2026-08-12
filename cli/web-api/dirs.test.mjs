@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {listDirs} from './dirs.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-dirs-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-dirs-'));
 
 test('lists only folders, sorted, skipping dotfiles', () => {
   const root = makeTempRoot();
@@ -25,11 +25,11 @@ test('includes the sandbox root path so the frontend can truncate breadcrumbs at
   assert.equal(result.body.root, path.resolve(root));
 });
 
-test('flags a folder with tsuzuri project hints', () => {
+test('flags a folder with kiseki project hints', () => {
   const root = makeTempRoot();
   const project = path.join(root, 'trip');
   fs.mkdirSync(project);
-  fs.writeFileSync(path.join(project, 'tsuzuri.toml'), '');
+  fs.writeFileSync(path.join(project, 'kiseki.toml'), '');
   const result = listDirs(root, root);
   assert.equal(result.body.dirs[0].isProject, true);
 });

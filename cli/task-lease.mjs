@@ -22,13 +22,13 @@ const assertPrivateOwnedDirectory = (dir) => {
 };
 
 export const resolveRuntimeRegistry = ({platform = process.platform, env = process.env, home = os.homedir()} = {}) => {
-  if (platform === 'darwin') return path.join(home, 'Library', 'Caches', 'tsuzuri', 'runtime', 'v1');
-  if (platform === 'win32') return path.join(env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'tsuzuri', 'runtime', 'v1');
+  if (platform === 'darwin') return path.join(home, 'Library', 'Caches', 'kiseki', 'runtime', 'v1');
+  if (platform === 'win32') return path.join(env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'), 'kiseki', 'runtime', 'v1');
   const runtime = env.XDG_RUNTIME_DIR;
   if (runtime) {
-    try { assertPrivateOwnedDirectory(runtime); return path.join(runtime, 'tsuzuri', 'runtime', 'v1'); } catch { /* use durable user state */ }
+    try { assertPrivateOwnedDirectory(runtime); return path.join(runtime, 'kiseki', 'runtime', 'v1'); } catch { /* use durable user state */ }
   }
-  return path.join(env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'tsuzuri', 'runtime', 'v1');
+  return path.join(env.XDG_STATE_HOME || path.join(home, '.local', 'state'), 'kiseki', 'runtime', 'v1');
 };
 
 const makePrivateDir = (dir) => {
@@ -682,7 +682,7 @@ export const createTaskLeaseManager = ({
     }
     return true;
   };
-  const attachInheritedLease = ({id = process.env.TSUZURI_LEASE_TASK_ID, token = process.env.TSUZURI_LEASE_TASK_TOKEN, taskRoot = process.env.TSUZURI_LEASE_TASK_ROOT, expectedFolder, expectedOutputPaths = [], allowedParentKinds = []} = {}) => {
+  const attachInheritedLease = ({id = process.env.KISEKI_LEASE_TASK_ID, token = process.env.KISEKI_LEASE_TASK_TOKEN, taskRoot = process.env.KISEKI_LEASE_TASK_ROOT, expectedFolder, expectedOutputPaths = [], allowedParentKinds = []} = {}) => {
     if (!id && !token && !taskRoot) return null;
     if (!id || !token || !taskRoot) throw new Error('task lease 环境不完整');
     const expectedRoot = path.join(tasksDir, id);
@@ -716,12 +716,12 @@ export const createTaskLeaseManager = ({
 
 /** Acquire for direct CLIs, or validate the parent web-job lease before writes. */
 export const acquireCommandLease = ({kind, folder, outputPaths = [], manager = createTaskLeaseManager(), env = process.env} = {}) => {
-  const inherited = manager.attachInheritedLease({expectedFolder: folder, expectedOutputPaths: outputPaths, allowedParentKinds: [kind], id: env.TSUZURI_LEASE_TASK_ID, token: env.TSUZURI_LEASE_TASK_TOKEN, taskRoot: env.TSUZURI_LEASE_TASK_ROOT});
+  const inherited = manager.attachInheritedLease({expectedFolder: folder, expectedOutputPaths: outputPaths, allowedParentKinds: [kind], id: env.KISEKI_LEASE_TASK_ID, token: env.KISEKI_LEASE_TASK_TOKEN, taskRoot: env.KISEKI_LEASE_TASK_ROOT});
   const lease = inherited ?? manager.acquire({kind, resources: [folder], outputPaths});
   const tempDir = path.join(lease.taskRoot, 'tmp');
   makePrivateDir(tempDir);
   // Direct CLIs do not otherwise receive the Web lease environment. Keep the
   // task id available to same-process render children so their artifacts remain
   // derivable from this lease's output claims.
-  return {lease, manager, inherited: Boolean(inherited), env: {TSUZURI_LEASE_TASK_ID: lease.id, TSUZURI_LEASE_TASK_TOKEN: lease.token, TSUZURI_LEASE_TASK_ROOT: lease.taskRoot, TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir}};
+  return {lease, manager, inherited: Boolean(inherited), env: {KISEKI_LEASE_TASK_ID: lease.id, KISEKI_LEASE_TASK_TOKEN: lease.token, KISEKI_LEASE_TASK_ROOT: lease.taskRoot, TMPDIR: tempDir, TMP: tempDir, TEMP: tempDir}};
 };

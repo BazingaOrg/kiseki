@@ -9,7 +9,7 @@ import {outputArtifactPaths} from './atomic-output.mjs';
 import {executorIdentity} from './runtime-lifecycle.mjs';
 import {artifactPath, canonicalResourceIdentity, createTaskLeaseManager, stableClaimKey} from './task-lease.mjs';
 
-const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-lease-'));
+const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-lease-'));
 
 test('confirmed-stale lease removes its partial and restores its deterministic backup', () => {
   const root = fixture();

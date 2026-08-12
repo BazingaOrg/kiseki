@@ -23,7 +23,7 @@ test('render: 默认选项保留 balanced 诊断环境变量', () => {
     trim: null,
     speed: 'balanced',
   };
-  assert.equal(equivalentCommand('render', '/f', options), 'TSUZURI_RENDER_SPEED=balanced tsuzuri /f');
+  assert.equal(equivalentCommand('render', '/f', options), 'KISEKI_RENDER_SPEED=balanced kiseki /f');
 });
 
 test('render: 全部选项开启,精确匹配整串(含 env 前缀)', () => {
@@ -40,28 +40,28 @@ test('render: 全部选项开启,精确匹配整串(含 env 前缀)', () => {
   };
   assert.equal(
     equivalentCommand('render', '/f', options),
-    'TSUZURI_RENDER_SPEED=full TSUZURI_CONCURRENCY=90% tsuzuri /f --exif --sign --dark --square --filter faded --filter-intensity 0.42 --draft --trim auto',
+    'KISEKI_RENDER_SPEED=full KISEKI_CONCURRENCY=90% kiseki /f --exif --sign --dark --square --filter faded --filter-intensity 0.42 --draft --trim auto',
   );
 });
 
 test('still: 默认 scale(2 或不传)不带 --scale', () => {
-  assert.equal(equivalentCommand('still', '/f', {}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri still /f');
-  assert.equal(equivalentCommand('still', '/f', {scale: 2}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri still /f');
+  assert.equal(equivalentCommand('still', '/f', {}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f');
+  assert.equal(equivalentCommand('still', '/f', {scale: 2}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f');
 });
 
 test('still: scale=4 带上 --scale 4', () => {
-  assert.equal(equivalentCommand('still', '/f', {scale: 4}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri still /f --scale 4');
+  assert.equal(equivalentCommand('still', '/f', {scale: 4}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f --scale 4');
 });
 
 test('speed: balanced 保留诊断环境变量但不覆盖默认并发', () => {
-  assert.equal(equivalentCommand('render', '/f', {speed: 'balanced'}), 'TSUZURI_RENDER_SPEED=balanced tsuzuri /f');
+  assert.equal(equivalentCommand('render', '/f', {speed: 'balanced'}), 'KISEKI_RENDER_SPEED=balanced kiseki /f');
 });
 
 test('folder 含空格与单引号,正确用单引号包裹并转义', () => {
   const folder = `/Users/me/My 'trip'`;
   assert.equal(
     equivalentCommand('render', folder, {}),
-    `TSUZURI_RENDER_SPEED=balanced tsuzuri '/Users/me/My '\\''trip'\\'''`,
+    `KISEKI_RENDER_SPEED=balanced kiseki '/Users/me/My '\\''trip'\\'''`,
   );
 });
 
@@ -74,7 +74,7 @@ test('同源断言:equivalentCommand 与直接调用 buildJobArgv + buildJobEnv 
   ];
   for (const [kind, folder, options] of cases) {
     const expected = formatCommand(buildJobArgv({kind, folder, options}), {
-      program: 'tsuzuri',
+      program: 'kiseki',
       env: buildJobEnv(options),
     });
     assert.equal(equivalentCommand(kind, folder, options), expected, JSON.stringify({kind, folder, options}));

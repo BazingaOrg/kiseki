@@ -34,7 +34,7 @@ const parseRuntimeFingerprint = (fingerprint) => {
 export const readAnalysisFingerprint = (analyzer, spawn = spawnSync) => {
   const result = spawn(
     'uv',
-    ['run', '--project', analyzer, 'tsuzuri-analysis-fingerprint'],
+    ['run', '--project', analyzer, 'kiseki-analysis-fingerprint'],
     {encoding: 'utf8'},
   );
   if (result.error || result.status !== 0) return null;
@@ -47,7 +47,7 @@ const demucsValuePattern = /^\s*(?:demucs|"demucs"|'demucs')\s*=\s*(true|false)\
 
 /** 只读取 analyzer 消费的 flat TOML 布尔键;可疑配置返回 null,保守禁用缓存. */
 export const readDemucsSetting = (folder) => {
-  const tomlPath = path.join(folder, 'tsuzuri.toml');
+  const tomlPath = path.join(folder, 'kiseki.toml');
   if (!fs.existsSync(tomlPath)) return true;
   const matches = [];
   for (const line of fs.readFileSync(tomlPath, 'utf8').split(/\r?\n/)) {

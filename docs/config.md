@@ -1,6 +1,6 @@
-# tsuzuri.toml 配置参考
+# kiseki.toml 配置参考
 
-在素材夹根目录放置 `tsuzuri.toml` 可覆盖默认值。视频 Python 管线和 `still` 的 Node 管线使用同一份 21 键、顶层标量契约和共享 fixture；两者的诊断文案不承诺逐字相同。
+在素材夹根目录放置 `kiseki.toml` 可覆盖默认值。视频 Python 管线和 `still` 的 Node 管线使用同一份 21 键、顶层标量契约和共享 fixture；两者的诊断文案不承诺逐字相同。
 
 配置只接受一行一个顶层 `key = value`。字符串只能用双引号，支持基本转义（如 `\"`、`\\`、`\u4e2d`）；双引号内的 `#` 是内容，行尾 `#` 才是注释。拒绝单引号字符串、table/数组表、数组、内联表、多行字符串、点号键、重复键、日期/时间、未加引号的字符串、带下划线的数字、二/八/十六进制整数、未知键和已弃用键 `motion`、`kenburns_from`、`kenburns_to`。非法配置会停止本次运行，不会回退默认值。
 
@@ -44,4 +44,4 @@ signature = "signature.svg"
 intro = false
 ```
 
-`tsuzuri.toml` 会参与项目输入摘要；配置改变会重新分析和规划。分析缓存另有按 LRC 与 demucs 实际路径计算的运行时 v2 指纹，见[项目状态](tsuzuri-status.md)。
+`kiseki.toml` 会参与项目输入摘要；配置改变会重新分析和规划。分析缓存另有按 LRC 与 demucs 实际路径计算的运行时 v2 指纹，见[项目状态](kiseki-status.md)。

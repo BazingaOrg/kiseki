@@ -18,7 +18,7 @@ import {
   validateLyricsCandidate,
 } from './fetch.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-fetch-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-fetch-'));
 const saveLyricsWithIsolatedLease = (root, body, options) => saveLyrics(root, body, {
   ...options,
   leaseManager: createTaskLeaseManager({registryRoot: path.join(root, '.runtime')}),
@@ -53,7 +53,7 @@ test('runProcess 收集 stdout 并回传退出码', async () => {
 });
 
 test('runProcess 把"命令不存在"归一成 status null,而不是抛错', async () => {
-  const result = await runProcess('tsuzuri-definitely-not-a-command', []);
+  const result = await runProcess('kiseki-definitely-not-a-command', []);
   assert.equal(result.status, null);
 });
 

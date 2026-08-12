@@ -32,7 +32,7 @@ test('recent folders keep the latest unique five entries', () => {
 });
 
 test('invalid stored recent folders fail closed', () => {
-  const cleanup = installStorage({'tsuzuri:recent-folders': '{broken'});
+  const cleanup = installStorage({'kiseki:recent-folders': '{broken'});
   try {
     assert.deepEqual(loadRecentFolders(), []);
   } finally {

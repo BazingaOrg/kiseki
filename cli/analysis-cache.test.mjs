@@ -22,7 +22,7 @@ const runtime = ({backend = 'mlx', model = 'medium', demucsAvailable = false, be
 });
 
 const makeProject = () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-analysis-cache-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-analysis-cache-'));
   const metadata = path.join(folder, 'metadata');
   fs.mkdirSync(metadata);
   fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -43,9 +43,9 @@ test('LRC cache hashes only beat features runtime and LRC/audio contents', () =>
     const inputs = {audio: 'song.mp3', lyrics: 'lyrics.lrc', runtimeFingerprint: runtime()};
     const first = computeAnalysisHash(project.folder, inputs);
     fs.writeFileSync(path.join(project.folder, 'new-photo.jpg'), 'photo');
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = true\n');
     assert.equal(computeAnalysisHash(project.folder, inputs), first);
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = false\nphoto_scale = 0.9\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = false\nphoto_scale = 0.9\n');
     assert.equal(computeAnalysisHash(project.folder, inputs), first);
     assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({backend: 'cpu'})}), first);
     assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({model: 'small'})}), first);
@@ -64,7 +64,7 @@ test('LRC cache hashes only beat features runtime and LRC/audio contents', () =>
 test('no-LRC demucs false ignores availability but tracks backend and model', () => {
   const project = makeProject();
   try {
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = false\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = false\n');
     const inputs = {audio: 'song.mp3', runtimeFingerprint: runtime()};
     const first = computeAnalysisHash(project.folder, inputs);
     assert.equal(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({demucsAvailable: true})}), first);
@@ -83,9 +83,9 @@ test('no-LRC enabled demucs tracks availability, backend, and model', () => {
     assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({demucsAvailable: true})}), first);
     assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({backend: 'cpu'})}), first);
     assert.notEqual(computeAnalysisHash(project.folder, {...inputs, runtimeFingerprint: runtime({model: 'small'})}), first);
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = true\n');
     assert.equal(computeAnalysisHash(project.folder, inputs), first);
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = false\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = false\n');
     assert.notEqual(computeAnalysisHash(project.folder, inputs), first);
   } finally {
     fs.rmSync(project.folder, {recursive: true, force: true});
@@ -95,10 +95,10 @@ test('no-LRC enabled demucs tracks availability, backend, and model', () => {
 test('invalid or duplicate demucs config conservatively disables cache hashing', () => {
   const project = makeProject();
   try {
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = "yes"\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = "yes"\n');
     assert.equal(readDemucsSetting(project.folder), null);
     assert.equal(computeAnalysisHash(project.folder, {audio: 'song.mp3', runtimeFingerprint: runtime()}), null);
-    fs.writeFileSync(path.join(project.folder, 'tsuzuri.toml'), 'demucs = true\ndemucs = false\n');
+    fs.writeFileSync(path.join(project.folder, 'kiseki.toml'), 'demucs = true\ndemucs = false\n');
     assert.equal(readDemucsSetting(project.folder), null);
   } finally {
     fs.rmSync(project.folder, {recursive: true, force: true});

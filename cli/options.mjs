@@ -20,22 +20,22 @@ const parseFilterId = (raw) => {
 };
 
 const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
-export const STILL_USAGE = `用法: tsuzuri still <photo|folder> ${STILL_OPTIONS}`;
+export const STILL_USAGE = `用法: kiseki still <photo|folder> ${STILL_OPTIONS}`;
 
 export const USAGE =
   '用法:\n' +
-  '  tsuzuri                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]  渲染相册视频(默认命令)\n' +
-  '  tsuzuri still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
-  '  tsuzuri doctor                             检查依赖是否就绪\n' +
-  '  tsuzuri lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
-  '  tsuzuri fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
-  '  tsuzuri web [folder]                       启动本地工作台(支持改名/删除,可撤销,不传 folder 则从主目录选)\n' +
-  '  tsuzuri templates                          列出可用的呈现模板\n' +
-  '  tsuzuri help                               显示本说明(同 -h / --help)\n' +
+  '  kiseki                                    不带参数进入常驻菜单(仅交互终端)\n' +
+  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]  渲染相册视频(默认命令)\n' +
+  '  kiseki still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
+  '  kiseki doctor                             检查依赖是否就绪\n' +
+  '  kiseki lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
+  '  kiseki fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
+  '  kiseki web [folder]                       启动本地工作台(支持改名/删除,可撤销,不传 folder 则从主目录选)\n' +
+  '  kiseki templates                          列出可用的呈现模板\n' +
+  '  kiseki help                               显示本说明(同 -h / --help)\n' +
   `still 选项: ${STILL_OPTIONS}\n` +
   '目录约定:文件夹内放照片(jpg/png/webp)+ 唯一的音频文件(mp3 等)\n' +
-  '若文件夹名恰好叫 doctor / lyrics / still / fetch / web / help,用路径前缀转义,如 tsuzuri ./still';
+  '若文件夹名恰好叫 doctor / lyrics / still / fetch / web / help,用路径前缀转义,如 kiseki ./still';
 
 const parseRenderArgs = (argv) => {
   const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
@@ -91,11 +91,11 @@ const parseRenderArgs = (argv) => {
       }
       args.trim = value;
     } else if (argv[i].startsWith('-')) {
-      throw new CliError(`未知参数: ${argv[i]}(用法: tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--draft] [--trim auto|full|秒数])`);
+      throw new CliError(`未知参数: ${argv[i]}(用法: kiseki <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--draft] [--trim auto|full|秒数])`);
     } else if (!args.folder) {
       args.folder = argv[i];
     } else {
-      throw new CliError(`未知参数: ${argv[i]}(用法: tsuzuri <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--draft] [--trim auto|full|秒数])`);
+      throw new CliError(`未知参数: ${argv[i]}(用法: kiseki <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--draft] [--trim auto|full|秒数])`);
     }
   }
   if (!args.folder) {
@@ -111,7 +111,7 @@ const parseRenderArgs = (argv) => {
 
 const parseDoctorArgs = (rest) => {
   if (rest.length > 0) {
-    throw new CliError(`doctor 不接受额外参数: ${rest.join(' ')}\n用法: tsuzuri doctor`);
+    throw new CliError(`doctor 不接受额外参数: ${rest.join(' ')}\n用法: kiseki doctor`);
   }
   return {command: 'doctor'};
 };
@@ -121,16 +121,16 @@ const parseLyricsArgs = (rest) => {
   for (const token of rest) {
     if (token === '--replace') { args.replace = true; continue; }
     if (token === '-o' || token === '--output') {
-      throw new CliError('lyrics 不支持 -o(只在终端预览,不生成文件)\n用法: tsuzuri lyrics <folder>');
+      throw new CliError('lyrics 不支持 -o(只在终端预览,不生成文件)\n用法: kiseki lyrics <folder>');
     }
     if (!args.folder) {
       args.folder = token;
     } else {
-      throw new CliError(`未知参数: ${token}(用法: tsuzuri lyrics <folder> [--replace])`);
+      throw new CliError(`未知参数: ${token}(用法: kiseki lyrics <folder> [--replace])`);
     }
   }
   if (!args.folder) {
-    throw new CliError('用法: tsuzuri lyrics <folder>');
+    throw new CliError('用法: kiseki lyrics <folder>');
   }
   return args;
 };
@@ -141,11 +141,11 @@ const parseFetchArgs = (rest) => {
     if (!args.folder && !token.startsWith('-')) {
       args.folder = token;
     } else {
-      throw new CliError(`未知参数: ${token}(用法: tsuzuri fetch <folder>)`);
+      throw new CliError(`未知参数: ${token}(用法: kiseki fetch <folder>)`);
     }
   }
   if (!args.folder) {
-    throw new CliError('用法: tsuzuri fetch <folder>');
+    throw new CliError('用法: kiseki fetch <folder>');
   }
   return args;
 };
@@ -156,7 +156,7 @@ const parseWebArgs = (rest) => {
     if (!args.folder && !token.startsWith('-')) {
       args.folder = token;
     } else {
-      throw new CliError(`未知参数: ${token}(用法: tsuzuri web [folder])`);
+      throw new CliError(`未知参数: ${token}(用法: kiseki web [folder])`);
     }
   }
   return args;

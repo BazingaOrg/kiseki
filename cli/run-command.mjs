@@ -7,7 +7,7 @@ const STAGE_DETAILS = {
   '分析音频': '具体原因见上方 analyzer 输出;首次运行需联网下载模型,网络问题可重试',
   '识别歌词': '具体原因见上方 analyzer 输出;首次运行需联网下载模型,网络问题可重试',
   '规划照片时间线': '具体原因见上方 analyzer 输出',
-  '渲染视频': '具体原因见上方输出;依赖问题可先跑 tsuzuri doctor',
+  '渲染视频': '具体原因见上方输出;依赖问题可先跑 kiseki doctor',
 };
 
 /**
@@ -25,7 +25,7 @@ export const runCommand = (stage, cmd, args, opts = {}, spawn = spawnSync, env =
     if (result.error.code === 'ENOENT') {
       term.error(`${stage}失败: 找不到命令 ${cmd}(未安装或不在 PATH)`);
       if (FIXES[cmd]) term.detail(FIXES[cmd]);
-      term.detail('运行 tsuzuri doctor 可一次检查全部依赖');
+      term.detail('运行 kiseki doctor 可一次检查全部依赖');
     } else {
       term.error(`${stage}失败: 无法执行 ${cmd}: ${result.error.message}`);
     }
@@ -39,4 +39,3 @@ export const runCommand = (stage, cmd, args, opts = {}, spawn = spawnSync, env =
   }
   return 0;
 };
-

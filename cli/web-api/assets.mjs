@@ -180,7 +180,7 @@ const restoreClearAfterLeaseFailure = (record) => {
   }
 };
 
-const trashDir = (folder, id) => path.join(folder, '.tsuzuri-trash', id);
+const trashDir = (folder, id) => path.join(folder, '.kiseki-trash', id);
 
 const assertCanonicalDirectory = (directory, folder, message) => {
   let stat;
@@ -191,7 +191,7 @@ const assertCanonicalDirectory = (directory, folder, message) => {
 };
 
 const createOperationDir = (folder, id) => {
-  const root = path.join(folder, '.tsuzuri-trash');
+  const root = path.join(folder, '.kiseki-trash');
   try { fs.mkdirSync(root); } catch (error) { if (error.code !== 'EEXIST') throw error; }
   assertCanonicalDirectory(root, folder, '项目回收区路径已变化');
   const operationDir = trashDir(folder, id);
@@ -247,7 +247,7 @@ const restoreConfig = ({jsonPath, rawText}) => {
 };
 
 const removeOperationDir = (record) => {
-  const root = path.join(record.folder, '.tsuzuri-trash');
+  const root = path.join(record.folder, '.kiseki-trash');
   if (record.operationDir !== trashDir(record.folder, record.id) || !inside(root, record.operationDir)) {
     throw new AssetMutationError(409, '回收记录路径已变化');
   }
@@ -309,7 +309,7 @@ const removeOperationDir = (record) => {
 };
 
 const commitPermanentOperation = (record) => {
-  const root = path.join(record.folder, '.tsuzuri-trash');
+  const root = path.join(record.folder, '.kiseki-trash');
   if (record.operationDir !== trashDir(record.folder, record.id) || !inside(root, record.operationDir)) {
     throw new AssetMutationError(409, '临时删除记录路径已变化');
   }
@@ -394,7 +394,7 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
           throw new AssetMutationError(409, error.message);
         }
         if (configBackup) {
-          const backupPath = operationPath(operationDir, 'metadata', 'tsuzuri.json');
+          const backupPath = operationPath(operationDir, 'metadata', 'kiseki.json');
           fs.mkdirSync(path.dirname(backupPath), {recursive: true});
           fs.writeFileSync(backupPath, configBackup.rawText, 'utf8');
           configBackup = {...configBackup, backupPath};

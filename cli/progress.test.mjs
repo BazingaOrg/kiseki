@@ -23,7 +23,7 @@ test('TTY 阶段切换与 label 变化均在同一行覆写,finish 恰好换一�
   };
 
   const withoutFlag = run({});
-  const flagOff = run({TSUZURI_JSON_PROGRESS: '0'});
+  const flagOff = run({KISEKI_JSON_PROGRESS: '0'});
 
   assert.equal(
     withoutFlag,
@@ -34,12 +34,12 @@ test('TTY 阶段切换与 label 变化均在同一行覆写,finish 恰好换一�
   assert.equal(flagOff, withoutFlag);
 });
 
-test('TSUZURI_JSON_PROGRESS=1 时 TTY 路径每次 percent 变化发一条 progress 事件', () => {
+test('KISEKI_JSON_PROGRESS=1 时 TTY 路径每次 percent 变化发一条 progress 事件', () => {
   const stdout = stream(true);
   const events = [];
   const progress = createPercentProgress({
     stream: stdout,
-    env: {TSUZURI_JSON_PROGRESS: '1'},
+    env: {KISEKI_JSON_PROGRESS: '1'},
     jsonWrite: (event) => events.push(event),
   });
 
@@ -67,7 +67,7 @@ test('非 TTY 路径下 JSON 事件不受终端的 25% 节流影响,逐个 perce
   const events = [];
   const progress = createPercentProgress({
     stream: stdout,
-    env: {TSUZURI_JSON_PROGRESS: '1'},
+    env: {KISEKI_JSON_PROGRESS: '1'},
     jsonWrite: (event) => events.push(event),
   });
 
@@ -96,7 +96,7 @@ test('重复的 percent 跳过 JSON 事件,与终端"同 percent 不重复打印
   const events = [];
   const progress = createPercentProgress({
     stream: stdout,
-    env: {TSUZURI_JSON_PROGRESS: '1'},
+    env: {KISEKI_JSON_PROGRESS: '1'},
     jsonWrite: (event) => events.push(event),
   });
 
@@ -143,7 +143,7 @@ test('非 TTY 以稳定 stage 节流,动态 label 不会重复输出阶段开始
 test('开关开启但 fd 3 未打开时,默认 JSON 写入器吞掉 EBADF 且终端输出正常', () => {
   const stdout = stream(true);
   // 不注入 jsonWrite,走真实的 defaultJsonWrite → fs.writeSync(3, ...).
-  const progress = createPercentProgress({stream: stdout, env: {TSUZURI_JSON_PROGRESS: '1'}});
+  const progress = createPercentProgress({stream: stdout, env: {KISEKI_JSON_PROGRESS: '1'}});
 
   assert.doesNotThrow(() => {
     progress.update('Rendering frames', 0.07);

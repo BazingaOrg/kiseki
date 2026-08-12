@@ -179,7 +179,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
                       >
                         <Folder size={15} strokeWidth={1.5} className="folder-item-icon" />
                         <span className="folder-item-name">{dir.name}</span>
-                        {dir.isProject && <span className="folder-project-mark" title="检测到 tsuzuri 文件" aria-label="检测到 tsuzuri 文件">●</span>}
+                        {dir.isProject && <span className="folder-project-mark" title="检测到 kiseki 文件" aria-label="检测到 kiseki 文件">●</span>}
                         <ChevronRight size={13} className="folder-item-chevron" aria-hidden="true" />
                       </button>
                     </li>

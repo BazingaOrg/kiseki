@@ -1,7 +1,7 @@
 """与 Node CLI 对齐的终端状态语义。
 
 web 工作台把 CLI 进程的 fd 3 当作结构化进度出口(NDJSON,契约见 cli/term.mjs)。
-分析进程经 CLI 三代继承同一 fd 3:这里在 TSUZURI_JSON_PROGRESS=1 时把消息
+分析进程经 CLI 三代继承同一 fd 3:这里在 KISEKI_JSON_PROGRESS=1 时把消息
 镜像成同一份事件形状,web 面板才能看到分析阶段的细节与下载进度。
 """
 
@@ -37,7 +37,7 @@ def _lines(message: object) -> list[str]:
 
 def json_progress_enabled() -> bool:
     """结构化进度出口开关:必须显式设为 '1',其余取值(含未设置)一律关闭,终端行为零变化."""
-    return os.environ.get("TSUZURI_JSON_PROGRESS") == "1"
+    return os.environ.get("KISEKI_JSON_PROGRESS") == "1"
 
 
 def _default_json_write(event: dict[str, Any]) -> None:

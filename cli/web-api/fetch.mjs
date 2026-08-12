@@ -28,7 +28,7 @@ import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
-const LRCLIB_UA = 'tsuzuri (https://github.com/tsuzuri)';
+const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/tsuzuri)';
 const DEFAULT_TIMEOUT_MS = 20000;
 const ANALYZER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../analyzer');
 const validationRecognitionCache = new Map();
@@ -150,11 +150,11 @@ const identityFromFilename = (audio) => {
 };
 
 const recognizeForValidation = async (audioPath, run = runProcess) => {
-  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-lyrics-validation-'));
+  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-lyrics-validation-'));
   const output = path.join(temporary, 'recognized.json');
   try {
     const result = await run('uv', [
-      'run', '--project', ANALYZER_DIR, 'tsuzuri-analyze', audioPath,
+      'run', '--project', ANALYZER_DIR, 'kiseki-analyze', audioPath,
       '--lyrics-only', '--lyrics-output', output,
     ], {timeout: 180000});
     if (result.status !== 0 || !fs.existsSync(output)) throw new Error('本地识别未完成');

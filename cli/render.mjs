@@ -22,22 +22,22 @@ export const detectParallelism = (osModule = os) =>
     : osModule.cpus().length;
 
 export const resolveRenderSettings = (
-  {draft = false, envConcurrency = process.env.TSUZURI_CONCURRENCY, parallelism = detectParallelism()} = {},
+  {draft = false, envConcurrency = process.env.KISEKI_CONCURRENCY, parallelism = detectParallelism()} = {},
 ) => {
   // 默认用一半核心,不是"核数减一".后者在 10 核机器上会拉起 9 个 chromium 把
   // 机器占满,风扇狂转、其它事都别想干了 —— 这是本地工具,渲染时用户多半还在用
-  // 这台机器.想要满速的人可以用 TSUZURI_CONCURRENCY 自己拉上去.
+  // 这台机器.想要满速的人可以用 KISEKI_CONCURRENCY 自己拉上去.
   let concurrency = Math.max(1, Math.round(parallelism / 2));
   if (envConcurrency !== undefined && envConcurrency !== '') {
     if (/^\d+$/.test(envConcurrency) && Number(envConcurrency) > 0) {
       concurrency = Number(envConcurrency);
       if (concurrency > parallelism) {
-        throw new Error(`TSUZURI_CONCURRENCY 不能超过可用 CPU 数 ${parallelism}`);
+        throw new Error(`KISEKI_CONCURRENCY 不能超过可用 CPU 数 ${parallelism}`);
       }
     } else if (/^(?:100|[1-9]?\d)%$/.test(envConcurrency) && envConcurrency !== '0%') {
       concurrency = Math.max(1, Math.floor(parallelism * Number.parseInt(envConcurrency, 10) / 100));
     } else {
-      throw new Error('TSUZURI_CONCURRENCY 必须是正整数或 1%-100%');
+      throw new Error('KISEKI_CONCURRENCY 必须是正整数或 1%-100%');
     }
   }
   return {
@@ -67,7 +67,7 @@ const normalizeLoudness = (file) => {
   if (probe.error?.code === 'ENOENT') {
     term.warn('找不到命令 ffmpeg,已跳过响度检查');
     term.detail(FIXES.ffmpeg);
-    term.detail('运行 tsuzuri doctor 可一次检查全部依赖');
+    term.detail('运行 kiseki doctor 可一次检查全部依赖');
     return;
   }
   if (probe.error || probe.status !== 0 || !match) {
@@ -130,7 +130,7 @@ export const applyRenderVariants = async (
   if (template) {
     timeline.meta = {...timeline.meta, templateId: template};
   }
-  // 逐张滤镜:CLI --filter > tsuzuri.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
+  // 逐张滤镜:CLI --filter > kiseki.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
   if (filterConfig) {
     timeline.photos = (timeline.photos ?? []).map((photo) => {
       if ((photo.kind !== undefined && photo.kind !== 'photo') || typeof photo.src !== 'string') return photo;
@@ -164,7 +164,7 @@ const main = async () => {
   if (!timelineArg || !outputArg || !publicDirArg) {
     throw new Error(
       '用法: render.mjs <timeline.json> <output.mp4> <public-dir> [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]\n' +
-        '此为内部入口,日常请用 tsuzuri <folder>',
+        '此为内部入口,日常请用 kiseki <folder>',
     );
   }
   const filterIndex = flagArgs.indexOf('--filter');
@@ -229,8 +229,8 @@ const main = async () => {
       draft: flags.draft,
       composition,
       renderSettings,
-      speed: ['saver', 'balanced', 'full'].includes(process.env.TSUZURI_RENDER_SPEED)
-        ? process.env.TSUZURI_RENDER_SPEED
+      speed: ['saver', 'balanced', 'full'].includes(process.env.KISEKI_RENDER_SPEED)
+        ? process.env.KISEKI_RENDER_SPEED
         : null,
     }));
 
@@ -283,7 +283,7 @@ if (isMain) {
     await main();
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
-    if ((process.env.TSUZURI_DEBUG === '1' || process.env.DEBUG === '1') && error instanceof Error && error.stack) console.error(error.stack);
+    if ((process.env.KISEKI_DEBUG === '1' || process.env.DEBUG === '1') && error instanceof Error && error.stack) console.error(error.stack);
     process.exitCode = 1;
   }
 }

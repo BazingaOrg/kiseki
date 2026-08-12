@@ -6,7 +6,7 @@ export type ApiResult<T> =
 
 /** 读取页面启动时注入的请求令牌。会启动进程或写文件的端点必须携带它。 */
 export const getToken = (): string =>
-  document.querySelector('meta[name="tsuzuri-token"]')?.getAttribute('content') ?? '';
+  document.querySelector('meta[name="kiseki-token"]')?.getAttribute('content') ?? '';
 
 const readFailure = async (res: Response): Promise<Extract<ApiResult<never>, {ok: false}>> => {
   const body = (await res.json().catch(() => null)) as
@@ -23,11 +23,11 @@ const readFailure = async (res: Response): Promise<Extract<ApiResult<never>, {ok
 
 const getJson = async <T>(url: string): Promise<ApiResult<T>> => {
   try {
-    const res = await fetch(url, {headers: {'X-Tsuzuri-Token': getToken()}});
+    const res = await fetch(url, {headers: {'X-Kiseki-Token': getToken()}});
     if (!res.ok) return await readFailure(res);
     return {ok: true, data: (await res.json()) as T};
   } catch {
-    return {ok: false, message: '连不上 tsuzuri 服务，确认它还在跑。', fix: null};
+    return {ok: false, message: '连不上 kiseki 服务，确认它还在跑。', fix: null};
   }
 };
 
@@ -58,22 +58,22 @@ export const installLyrics = async (
   try {
     const res = await fetch('/api/fetch/lyrics', {
       method: 'POST',
-      headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()},
+      headers: {'Content-Type': 'application/json', 'X-Kiseki-Token': getToken()},
       body: JSON.stringify({folder, id, offset}),
     });
     if (!res.ok) return await readFailure(res);
     return {ok: true, data: (await res.json()) as {file: string}};
   } catch {
-    return {ok: false, message: '连不上 tsuzuri 服务，确认它还在跑。', fix: null};
+    return {ok: false, message: '连不上 kiseki 服务，确认它还在跑。', fix: null};
   }
 };
 
 const postAsset = async <T>(url: string, body: object): Promise<ApiResult<T>> => {
   try {
-    const res = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()}, body: JSON.stringify(body)});
+    const res = await fetch(url, {method: 'POST', headers: {'Content-Type': 'application/json', 'X-Kiseki-Token': getToken()}, body: JSON.stringify(body)});
     if (!res.ok) return await readFailure(res);
     return {ok: true, data: (await res.json()) as T};
-  } catch { return {ok: false, message: '连不上 tsuzuri 服务，确认它还在跑。', fix: null}; }
+  } catch { return {ok: false, message: '连不上 kiseki 服务，确认它还在跑。', fix: null}; }
 };
 
 export const validateLyrics = (folder: string, id: LyricsCandidate['id']) =>

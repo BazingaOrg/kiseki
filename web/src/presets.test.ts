@@ -56,10 +56,10 @@ test('corrupt or malformed preset data reads as empty and deleting is safe', () 
   const uninstall = installFakeStorage();
   try {
     const storage = (globalThis as Record<string, unknown>).localStorage as ReturnType<typeof fakeStorage>;
-    storage.setItem('tsuzuri-presets:/album', '{not json');
+    storage.setItem('kiseki-presets:/album', '{not json');
     assert.deepEqual(loadPresets('/album'), []);
 
-    storage.setItem('tsuzuri-presets:/album', JSON.stringify([{id: 'x', name: 'ok', options: {}}, 'junk', null]));
+    storage.setItem('kiseki-presets:/album', JSON.stringify([{id: 'x', name: 'ok', options: {}}, 'junk', null]));
     const loaded = loadPresets('/album');
     assert.equal(loaded.length, 1);
     assert.equal(loaded[0].name, 'ok');

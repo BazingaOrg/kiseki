@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * tsuzuri CLI — 日常入口:`tsuzuri ./folder`
+ * kiseki CLI — 日常入口:`kiseki ./folder`
  *
  * 约定优于配置:文件夹内的图片 + 唯一音频是必需输入,可选唯一 LRC;
  * JSON 写入 metadata/,默认视频写入 output/.
@@ -65,9 +65,9 @@ export const runCommandFromArgv = async (
   if (parsed.command === 'lyrics') {
     const lyricsFolder = path.resolve(parsed.folder);
     const inherited = [
-      'TSUZURI_LEASE_TASK_ID',
-      'TSUZURI_LEASE_TASK_TOKEN',
-      'TSUZURI_LEASE_TASK_ROOT',
+      'KISEKI_LEASE_TASK_ID',
+      'KISEKI_LEASE_TASK_TOKEN',
+      'KISEKI_LEASE_TASK_ROOT',
     ].some((key) => process.env[key] !== undefined);
     // A lyrics web job owns its own lease and must not turn into an implicit
     // fetch child. Direct interactive use keeps the existing convenience flow.
@@ -89,7 +89,7 @@ export const runCommandFromArgv = async (
   if (!fs.statSync(folder).isDirectory()) {
     const ext = path.extname(folder).toLowerCase();
     if (['.jpg', '.jpeg', '.png', '.webp'].includes(ext)) {
-      throw new CliError(`不是文件夹: ${folder}\n└ 要导出单张静态图?用: tsuzuri still ${folderArg}`);
+      throw new CliError(`不是文件夹: ${folder}\n└ 要导出单张静态图?用: kiseki still ${folderArg}`);
     }
     if (['.mp3', '.m4a', '.wav', '.flac', '.aac', '.ogg'].includes(ext)) {
       throw new CliError(`不是文件夹: ${folder}\n└ 请把音频和照片放进一个文件夹后传入该文件夹`);
@@ -120,7 +120,7 @@ export const runCommandFromArgv = async (
   await offerFetch(folder, {task});
   const {photos, audio, lyrics, videos} = scanFolder(folder);
   if (videos.length > 0) {
-    term.warn(`发现视频文件,tsuzuri 目前只处理照片,已忽略: ${videos.join(', ')}`);
+    term.warn(`发现视频文件,kiseki 目前只处理照片,已忽略: ${videos.join(', ')}`);
   }
   ensureProjectDirs(project);
   if (copyLegacyMetadata(folder, project.metadataDir)) {
@@ -134,7 +134,7 @@ export const runCommandFromArgv = async (
 
   const inputFiles = () => {
     const files = [audio, ...photos];
-    if (fs.existsSync(path.join(folder, 'tsuzuri.toml'))) files.push('tsuzuri.toml');
+    if (fs.existsSync(path.join(folder, 'kiseki.toml'))) files.push('kiseki.toml');
     if (lyrics) files.push(lyrics);
     return files;
   };
@@ -162,7 +162,7 @@ export const runCommandFromArgv = async (
     }
     term.start('分析音频');
     const analyzeArgs = [
-      'run', '--project', analyzer, 'tsuzuri-analyze', path.join(folder, audio),
+      'run', '--project', analyzer, 'kiseki-analyze', path.join(folder, audio),
       '-o', project.beatsPath,
       '--lyrics-output', project.lyricsPath,
     ];
@@ -183,9 +183,9 @@ export const runCommandFromArgv = async (
   // 原样保留,没被动过就悄悄升级到最新分配算法(见 plan.py _content_checksum)
   term.start('规划照片时间线');
   const runPlan = (inputHash, trimOverride = effectiveTrim) => {
-    const statusPath = path.join(os.tmpdir(), `tsuzuri-plan-${randomUUID()}.json`);
+    const statusPath = path.join(os.tmpdir(), `kiseki-plan-${randomUUID()}.json`);
     const args = [
-      'run', '--project', analyzer, 'tsuzuri-plan', folder,
+      'run', '--project', analyzer, 'kiseki-plan', folder,
       '--beats', project.beatsPath,
       '--lyrics', project.lyricsPath,
       '--input-hash', inputHash,
@@ -264,8 +264,8 @@ export const runCommandFromArgv = async (
 };
 
 const reportCliError = (error) => {
-  term.error(`tsuzuri: ${error instanceof Error ? error.message : String(error)}`);
-  if ((process.env.TSUZURI_DEBUG === '1' || process.env.DEBUG === '1') && error instanceof Error && error.stack) {
+  term.error(`kiseki: ${error instanceof Error ? error.message : String(error)}`);
+  if ((process.env.KISEKI_DEBUG === '1' || process.env.DEBUG === '1') && error instanceof Error && error.stack) {
     term.detail(error.stack);
   }
 };
@@ -293,7 +293,7 @@ export const runInteractiveMenu = async (
         // 返回并不等于退出进程:server 的 listening handle 挂住事件循环,
         // 进程活到用户 Ctrl+C(收尾在 web.mjs 的 SIGINT handler 里).
         // 依赖:菜单退出后进程存活靠这个 handle;若 runWeb 改成不 listen 就返回,菜单会直接退出.
-        output.write('\n本地工作台已接管这个终端.要回到菜单,先按 Ctrl+C 结束它,再运行 tsuzuri.\n');
+        output.write('\n本地工作台已接管这个终端.要回到菜单,先按 Ctrl+C 结束它,再运行 kiseki.\n');
         return 0;
       }
     } catch (error) {

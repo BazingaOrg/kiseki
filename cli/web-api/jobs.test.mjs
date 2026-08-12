@@ -199,7 +199,7 @@ const testProcessTable = () => [...activeFakePids]
 
 /** 真实的 still 输入:buildJobSpec 会扫描素材目录,不能再靠不存在的 /tmp/x. */
 const makeStillFixture = () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-still-fixture-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-still-fixture-'));
   fs.writeFileSync(path.join(folder, 'photo.jpg'), 'fixture');
   return folder;
 };
@@ -233,7 +233,7 @@ const makeFakeChild = ({autoCloseOnExit = true, pid = 12345, stdioCount = 4} = {
 const makeCanonicalLeaseManager = ({onRelease = () => {}} = {}) => {
   let nextId = 0;
   const transactions = new Map();
-  const leaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fake-lease-'));
+  const leaseRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fake-lease-'));
   fakeLeaseRoots.add(leaseRoot);
   return {
     acquire: ({resources = []} = {}) => {
@@ -761,7 +761,7 @@ test('buildJobSpec:lyrics 走 CLI + fd3', () => {
   assert.equal(spec.command, process.execPath);
   assert.equal(spec.progressSource, 'fd3');
   assert.deepEqual(spec.args.slice(-2), ['lyrics', '/f']);
-  assert.equal(spec.env.TSUZURI_JSON_PROGRESS, '1');
+  assert.equal(spec.env.KISEKI_JSON_PROGRESS, '1');
   // stdin 必须是 ignore,否则 offerFetch 会卡在一个看不见的终端提问上
   assert.equal(spec.stdio[0], 'ignore');
 });
@@ -776,7 +776,7 @@ test('buildJobSpec:render/still 的命令组装不回归', () => {
 });
 
 test('buildJobSpec claims the same canonical variant outputs the child CLI will write', () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-output-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-job-output-'));
   try {
     fs.writeFileSync(path.join(folder, 'a.jpg'), 'x');
     fs.writeFileSync(path.join(folder, 'b.png'), 'x');
@@ -794,7 +794,7 @@ test('buildJobSpec claims the same canonical variant outputs the child CLI will 
 });
 
 test('buildJobSpec:fetch-audio 直接跑 yt-dlp,下载到素材夹外的临时目录', () => {
-  const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-jobspec-'));
+  const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-jobspec-'));
   const spec = buildJobSpec({
     kind: 'fetch-audio',
     folder: '/f',
@@ -810,7 +810,7 @@ test('buildJobSpec:fetch-audio 直接跑 yt-dlp,下载到素材夹外的临时�
 });
 
 test('buildJobSpec:fetch-audio 非法字段被拒绝,且不留临时目录', () => {
-  const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-jobspec-'));
+  const tempParent = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-jobspec-'));
   const bad = [
     [{id: '../../etc/passwd', title: 'x'}, 'id'],
     [{id: 'https://evil.example/x', title: 'x'}, 'id'],
@@ -843,11 +843,11 @@ test('fetch-audio:stdout 的百分比被翻译成契约一,任务历史只保留
   const manager = createJobManager({
     spawnImpl: () => child,
     killImpl: () => {},
-    tempParent: makeTempDir('tsuzuri-jobrun-'),
+    tempParent: makeTempDir('kiseki-jobrun-'),
   });
   const {id} = manager.createJob({
     kind: 'fetch-audio',
-    folder: makeTempDir('tsuzuri-jobdest-'),
+    folder: makeTempDir('kiseki-jobdest-'),
     options: {id: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist'},
   });
 
@@ -869,11 +869,11 @@ test('fetch-audio:下载失败时任务判 failed 并给出一条 error 事件',
   const manager = createJobManager({
     spawnImpl: () => child,
     killImpl: () => {},
-    tempParent: makeTempDir('tsuzuri-jobrun-'),
+    tempParent: makeTempDir('kiseki-jobrun-'),
   });
   const {id} = manager.createJob({
     kind: 'fetch-audio',
-    folder: makeTempDir('tsuzuri-jobdest-'),
+    folder: makeTempDir('kiseki-jobdest-'),
     options: {id: 'dQw4w9WgXcQ', title: 'Song'},
   });
   child.emit('exit', 1);
@@ -884,7 +884,7 @@ test('fetch-audio:下载失败时任务判 failed 并给出一条 error 事件',
 });
 
 test('fetch-audio:退出码 0 时把下载结果安装进 audio/ 并清掉临时目录', async () => {
-  const folder = makeTempDir('tsuzuri-jobdest-');
+  const folder = makeTempDir('kiseki-jobdest-');
   const child = makeFakeYtDlpChild();
   let tempDir = null;
   const manager = createJobManager({
@@ -895,7 +895,7 @@ test('fetch-audio:退出码 0 时把下载结果安装进 audio/ 并清掉临时
       return child;
     },
     killImpl: () => {},
-    tempParent: makeTempDir('tsuzuri-jobrun-'),
+    tempParent: makeTempDir('kiseki-jobrun-'),
   });
   const {id} = manager.createJob({
     kind: 'fetch-audio',
@@ -913,7 +913,7 @@ test('fetch-audio:退出码 0 时把下载结果安装进 audio/ 并清掉临时
 });
 
 test('fetch-audio:目标已存在时判 failed,不静默覆盖已有音频', async () => {
-  const folder = makeTempDir('tsuzuri-jobdest-');
+  const folder = makeTempDir('kiseki-jobdest-');
   fs.mkdirSync(path.join(folder, 'audio'));
   fs.writeFileSync(path.join(folder, 'audio', 'Song.m4a'), 'old');
   const child = makeFakeYtDlpChild();
@@ -923,7 +923,7 @@ test('fetch-audio:目标已存在时判 failed,不静默覆盖已有音频', asy
       return child;
     },
     killImpl: () => {},
-    tempParent: makeTempDir('tsuzuri-jobrun-'),
+    tempParent: makeTempDir('kiseki-jobrun-'),
   });
   const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
   child.emit('exit', 0);
@@ -933,7 +933,7 @@ test('fetch-audio:目标已存在时判 failed,不静默覆盖已有音频', asy
 });
 
 test('新 kind 同样受并发锁、取消与 killAll 约束', async () => {
-  const folder = makeTempDir('tsuzuri-jobdest-');
+  const folder = makeTempDir('kiseki-jobdest-');
   let child;
   const signals = [];
   const manager = createJobManager({
@@ -942,7 +942,7 @@ test('新 kind 同样受并发锁、取消与 killAll 约束', async () => {
       return child;
     },
     killImpl: (pid, signal) => signals.push([pid, signal]),
-    tempParent: makeTempDir('tsuzuri-jobrun-'),
+    tempParent: makeTempDir('kiseki-jobrun-'),
   });
   const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
   assert.deepEqual(manager.createJob({kind: 'lyrics', folder}), {error: 'busy'});
@@ -974,8 +974,8 @@ test('lyrics 任务仍然读 fd 3(泛化没有把原路径改漏)', async () => 
 });
 
 test('fetch-audio:spawn 失败(没装 yt-dlp)释放并发锁并清掉临时目录', () => {
-  const tempParent = makeTempDir('tsuzuri-jobrun-');
-  const folder = makeTempDir('tsuzuri-jobdest-');
+  const tempParent = makeTempDir('kiseki-jobrun-');
+  const folder = makeTempDir('kiseki-jobdest-');
   const child = makeFakeChild({pid: null, stdioCount: 3});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}, tempParent});
   const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
@@ -988,7 +988,7 @@ test('fetch-audio:spawn 失败(没装 yt-dlp)释放并发锁并清掉临时目�
 test('fetch-audio 失败时带上 yt-dlp 的真实报错,而不是一句放之四海皆准的"下载失败"', async () => {
   const child = makeFakeChild();
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-job-'));
   const {id} = manager.createJob({
     kind: 'fetch-audio',
     folder,
@@ -1004,7 +1004,7 @@ test('fetch-audio 失败时带上 yt-dlp 的真实报错,而不是一句放之�
 test('yt-dlp 起不来时不该报成"网络或地区限制"', async () => {
   const child = makeFakeChild({pid: null});
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}});
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-job-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-job-'));
   const {id} = manager.createJob({
     kind: 'fetch-audio',
     folder,
@@ -1017,14 +1017,14 @@ test('yt-dlp 起不来时不该报成"网络或地区限制"', async () => {
 
 test('CLI 入口路径必须真实存在', () => {
   // 这一条是唯一能抓到"路径拼错"的测试:其余用例全都注入 spawnImpl,
-  // 永远碰不到真实文件系统.曾经这里拼出的是 cli/cli/tsuzuri.mjs,
+  // 永远碰不到真实文件系统.曾经这里拼出的是 cli/cli/kiseki.mjs,
   // 子进程起手就 Cannot find module 退出 1,stderr 被丢、fd 3 无事件,
   // 前端只看到一句"失败了"——从网页起任务这个功能整个是坏的.
   for (const kind of ['render', 'still', 'lyrics']) {
     const spec = buildJobSpec({kind, folder: STILL_FIXTURE, options: {}});
     assert.equal(spec.command, process.execPath);
     assert.ok(fs.existsSync(spec.args[0]), `${kind} 的入口不存在: ${spec.args[0]}`);
-    assert.ok(spec.args[0].endsWith(path.join('cli', 'tsuzuri.mjs')), `路径可疑: ${spec.args[0]}`);
+    assert.ok(spec.args[0].endsWith(path.join('cli', 'kiseki.mjs')), `路径可疑: ${spec.args[0]}`);
   }
 });
 
@@ -1090,9 +1090,9 @@ test('fetch-audio 长时间无进展会被中止,并说明卡在哪', async () =
   const child = makeFakeYtDlpChild();
   const manager = createJobManager(fastStallDeps({
     spawnImpl: () => child,
-    tempParent: makeTempDir('tsuzuri-stall-'),
+    tempParent: makeTempDir('kiseki-stall-'),
   }));
-  const folder = makeTempDir('tsuzuri-stalldest-');
+  const folder = makeTempDir('kiseki-stalldest-');
   const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
 
   await new Promise((resolve) => setTimeout(resolve, 200));
@@ -1116,9 +1116,9 @@ test('收到进度就重新计时,下载中的任务不会被误判为停滞', a
   const manager = createJobManager(fastStallDeps({
     spawnImpl: () => child,
     stallTimeoutMs: 120,
-    tempParent: makeTempDir('tsuzuri-alive-'),
+    tempParent: makeTempDir('kiseki-alive-'),
   }));
-  const folder = makeTempDir('tsuzuri-alivedest-');
+  const folder = makeTempDir('kiseki-alivedest-');
   const {id} = manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
 
   for (let percent = 1; percent <= 6; percent += 1) {
@@ -1146,9 +1146,9 @@ test('任务表只保留最近若干条,不无限攒 events', async () => {
 
 test('killAll 无法确认进程树退出时保留 fetch-audio task lease', async () => {
   const child = makeFakeYtDlpChild();
-  const tempParent = makeTempDir('tsuzuri-killall-');
+  const tempParent = makeTempDir('kiseki-killall-');
   const manager = createJobManager({spawnImpl: () => child, killImpl: () => {}, tempParent});
-  const folder = makeTempDir('tsuzuri-killalldest-');
+  const folder = makeTempDir('kiseki-killalldest-');
   manager.createJob({kind: 'fetch-audio', folder, options: {id: 'dQw4w9WgXcQ', title: 'Song'}});
 
   // 下载 staging 位于 task lease,而非可由调用方观察的系统临时目录.
@@ -1162,15 +1162,15 @@ test('killAll 无法确认进程树退出时保留 fetch-audio task lease', asyn
 
 // --- 渲染速度档位 ----------------------------------------------------------
 
-test('speed 档位映射成 TSUZURI_CONCURRENCY,并透传诊断标签', () => {
+test('speed 档位映射成 KISEKI_CONCURRENCY,并透传诊断标签', () => {
   // balanced 不设并发值是刻意的:直接用 CLI 的默认(一半核心),少一个会跑偏的来源
-  const of = (speed) => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed}}).env.TSUZURI_CONCURRENCY;
+  const of = (speed) => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed}}).env.KISEKI_CONCURRENCY;
   assert.equal(of('saver'), '25%');
   assert.equal(of('full'), '90%');
   assert.equal(of('balanced'), undefined);
-  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.TSUZURI_CONCURRENCY, undefined);
-  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed: 'full'}}).env.TSUZURI_RENDER_SPEED, 'full');
-  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.TSUZURI_RENDER_SPEED, 'balanced');
+  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.KISEKI_CONCURRENCY, undefined);
+  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed: 'full'}}).env.KISEKI_RENDER_SPEED, 'full');
+  assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.KISEKI_RENDER_SPEED, 'balanced');
 });
 
 test('非法 speed 抛 JobValidationError,前端碰不到任意字符串', () => {
@@ -1190,10 +1190,10 @@ test('speed 不会漏进 argv —— 它只影响环境变量', () => {
 });
 
 test('buildJobEnv: 速度档位透传,saver/full 额外覆盖并发', () => {
-  assert.deepEqual(buildJobEnv({speed: 'saver'}), {TSUZURI_RENDER_SPEED: 'saver', TSUZURI_CONCURRENCY: '25%'});
-  assert.deepEqual(buildJobEnv({speed: 'full'}), {TSUZURI_RENDER_SPEED: 'full', TSUZURI_CONCURRENCY: '90%'});
-  assert.deepEqual(buildJobEnv({speed: 'balanced'}), {TSUZURI_RENDER_SPEED: 'balanced'});
-  assert.deepEqual(buildJobEnv({}), {TSUZURI_RENDER_SPEED: 'balanced'});
+  assert.deepEqual(buildJobEnv({speed: 'saver'}), {KISEKI_RENDER_SPEED: 'saver', KISEKI_CONCURRENCY: '25%'});
+  assert.deepEqual(buildJobEnv({speed: 'full'}), {KISEKI_RENDER_SPEED: 'full', KISEKI_CONCURRENCY: '90%'});
+  assert.deepEqual(buildJobEnv({speed: 'balanced'}), {KISEKI_RENDER_SPEED: 'balanced'});
+  assert.deepEqual(buildJobEnv({}), {KISEKI_RENDER_SPEED: 'balanced'});
 });
 
 test('buildJobEnv: 非法 speed 抛 JobValidationError,field 为 speed', () => {

@@ -8,7 +8,7 @@ import {formatLyricsPreview, runLyrics} from './lyrics.mjs';
 import {createTaskLeaseManager} from './task-lease.mjs';
 
 const fixture = () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-lyrics-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-lyrics-'));
   return folder;
 };
 const runLyricsForTest = (folder, options) => runLyrics(folder, {

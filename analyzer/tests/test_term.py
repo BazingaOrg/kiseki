@@ -95,7 +95,7 @@ def test_multiline_cjk_repeats_prefix(monkeypatch: pytest.MonkeyPatch):
 
 
 def test_deprecated_motion_config_is_rejected(tmp_path, monkeypatch):
-    (tmp_path / "tsuzuri.toml").write_text(
+    (tmp_path / "kiseki.toml").write_text(
         'motion = "kenburns"\nkenburns_from = 1.0\nkenburns_to = 1.1\n',
         encoding="utf-8",
     )
@@ -130,7 +130,7 @@ def test_new_timeline_always_uses_static_motion(monkeypatch, tmp_path):
 
 
 def test_json_events_mirror_messages_when_enabled(monkeypatch):
-    monkeypatch.setenv("TSUZURI_JSON_PROGRESS", "1")
+    monkeypatch.setenv("KISEKI_JSON_PROGRESS", "1")
     events = []
     monkeypatch.setattr(term, "_json_write", events.append)
     stdout, stderr = install_streams(monkeypatch, stdout_tty=False, stderr_tty=False)
@@ -155,7 +155,7 @@ def test_json_events_mirror_messages_when_enabled(monkeypatch):
 
 
 def test_json_events_off_by_default(monkeypatch):
-    monkeypatch.delenv("TSUZURI_JSON_PROGRESS", raising=False)
+    monkeypatch.delenv("KISEKI_JSON_PROGRESS", raising=False)
     events = []
     monkeypatch.setattr(term, "_json_write", events.append)
     install_streams(monkeypatch, stdout_tty=False, stderr_tty=False)

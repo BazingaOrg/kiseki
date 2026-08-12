@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {getProject} from './project.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-project-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-project-'));
 
 test('assembles photos, audio, lyrics and output listings', () => {
   const root = makeTempRoot();
@@ -16,9 +16,9 @@ test('assembles photos, audio, lyrics and output listings', () => {
   fs.writeFileSync(path.join(root, 'song.lrc'), '[00:01.00]hello\n[00:02.00]world\n');
   fs.mkdirSync(path.join(root, 'output', 'stills'), {recursive: true});
   fs.writeFileSync(path.join(root, 'output', 'stills', 'a.png'), '');
-  fs.writeFileSync(path.join(root, 'output', 'stills', '.tsuzuri-partial-lease-a.png'), '');
+  fs.writeFileSync(path.join(root, 'output', 'stills', '.kiseki-partial-lease-a.png'), '');
   fs.writeFileSync(path.join(root, 'output', `${path.basename(root)}.mp4`), '');
-  fs.writeFileSync(path.join(root, 'output', '.tsuzuri-partial-lease-video.mp4'), '');
+  fs.writeFileSync(path.join(root, 'output', '.kiseki-partial-lease-video.mp4'), '');
 
   const result = getProject(root, root);
   assert.equal(result.status, 200);
@@ -34,17 +34,17 @@ test('assembles photos, audio, lyrics and output listings', () => {
   assert.equal(result.body.output.videos.length, 1);
 });
 
-test('includes filterConfig when tsuzuri.json is present and valid', () => {
+test('includes filterConfig when kiseki.json is present and valid', () => {
   const root = makeTempRoot();
-  fs.writeFileSync(path.join(root, 'tsuzuri.json'), JSON.stringify({filter: 'riso', intensity: 0.5}));
+  fs.writeFileSync(path.join(root, 'kiseki.json'), JSON.stringify({filter: 'riso', intensity: 0.5}));
   const result = getProject(root, root);
   assert.equal(result.status, 200);
   assert.deepEqual(result.body.filterConfig, {filter: 'riso', intensity: 0.5});
 });
 
-test('does not blow up when tsuzuri.json is invalid, just omits filterConfig', () => {
+test('does not blow up when kiseki.json is invalid, just omits filterConfig', () => {
   const root = makeTempRoot();
-  fs.writeFileSync(path.join(root, 'tsuzuri.json'), '{not valid json');
+  fs.writeFileSync(path.join(root, 'kiseki.json'), '{not valid json');
   const result = getProject(root, root);
   assert.equal(result.status, 200);
   assert.equal(result.body.filterConfig, null);

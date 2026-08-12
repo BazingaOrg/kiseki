@@ -8,7 +8,7 @@ import path from 'node:path';
 import {resolveSafePath} from './sandbox.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const CACHE_DIR = path.join(os.tmpdir(), `tsuzuri-thumbs-${process.getuid?.() ?? 'user'}`);
+const CACHE_DIR = path.join(os.tmpdir(), `kiseki-thumbs-${process.getuid?.() ?? 'user'}`);
 const DEFAULT_WIDTH = 400;
 const MAX_WIDTH = 1024;
 

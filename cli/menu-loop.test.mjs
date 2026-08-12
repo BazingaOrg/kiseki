@@ -4,7 +4,7 @@ import test from 'node:test';
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {MENU_BACK} from './menu.mjs';
 import {CliError} from './options.mjs';
-import {runInteractiveMenu} from './tsuzuri.mjs';
+import {runInteractiveMenu} from './kiseki.mjs';
 
 test('interactive menu runs consecutive commands until the user exits', async () => {
   const choices = [['doctor'], ['lyrics', '/trip'], null];
@@ -23,7 +23,7 @@ test('interactive menu runs consecutive commands until the user exits', async ()
   assert.equal(code, 0);
   assert.deepEqual(commands, [['doctor'], ['lyrics', '/trip']]);
   assert.equal((output.match(/返回主菜单/g) ?? []).length, 2);
-  assert.equal((output.match(/tsuzuri 綴/g) ?? []).length, 2);
+  assert.equal((output.match(/kiseki 軌跡/g) ?? []).length, 2);
 });
 
 test('a command error is reported and does not exit the interactive menu', async () => {
@@ -38,7 +38,7 @@ test('a command error is reported and does not exit the interactive menu', async
     output: {write: (text) => { output += text; }},
   }), 0);
   assert.deepEqual(errors, ['找不到路径']);
-  assert.match(output, /tsuzuri 綴/);
+  assert.match(output, /kiseki 軌跡/);
 });
 
 test('back from a menu question redraws the menu without running a command', async () => {
@@ -51,7 +51,7 @@ test('back from a menu question redraws the menu without running a command', asy
     output: {write: (text) => { output += text; }},
   }), 0);
   assert.equal(commandCount, 0);
-  assert.match(output, /tsuzuri 綴/);
+  assert.match(output, /kiseki 軌跡/);
 });
 
 test('q exits the whole interactive menu while Ctrl+C remains an interruption', async () => {

@@ -11,7 +11,7 @@ from typing import Iterator
 
 def _environment_temp_root() -> Path | None:
     """返回已验证的任务根；未设置环境变量时保持系统临时目录行为。"""
-    for variable in ("TSUZURI_LEASE_TASK_ROOT", "TMPDIR"):
+    for variable in ("KISEKI_LEASE_TASK_ROOT", "TMPDIR"):
         raw = os.environ.get(variable)
         if not raw:
             continue

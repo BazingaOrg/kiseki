@@ -172,7 +172,7 @@ export const getFilter = (id: string | null | undefined, intensity?: number): Re
   if (def.svg) {
     // intensity 编入 id:逐张滤镜下同一滤镜不同 intensity 会同时挂载多个 <filter> 定义,
     // 不带 intensity 指纹会共享 id 互相覆盖(见阶段二 Review 记录)
-    svgFilterId = `tsuzuri-filter-${def.id}-${Math.round(resolvedIntensity * 100)}`;
+    svgFilterId = `kiseki-filter-${def.id}-${Math.round(resolvedIntensity * 100)}`;
     svgDefMarkup = `<filter id="${svgFilterId}">${def.svg(resolvedIntensity)}</filter>`;
     cssParts.push(`url(#${svgFilterId})`);
   }

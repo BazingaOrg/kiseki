@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {getExif} from './exif.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-exif-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-exif-'));
 
 test('rejects a path outside the root with 403', async () => {
   const root = makeTempRoot();

@@ -346,7 +346,7 @@ const ActionCard = ({
   const optionsPresence = useTransitionPresence(expanded);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
   // 呈现模板按素材夹记忆:同一种风格反复迭代时不用每次重选
-  const templateStorageKey = `tsuzuri-template:${folder}`;
+  const templateStorageKey = `kiseki-template:${folder}`;
 
   useEffect(() => {
     // 挂载后回填上次选择的模板;只在用户尚未手动选过时生效

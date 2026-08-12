@@ -36,9 +36,9 @@ test('corrupt or non-object records read as null', () => {
   const uninstall = installFakeStorage();
   try {
     const storage = (globalThis as Record<string, unknown>).localStorage as ReturnType<typeof fakeStorage>;
-    storage.setItem('tsuzuri-last-job', '{not json');
+    storage.setItem('kiseki-last-job', '{not json');
     assert.equal(readLastJobRecord(), null, '损坏 JSON 读 null');
-    storage.setItem('tsuzuri-last-job', JSON.stringify({noId: true}));
+    storage.setItem('kiseki-last-job', JSON.stringify({noId: true}));
     assert.equal(readLastJobRecord(), null, '缺 id 字段读 null');
   } finally {
     uninstall();

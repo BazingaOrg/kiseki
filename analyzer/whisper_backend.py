@@ -2,7 +2,7 @@
 
 优先级:mlx(arm64 Mac 且可导入)→ faster-whisper CUDA float16 → faster-whisper CPU int8。
 三后端收敛到 transcribe(audio) -> (language, [Segment]);探测结果打印一行日志。
-模型默认 mlx/CUDA=medium、CPU=small,可用环境变量 TSUZURI_WHISPER_MODEL 覆盖(调试用)。
+模型默认 mlx/CUDA=medium、CPU=small,可用环境变量 KISEKI_WHISPER_MODEL 覆盖(调试用)。
 国内网络:HF 直连超时自动切 hf-mirror.com,再失败才提示配代理。
 """
 
@@ -211,7 +211,7 @@ def ensure_hf_reachable(timeout: float = 3.0) -> None:
 
 def _pick_backend() -> tuple[str, str]:
     """返回 (backend, model)。backend: mlx | cuda | cpu"""
-    override = os.environ.get("TSUZURI_WHISPER_MODEL")
+    override = os.environ.get("KISEKI_WHISPER_MODEL")
     if (
         sys.platform == "darwin"
         and platform.machine() == "arm64"
@@ -242,7 +242,7 @@ def transcribe(audio: Path) -> tuple[str, list[Segment], str]:
     desc = f"{backend} / {model}"
     term.detail(f"whisper backend: {desc}")
 
-    # 本地模型:TSUZURI_WHISPER_MODEL 指向目录,或放在仓库 models/ 约定目录,
+    # 本地模型:KISEKI_WHISPER_MODEL 指向目录,或放在仓库 models/ 约定目录,
     # 均跳过联网;否则从 HF 下载(mlx:weights.npz + config.json;
     # faster-whisper:CTranslate2 格式目录)
     local_dir = _local_model_dir(backend, model)

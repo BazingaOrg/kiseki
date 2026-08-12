@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {readTimeline} from './render.mjs';
-import {readValidatedTimeline} from './tsuzuri.mjs';
+import {readValidatedTimeline} from './kiseki.mjs';
 import {TimelineValidationError, validateTimeline} from './timeline-validator.mjs';
 
 const validTimeline = () => JSON.parse(fs.readFileSync(new URL('../examples/fixture/timeline.json', import.meta.url), 'utf8'));
@@ -63,7 +63,7 @@ test('allows legacy kind-less photos and ignores unknown kinds for forward compa
 });
 
 test('both CLI timeline readers reject before their downstream render/statistics work', () => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-invalid-timeline-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-invalid-timeline-'));
   const file = path.join(dir, 'timeline.json');
   fs.writeFileSync(file, JSON.stringify(invalid((timeline) => { timeline.subtitles[0].confidence = 'high'; })));
   try {
@@ -78,6 +78,6 @@ test('both CLI timeline readers reject before their downstream render/statistics
 test('entrypoints validate before loading Remotion or reading render statistics', () => {
   const renderSource = fs.readFileSync(new URL('./render.mjs', import.meta.url), 'utf8');
   assert.ok(renderSource.indexOf('const timeline = readTimeline(timelinePath);') < renderSource.indexOf('loadRemotionRenderer()'));
-  const cliSource = fs.readFileSync(new URL('./tsuzuri.mjs', import.meta.url), 'utf8');
+  const cliSource = fs.readFileSync(new URL('./kiseki.mjs', import.meta.url), 'utf8');
   assert.ok(cliSource.indexOf('let tl = readValidatedTimeline(timelinePath);') < cliSource.indexOf('const n = tl.photos.filter'));
 });

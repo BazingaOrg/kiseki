@@ -9,7 +9,7 @@ import {CliError} from './options.mjs';
 import {term} from './term.mjs';
 import {runWeb} from './web.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-'));
 
 const closeServer = (server) => new Promise((resolve, reject) => {
   server.close((error) => error ? reject(error) : resolve());
@@ -39,19 +39,19 @@ test('starts a server on a free port and serves the frontend (or placeholder if 
     assert.equal(response.status, 200);
     const text = await response.text();
     // web/dist 存在时 serve 真实构建产物,否则回退占位页——两者皆为合法状态
-    assert.match(text, /(tsuzuri 本地工作台|綴り｜tsuzuri)/);
+    assert.match(text, /(kiseki 本地工作台|軌跡｜kiseki)/);
   } finally {
     await closeServer(server);
   }
 });
 
 test('rejects a folder argument that does not exist', async () => {
-  await assert.rejects(() => runWeb('/no/such/folder/tsuzuri-test'), CliError);
+  await assert.rejects(() => runWeb('/no/such/folder/kiseki-test'), CliError);
 });
 
 /**
  * 占住起始端口.如果它已经被机器上别的进程占着(开发时很常见:另开着一个
- * tsuzuri web),前置条件本来就满足了,不必也不能再占一次 —— 这个用例真正要
+ * kiseki web),前置条件本来就满足了,不必也不能再占一次 —— 这个用例真正要
  * 断言的是"起始端口不可用时会往后找",谁占的无所谓.
  */
 const occupyStartPort = async () => {

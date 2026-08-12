@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {resolveSafePath} from './sandbox.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-sandbox-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-sandbox-'));
 
 test('resolves a path inside the root', () => {
   const root = makeTempRoot();

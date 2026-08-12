@@ -7,13 +7,13 @@ import test from 'node:test';
 import {CliError} from './options.mjs';
 import {formatStillDiagnostics, loadStillCanvasConfig, resolveJobs} from './still.mjs';
 
-const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-still-'));
+const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-still-'));
 
 test('still projects the shared strict config and preserves # inside quoted text', () => {
   const dir = fixture();
   try {
     fs.writeFileSync(
-      path.join(dir, 'tsuzuri.toml'),
+      path.join(dir, 'kiseki.toml'),
       'width = 1280\nheight = 720\nbackground = "#123456"\nphoto_scale = 0.5\noutro_text = "a # b"\n',
     );
     assert.deepEqual(loadStillCanvasConfig(dir), {
@@ -45,7 +45,7 @@ test('still diagnostics report effective pixels, scale, photo count, and output 
 test('still fails fast for an invalid shared config instead of falling back to defaults', () => {
   const dir = fixture();
   try {
-    fs.writeFileSync(path.join(dir, 'tsuzuri.toml'), 'background = FFFFFF\n');
+    fs.writeFileSync(path.join(dir, 'kiseki.toml'), 'background = FFFFFF\n');
     assert.throws(() => loadStillCanvasConfig(dir), CliError);
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
@@ -77,7 +77,7 @@ test('still reads an explicit project filter config for the default filename', (
   const dir = fixture();
   const photo = path.join(dir, 'IMG.jpg');
   fs.writeFileSync(photo, 'x');
-  fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({filter: 'teal_orange', intensity: 0.80}));
+  fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({filter: 'teal_orange', intensity: 0.80}));
   assert.equal(path.basename(resolveJobs(photo, null).jobs[0].outPath), 'IMG-teal-orange-0.8.png');
 });
 

@@ -23,7 +23,7 @@ def write_json_atomic(path: Path, value: Any) -> None:
             mode="w",
             encoding="utf-8",
             dir=path.parent,
-            prefix=f".tsuzuri-partial-{path.name}-",
+            prefix=f".kiseki-partial-{path.name}-",
             suffix=".json",
             delete=False,
         ) as handle:

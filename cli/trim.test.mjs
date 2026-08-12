@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {maybePersistTrimChoice} from './trim.mjs';
 
-const makeFolder = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-trim-'));
+const makeFolder = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-trim-'));
 const timeline = {
   meta: {trim: {mode: 'auto', applied: true, full_duration: 60, trimmed_duration: 24}},
   photos: [{src: 'a.jpg'}, {src: 'b.jpg'}, {src: 'c.jpg'}],
@@ -53,7 +53,7 @@ test('interactive first auto trim persists the accepted default', async () => {
       JSON.parse(fs.readFileSync(path.join(folder, 'output', 'metadata', 'preferences.json'), 'utf8')),
       {version: 1, trim: 'auto'},
     );
-    assert.equal(fs.existsSync(path.join(folder, 'tsuzuri.toml')), false);
+    assert.equal(fs.existsSync(path.join(folder, 'kiseki.toml')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }

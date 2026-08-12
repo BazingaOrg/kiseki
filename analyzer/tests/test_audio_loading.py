@@ -87,6 +87,6 @@ def test_nested_audio_still_reads_project_demucs_setting(tmp_path: Path):
     audio_dir.mkdir()
     source = audio_dir / "tone.wav"
     source.touch()
-    (tmp_path / "tsuzuri.toml").write_text("demucs = false\n", encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text("demucs = false\n", encoding="utf-8")
 
     assert analyze._demucs_enabled(source) is False

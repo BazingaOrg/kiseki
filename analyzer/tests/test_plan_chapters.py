@@ -47,10 +47,10 @@ def test_missing_exif_disables_chapters(tmp_path):
 
 
 def test_chapters_toml_requires_a_boolean(tmp_path, capsys):
-    (tmp_path / "tsuzuri.toml").write_text("chapters = false\n", encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text("chapters = false\n", encoding="utf-8")
     assert plan.load_config(tmp_path)["chapters"] is False
 
-    (tmp_path / "tsuzuri.toml").write_text('chapters = "false"\n', encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text('chapters = "false"\n', encoding="utf-8")
     with pytest.raises(SystemExit):
         plan.load_config(tmp_path)
     assert "chapters 必须是 true 或 false" in capsys.readouterr().err

@@ -1,4 +1,4 @@
-"""plan 将 tsuzuri.toml 的 branding 键透传到 meta.branding。"""
+"""plan 将 kiseki.toml 的 branding 键透传到 meta.branding。"""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ class TestBrandingPassthrough:
 
     def test_toml_outro_and_intro_false(self, tmp_path: Path):
         make_photos(tmp_path)
-        (tmp_path / "tsuzuri.toml").write_text(
+        (tmp_path / "kiseki.toml").write_text(
             'outro_text = "谢谢观看"\nintro = false\n', encoding="utf-8"
         )
         cfg = load_config(tmp_path)
@@ -58,14 +58,14 @@ class TestBrandingPassthrough:
 
     def test_toml_empty_outro_hides_copy(self, tmp_path: Path):
         make_photos(tmp_path)
-        (tmp_path / "tsuzuri.toml").write_text('outro_text = ""\n', encoding="utf-8")
+        (tmp_path / "kiseki.toml").write_text('outro_text = ""\n', encoding="utf-8")
         cfg = load_config(tmp_path)
         timeline = build_timeline(tmp_path, make_beats(), [], cfg, None)
         assert timeline["meta"]["branding"]["outro_text"] == ""
 
     def test_signature_svg_must_exist(self, tmp_path: Path):
         make_photos(tmp_path)
-        (tmp_path / "tsuzuri.toml").write_text(
+        (tmp_path / "kiseki.toml").write_text(
             'signature = "missing.svg"\n', encoding="utf-8"
         )
         with pytest.raises(SystemExit):
@@ -74,7 +74,7 @@ class TestBrandingPassthrough:
     def test_signature_must_be_svg(self, tmp_path: Path):
         make_photos(tmp_path)
         (tmp_path / "sig.png").write_bytes(b"x")
-        (tmp_path / "tsuzuri.toml").write_text('signature = "sig.png"\n', encoding="utf-8")
+        (tmp_path / "kiseki.toml").write_text('signature = "sig.png"\n', encoding="utf-8")
         with pytest.raises(SystemExit):
             load_config(tmp_path)
 
@@ -84,7 +84,7 @@ class TestBrandingPassthrough:
             '<svg viewBox="0 0 10 10"><path d="M0 0 L10 10"/></svg>',
             encoding="utf-8",
         )
-        (tmp_path / "tsuzuri.toml").write_text(
+        (tmp_path / "kiseki.toml").write_text(
             'signature = "signature.svg"\n', encoding="utf-8"
         )
         cfg = load_config(tmp_path)
@@ -92,7 +92,7 @@ class TestBrandingPassthrough:
         assert timeline["meta"]["branding"]["signature"] == "signature.svg"
 
     def test_background_must_be_a_string(self, tmp_path: Path):
-        (tmp_path / "tsuzuri.toml").write_text("background = 123\n", encoding="utf-8")
+        (tmp_path / "kiseki.toml").write_text("background = 123\n", encoding="utf-8")
         with pytest.raises(SystemExit):
             load_config(tmp_path)
 

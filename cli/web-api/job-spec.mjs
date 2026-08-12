@@ -20,7 +20,7 @@ import {parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from '../ytdlp.mjs';
 export {JobValidationError} from '../job-argv.mjs';
 
 const CLI_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const TSUZURI_ENTRY = path.join(CLI_DIR, 'tsuzuri.mjs');
+const KISEKI_ENTRY = path.join(CLI_DIR, 'kiseki.mjs');
 const YTDLP_ID_RE = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** yt-dlp 下载进度事件的标签. */
@@ -45,7 +45,7 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
     throw new JobValidationError('id', 'id 必须是 yt-dlp 视频 id(字母、数字、- 和 _)');
   }
   const {title, artist} = normalizeFetchAudioMetadata(options);
-  const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
+  const tempDir = fs.mkdtempSync(path.join(tempParent, 'kiseki-fetch-'));
   const finalFilename = buildAudioFilename({title, artist, ext: '.m4a'});
   return {
     command: 'yt-dlp',
@@ -99,11 +99,11 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir
   const {argv, env} = buildJobInvocation({kind, folder, options});
   return {
     command: process.execPath,
-    args: [TSUZURI_ENTRY, ...argv],
+    args: [KISEKI_ENTRY, ...argv],
     stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
     env: {
       ...process.env,
-      TSUZURI_JSON_PROGRESS: '1',
+      KISEKI_JSON_PROGRESS: '1',
       ...env,
     },
     progressSource: 'fd3',

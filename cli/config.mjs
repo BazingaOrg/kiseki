@@ -1,7 +1,5 @@
 /**
- * tsuzuri.toml 统一配置 schema.唯一真源——analyzer/config_schema.py 镜像同一份
- * 字段表(两侧各自实现,字段/约束/默认值必须保持一致,交叉检查见
- * examples/config-cases.json).
+ * kiseki.toml 的真实 schema 在 analyzer/plan.py。
  *
  * 本项目目前只有作者本人使用,不做任何兼容层:未知键、非法值、已弃用键一律
  * 直接报错退出,不做 warning 静默降级.
@@ -176,19 +174,19 @@ const formatReceived = (value, kind) => (kind === 'string' ? JSON.stringify(valu
 
 const buildFieldError = (lineNo, key, field, received) =>
   new CliError(
-    `tsuzuri.toml 第 ${lineNo} 行: ${key} 需要${field.expected},收到 ${received}\n` +
+    `kiseki.toml 第 ${lineNo} 行: ${key} 需要${field.expected},收到 ${received}\n` +
     `└ 例: ${field.example}`,
   );
 
 /**
- * 读取素材夹下的 tsuzuri.toml,校验后返回 `{values, explicitKeys}`.
+ * 读取素材夹下的 kiseki.toml,校验后返回 `{values, explicitKeys}`.
  * - `values`: 全字段配置(未显式出现的键取 CONFIG_SCHEMA 默认值)
  * - `explicitKeys`: 文件中显式出现过的键名集合
  * 文件不存在时返回全默认值与空集合.语法错误或字段非法一律抛 CliError,
  * 只报告遇到的第一个错误(按文件出现顺序).
  */
 export const loadProjectConfig = (folder) => {
-  const tomlPath = path.join(folder, 'tsuzuri.toml');
+  const tomlPath = path.join(folder, 'kiseki.toml');
   if (!fs.existsSync(tomlPath)) {
     return {values: {...DEFAULTS}, explicitKeys: new Set()};
   }
@@ -198,19 +196,19 @@ export const loadProjectConfig = (folder) => {
   try {
     parsed = parseFlatToml(text);
   } catch (err) {
-    throw new CliError(`tsuzuri.toml ${err.message}`);
+    throw new CliError(`kiseki.toml ${err.message}`);
   }
   const {values: raw, lineOf, kinds} = parsed;
 
   const values = {...DEFAULTS};
   for (const key of Object.keys(raw)) {
     if (DEPRECATED_KEYS.has(key)) {
-      throw new CliError(`tsuzuri.toml 第 ${lineOf[key]} 行: ${key} 已弃用且不再生效,请删除该行`);
+      throw new CliError(`kiseki.toml 第 ${lineOf[key]} 行: ${key} 已弃用且不再生效,请删除该行`);
     }
     const field = CONFIG_SCHEMA[key];
     if (!field) {
       throw new CliError(
-        `tsuzuri.toml 第 ${lineOf[key]} 行: 未知配置项 ${key}\n└ 删除该行,或检查是否拼写错误`,
+        `kiseki.toml 第 ${lineOf[key]} 行: 未知配置项 ${key}\n└ 删除该行,或检查是否拼写错误`,
       );
     }
     const value = raw[key];

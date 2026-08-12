@@ -50,7 +50,7 @@ test('sync search asks the provider for 20 before stable dedupe/slice to 10', ()
 });
 
 test('yt-dlp downloads outside the material folder and safely replaces a same-name audio', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   const folder = path.join(root, 'material');
   fs.mkdirSync(folder);
   const oldFile = path.join(folder, 'Song - Artist.m4a');

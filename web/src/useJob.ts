@@ -144,7 +144,7 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
       try {
         const res = await fetch('/api/jobs', {
           method: 'POST',
-          headers: {'Content-Type': 'application/json', 'X-Tsuzuri-Token': getToken()},
+          headers: {'Content-Type': 'application/json', 'X-Kiseki-Token': getToken()},
           body: JSON.stringify(args),
         });
         if (res.status === 409) throw new Error('busy');
@@ -161,7 +161,7 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
           cancelPendingRef.current = false;
           fetch(`/api/jobs/${id}/cancel`, {
             method: 'POST',
-            headers: {'X-Tsuzuri-Token': getToken()},
+            headers: {'X-Kiseki-Token': getToken()},
           }).catch(() => setError('取消请求没发出去，任务可能还在后台跑。'));
         }
 
@@ -198,7 +198,7 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
     }
     fetch(`/api/jobs/${jobIdRef.current}/cancel`, {
       method: 'POST',
-      headers: {'X-Tsuzuri-Token': getToken()},
+      headers: {'X-Kiseki-Token': getToken()},
     }).catch(() => setError('取消请求没发出去，任务可能还在后台跑。'));
   }, []);
 

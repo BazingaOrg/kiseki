@@ -187,7 +187,7 @@ test('Web mode falls back when an exact synced record has no id', async () => {
 });
 
 test('lyrics preview can return to candidates without repeating the network search', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   fs.writeFileSync(path.join(folder, 'song.wav'), Buffer.alloc(44));
   const syncedLyrics = Array.from({length: 13}, (_, i) =>
     `[00:${String(i).padStart(2, '0')}.00]行${i}`,
@@ -224,7 +224,7 @@ test('lyrics preview can return to candidates without repeating the network sear
 });
 
 test('multiple lyric candidates default to previewing the first on enter', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   fs.writeFileSync(path.join(folder, 'song.wav'), Buffer.alloc(44));
   const record = (name) => ({
     trackName: name, artistName: 'Artist', duration: 13,
@@ -248,7 +248,7 @@ test('multiple lyric candidates default to previewing the first on enter', async
 });
 
 test('lyrics keyword prompt explains enter/back and returns before network access', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   fs.writeFileSync(path.join(folder, 'Yellow - Coldplay.wav'), Buffer.alloc(44));
   let fetchCount = 0;
   try {
@@ -275,7 +275,7 @@ test('lyrics keyword prompt explains enter/back and returns before network acces
 });
 
 test('a failed staged install preserves the existing audio', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   const oldFile = path.join(root, 'Song.m4a');
   fs.writeFileSync(oldFile, 'old audio');
   try {
@@ -293,7 +293,7 @@ test('a failed staged install preserves the existing audio', () => {
 });
 
 test('a failed staged lyrics replacement preserves the existing lyrics', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   const audioFolder = path.join(root, 'audio');
   fs.mkdirSync(audioFolder);
   const oldFile = path.join(audioFolder, 'Song.lrc');
@@ -323,7 +323,7 @@ test('planOffers only proposes what the folder is missing', () => {
 test('next-step guidance follows the final material state', () => {
   assert.equal(
     buildNextStepMessage('/my trip', {photos: ['a.jpg'], audios: ['song.m4a']}),
-    "下一步:可运行 node cli/tsuzuri.mjs '/my trip' 渲染",
+    "下一步:可运行 node cli/kiseki.mjs '/my trip' 渲染",
   );
   assert.equal(
     buildNextStepMessage('/trip', {photos: [], audios: ['song.m4a']}),
@@ -333,7 +333,7 @@ test('next-step guidance follows the final material state', () => {
 });
 
 test('multiple-audio cleanup deletes only after explicit delete action', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   for (const name of ['a.mp3', 'b.m4a']) fs.writeFileSync(path.join(folder, name), name);
   try {
     const calls = [];
@@ -366,7 +366,7 @@ test('multiple-audio cleanup deletes only after explicit delete action', async (
 });
 
 test('multiple-audio cleanup abandon leaves files untouched', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   for (const name of ['a.mp3', 'b.m4a']) fs.writeFileSync(path.join(folder, name), name);
   try {
     const result = await chooseSingleAudio({pick: async () => null}, folder, ['a.mp3', 'b.m4a']);
@@ -386,7 +386,7 @@ test('parseCurlResponse splits body from the trailing status code', () => {
 });
 
 test('explicit fetch defaults to downloading when the folder has no audio', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   try {
     const {code, output} = await runFetchWithAnswers(folder, ['s']);
     assert.equal(code, 0);
@@ -397,7 +397,7 @@ test('explicit fetch defaults to downloading when the folder has no audio', asyn
 });
 
 test('explicit fetch defaults to searching lyrics when audio exists without an .lrc', async () => {
-  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-fetch-test-'));
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
   fs.writeFileSync(path.join(folder, 'song.wav'), Buffer.alloc(44));
   try {
     const {code, output} = await runFetchWithAnswers(folder, ['', 's']);

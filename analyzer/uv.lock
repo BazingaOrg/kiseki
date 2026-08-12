@@ -1447,7 +1447,7 @@ wheels = [
 ]
 
 [[package]]
-name = "tsuzuri-analyzer"
+name = "kiseki-analyzer"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

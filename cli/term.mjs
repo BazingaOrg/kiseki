@@ -36,7 +36,7 @@ const linesOf = (message) => {
 };
 
 /** 结构化进度出口开关:必须显式设为 '1',其余取值(含未设置)一律关闭,终端行为零变化. */
-export const jsonProgressEnabled = (env = process.env) => env.TSUZURI_JSON_PROGRESS === '1';
+export const jsonProgressEnabled = (env = process.env) => env.KISEKI_JSON_PROGRESS === '1';
 
 /** 默认 JSON 写入器:落到 fd 3.fd 3 未打开时 writeSync 抛 EBADF,吞掉——结构化出口是尽力而为,绝不能带崩 CLI. */
 export const defaultJsonWrite = (event) => {

@@ -194,9 +194,9 @@ export const createJobManager =({
         detached: true,
         env: {
           ...spec.env,
-          TSUZURI_LEASE_TASK_ID: lease.id,
-          TSUZURI_LEASE_TASK_TOKEN: lease.token,
-          TSUZURI_LEASE_TASK_ROOT: lease.taskRoot,
+          KISEKI_LEASE_TASK_ID: lease.id,
+          KISEKI_LEASE_TASK_TOKEN: lease.token,
+          KISEKI_LEASE_TASK_ROOT: lease.taskRoot,
         },
       });
     } catch (error) {
@@ -673,7 +673,7 @@ export const createJobManager =({
   /**
    * 杀掉所有还在跑的任务.detached: true 让子进程 setsid() 脱离了终端进程组,
    * 用户按 Ctrl+C 时 SIGINT 只发给前台进程组,子进程收不到 —— 不显式收尾,
-   * 关掉 tsuzuri web 之后 remotion/chromium 会变成孤儿继续吃满 CPU 直到渲染完.
+   * 关掉 kiseki web 之后 remotion/chromium 会变成孤儿继续吃满 CPU 直到渲染完.
    */
   const killAll = async ({deadlineMs = forceKillAfterMs + 2000} = {}) => {
     const active = [...jobs.values()].filter((job) => job.status === 'running' || job.status === 'stopping');

@@ -11,7 +11,7 @@ import {
 } from './project.mjs';
 
 const makeFolder = (files) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-scan-'));
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-scan-'));
   for (const name of files) fs.writeFileSync(path.join(dir, name), '');
   return dir;
 };
@@ -30,14 +30,14 @@ test('scanFolder returns an empty videos list when none are present', () => {
 });
 
 test('missing audio error points to the fetch recovery command', () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-scan-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-scan-'));
   const dir = path.join(root, 'my trip');
   fs.mkdirSync(dir);
   fs.writeFileSync(path.join(dir, 'a.jpg'), '');
   try {
     assert.throws(
       () => scanFolder(dir),
-      (error) => error.message.includes(`node cli/tsuzuri.mjs fetch '${dir}'`),
+      (error) => error.message.includes(`node cli/kiseki.mjs fetch '${dir}'`),
     );
   } finally {
     fs.rmSync(root, {recursive: true, force: true});
@@ -116,7 +116,7 @@ test('legacy metadata is copied only into an empty new directory, then root JSON
   }
 });
 
-test('readFilterConfig returns null when tsuzuri.json is absent', () => {
+test('readFilterConfig returns null when kiseki.json is absent', () => {
   const dir = makeFolder(['a.jpg']);
   try {
     assert.equal(readFilterConfig(dir), null);
@@ -128,7 +128,7 @@ test('readFilterConfig returns null when tsuzuri.json is absent', () => {
 test('readFilterConfig parses global filter/intensity and perPhoto overrides', () => {
   const dir = makeFolder(['a.jpg']);
   try {
-    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({
+    fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({
       filter: 'mono',
       intensity: 0.5,
       perPhoto: {'a.jpg': {filter: 'riso', intensity: 0.9}},
@@ -146,7 +146,7 @@ test('readFilterConfig parses global filter/intensity and perPhoto overrides', (
 test('readFilterConfig stores filter aliases as canonical registry ids', () => {
   const dir = makeFolder([]);
   try {
-    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({filter: 'tealorange'}));
+    fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({filter: 'tealorange'}));
     assert.deepEqual(readFilterConfig(dir), {filter: 'teal-orange'});
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
@@ -156,16 +156,16 @@ test('readFilterConfig stores filter aliases as canonical registry ids', () => {
 test('readFilterConfig rejects invalid JSON, unknown filter ids and out-of-range intensity', () => {
   const dir = makeFolder(['a.jpg']);
   try {
-    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), '{not json');
+    fs.writeFileSync(path.join(dir, 'kiseki.json'), '{not json');
     assert.throws(() => readFilterConfig(dir), /不是合法 JSON/);
 
-    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({filter: 'does-not-exist'}));
+    fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({filter: 'does-not-exist'}));
     assert.throws(() => readFilterConfig(dir), /未知滤镜 id/);
 
-    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({intensity: 1.5}));
+    fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({intensity: 1.5}));
     assert.throws(() => readFilterConfig(dir), /0–1 之间的数字/);
 
-    fs.writeFileSync(path.join(dir, 'tsuzuri.json'), JSON.stringify({perPhoto: {'a.jpg': {filter: 'nope'}}}));
+    fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({perPhoto: {'a.jpg': {filter: 'nope'}}}));
     assert.throws(() => readFilterConfig(dir), /perPhoto\.a\.jpg\.filter 未知滤镜 id/);
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});

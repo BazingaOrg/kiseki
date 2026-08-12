@@ -46,13 +46,13 @@ const LightboxZoomControls = ({zoomRef}: {zoomRef: LightboxZoomRef}) => {
   const canZoomIn = !zoomRef.disabled && zoomRef.zoom < zoomRef.maxZoom;
 
   return (
-    <div className="tsuzuri-lightbox-zoom-controls" aria-label="图片缩放工具">
-      <button type="button" className="tsuzuri-lightbox-tool" title="缩小" aria-label="缩小" onClick={zoomRef.zoomOut} disabled={!canZoomOut}>
+    <div className="kiseki-lightbox-zoom-controls" aria-label="图片缩放工具">
+      <button type="button" className="kiseki-lightbox-tool" title="缩小" aria-label="缩小" onClick={zoomRef.zoomOut} disabled={!canZoomOut}>
         <ZoomOut aria-hidden="true" />
       </button>
       <button
         type="button"
-        className="tsuzuri-lightbox-tool"
+        className="kiseki-lightbox-tool"
         title="复位缩放"
         aria-label="复位缩放"
         onClick={() => zoomRef.changeZoom(zoomRef.minZoom)}
@@ -60,7 +60,7 @@ const LightboxZoomControls = ({zoomRef}: {zoomRef: LightboxZoomRef}) => {
       >
         <RotateCcw aria-hidden="true" />
       </button>
-      <button type="button" className="tsuzuri-lightbox-tool" title="放大" aria-label="放大" onClick={zoomRef.zoomIn} disabled={!canZoomIn}>
+      <button type="button" className="kiseki-lightbox-tool" title="放大" aria-label="放大" onClick={zoomRef.zoomIn} disabled={!canZoomIn}>
         <ZoomIn aria-hidden="true" />
       </button>
     </div>
@@ -240,7 +240,7 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRena
 
       {activeGroup && open && (
         <Lightbox
-          className="tsuzuri-lightbox"
+          className="kiseki-lightbox"
           open
           index={open.index}
           close={() => setOpen(null)}

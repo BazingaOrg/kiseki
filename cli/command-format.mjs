@@ -9,7 +9,7 @@ const quoteArg = (arg) => (SAFE_CHARS_RE.test(arg) ? arg : `'${arg.replace(/'/g,
  * @param {string[]} argv
  * @param {{program?: string, env?: Record<string,string>}} [opts]
  */
-export const formatCommand = (argv, {program = 'node cli/tsuzuri.mjs', env = {}} = {}) => {
+export const formatCommand = (argv, {program = 'node cli/kiseki.mjs', env = {}} = {}) => {
   const envPrefix = Object.entries(env)
     .map(([key, value]) => `${key}=${value}`)
     .join(' ');
@@ -18,4 +18,4 @@ export const formatCommand = (argv, {program = 'node cli/tsuzuri.mjs', env = {}}
 };
 
 /** 从仓库运行时可直接复制执行的等效命令(含空格的路径加引号). */
-export const formatEquivalentCommand = (argv) => formatCommand(argv, {program: 'node cli/tsuzuri.mjs'});
+export const formatEquivalentCommand = (argv) => formatCommand(argv, {program: 'node cli/kiseki.mjs'});

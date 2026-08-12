@@ -30,7 +30,7 @@ def load_audio(audio_path: Path) -> tuple[np.ndarray, int]:
     try:
         samples, sr = sf.read(str(audio_path), dtype="float32", always_2d=True)
     except sf.SoundFileError:
-        with temporary_directory(prefix="tsuzuri-audio-") as tmp:
+        with temporary_directory(prefix="kiseki-audio-") as tmp:
             decoded = tmp / "decoded.wav"
             try:
                 result = subprocess.run(
@@ -118,9 +118,9 @@ KNOWN_LANGS = {"ja", "zh", "en"}
 
 
 def _demucs_enabled(audio_path: Path) -> bool:
-    candidates = [audio_path.parent / "tsuzuri.toml"]
+    candidates = [audio_path.parent / "kiseki.toml"]
     if audio_path.parent.name == "audio":
-        candidates.append(audio_path.parent.parent / "tsuzuri.toml")
+        candidates.append(audio_path.parent.parent / "kiseki.toml")
     for toml_path in candidates:
         if toml_path.is_file():
             with toml_path.open("rb") as f:
@@ -160,7 +160,7 @@ def analyze_lyrics(audio_path: Path) -> dict:
 
     avg_conf = statistics.fmean(s.confidence for s in segments) if segments else 0.0
     if (not segments or avg_conf < LOW_CONFIDENCE) and _demucs_enabled(audio_path):
-        with temporary_directory(prefix="tsuzuri-demucs-") as tmp:
+        with temporary_directory(prefix="kiseki-demucs-") as tmp:
             vocals = _try_demucs(audio_path, tmp)
             if vocals is not None:
                 language2, segments2, backend2 = transcribe(vocals)
@@ -191,7 +191,7 @@ def analyze_lyrics(audio_path: Path) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="tsuzuri analyze: audio -> output/metadata/*.json")
+    parser = argparse.ArgumentParser(description="kiseki analyze: audio -> output/metadata/*.json")
     parser.add_argument("audio", type=Path, help="音频文件路径")
     parser.add_argument(
         "-o",

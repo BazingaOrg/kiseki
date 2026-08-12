@@ -1,5 +1,5 @@
 /**
- * tsuzuri doctor — <2s 依赖预检,不联网、不触发 `uv sync`(那可能很慢).
+ * kiseki doctor — <2s 依赖预检,不联网、不触发 `uv sync`(那可能很慢).
  */
 
 import {spawn, spawnSync} from 'node:child_process';

@@ -81,7 +81,7 @@ export const downloadWithYtDlp = (
   url,
   {spawn = spawnSync, tempParent = os.tmpdir(), stdio = 'inherit'} = {},
 ) => {
-  const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
+  const tempDir = fs.mkdtempSync(path.join(tempParent, 'kiseki-fetch-'));
   const r = spawn(
     'yt-dlp',
     ['-x', '--audio-format', 'm4a', '--no-playlist', '-o', path.join(tempDir, '%(title)s.%(ext)s'), url],
@@ -117,7 +117,7 @@ export const downloadWithYtDlpProgress = (
     progress = createPercentProgress(),
   } = {},
 ) => new Promise((resolve) => {
-  const tempDir = fs.mkdtempSync(path.join(tempParent, 'tsuzuri-fetch-'));
+  const tempDir = fs.mkdtempSync(path.join(tempParent, 'kiseki-fetch-'));
   let settled = false;
   const stderr = [];
   const finish = (result) => {

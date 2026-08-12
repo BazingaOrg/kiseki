@@ -12,7 +12,7 @@ import {createGalleryServer} from './web-server.mjs';
 import {createDoctorService} from './web-api/doctor.mjs';
 import {createTaskLeaseManager} from './task-lease.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-server-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-server-'));
 
 const listen = (server) =>
   new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(server.address().port)));
@@ -158,7 +158,7 @@ const makeJobManagerDeps = () => {
   return {
     leaseManager: {
       acquire: () => {
-        const taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-web-job-'));
+        const taskRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-job-'));
         return {id: `web-job-${++nextId}`, token: 'test-token', taskRoot};
       },
       markSpawnIntent: () => {},
@@ -207,13 +207,13 @@ test('asset recovery HTTP exposes only its opaque retry id and required flag', a
   const {server, token} = createTestGalleryServer(root);
   const port = await listen(server);
   try {
-    const cleared = await postJson(port, '/api/assets/recognized-lyrics/clear', {folder: root}, {'X-Tsuzuri-Token': token});
+    const cleared = await postJson(port, '/api/assets/recognized-lyrics/clear', {folder: root}, {'X-Kiseki-Token': token});
     assert.equal(cleared.status, 200);
-    const operation = path.join(root, '.tsuzuri-trash', cleared.body.undoId);
+    const operation = path.join(root, '.kiseki-trash', cleared.body.undoId);
     const bad = path.join(operation, 'files', 'output', 'metadata', 'timeline.json');
     fs.rmSync(bad);
     fs.mkdirSync(bad);
-    const undone = await postJson(port, '/api/assets/undo', {folder: root, undoId: cleared.body.undoId}, {'X-Tsuzuri-Token': token});
+    const undone = await postJson(port, '/api/assets/undo', {folder: root, undoId: cleared.body.undoId}, {'X-Kiseki-Token': token});
     assert.equal(undone.status, 409);
     assert.equal(undone.body.recoveryUndoId, cleared.body.undoId);
     assert.equal(undone.body.recoveryRequired, true);
@@ -238,7 +238,7 @@ test('错误 token 的 POST /api/jobs → 403', async () => {
   const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
-    const res = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': 'wrong'});
+    const res = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Kiseki-Token': 'wrong'});
     assert.equal(res.status, 403);
   } finally {
     server.close();
@@ -250,7 +250,7 @@ test('带正确 token 的合法请求 → 201 并带 id;folder 越界时(带正�
   const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
-    const ok = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
+    const ok = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Kiseki-Token': token});
     assert.equal(ok.status, 201);
     assert.ok(ok.body.id);
 
@@ -258,7 +258,7 @@ test('带正确 token 的合法请求 → 201 并带 id;folder 越界时(带正�
       port,
       '/api/jobs',
       {kind: 'render', folder: path.join(root, '..', '..')},
-      {'X-Tsuzuri-Token': token},
+      {'X-Kiseki-Token': token},
     );
     assert.equal(outside.status, 403);
   } finally {
@@ -271,9 +271,9 @@ test('并发第二个 POST /api/jobs → 409', async () => {
   const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
-    const first = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
+    const first = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Kiseki-Token': token});
     assert.equal(first.status, 201);
-    const second = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
+    const second = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Kiseki-Token': token});
     assert.equal(second.status, 409);
   } finally {
     server.close();
@@ -289,7 +289,7 @@ test('非法 options → 400 并带 field', async () => {
       port,
       '/api/jobs',
       {kind: 'render', folder: root, options: {format: 'bogus'}},
-      {'X-Tsuzuri-Token': token},
+      {'X-Kiseki-Token': token},
     );
     assert.equal(res.status, 400);
     assert.equal(res.body.field, 'format');
@@ -308,7 +308,7 @@ test('SSE:客户端断开后 unsubscribe 被调用,server 保持健康(job 仍 r
   const {server, token} = createTestGalleryServer(root, {spawnImpl});
   const port = await listen(server);
   try {
-    const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
+    const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Kiseki-Token': token});
     assert.equal(created.status, 201);
     const {id} = created.body;
 
@@ -374,7 +374,7 @@ test('创建任务后 GET /api/jobs/current → 返回该任务的 id/kind/folde
   const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
   const port = await listen(server);
   try {
-    const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Tsuzuri-Token': token});
+    const created = await postJson(port, '/api/jobs', {kind: 'render', folder: root}, {'X-Kiseki-Token': token});
     assert.equal(created.status, 201);
 
     const res = await new Promise((resolve, reject) => {
@@ -413,7 +413,7 @@ test('POST /api/jobs/current → 405(不在 isAllowedPostRoute 白名单,落入�
 
 const getJson = (port, pathname, token = null) =>
   new Promise((resolve, reject) => {
-    const headers = token === null ? {} : {'X-Tsuzuri-Token': token};
+    const headers = token === null ? {} : {'X-Kiseki-Token': token};
     const req = http.request({host: '127.0.0.1', port, path: pathname, method: 'GET', headers}, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -505,7 +505,7 @@ test('POST /api/fetch/lyrics:缺 token / 错 token → 403(在碰文件系统之
   try {
     const missing = await postJson(port, '/api/fetch/lyrics', {folder: root, id: 1});
     assert.equal(missing.status, 403);
-    const wrong = await postJson(port, '/api/fetch/lyrics', {folder: root, id: 1}, {'X-Tsuzuri-Token': 'wrong'});
+    const wrong = await postJson(port, '/api/fetch/lyrics', {folder: root, id: 1}, {'X-Kiseki-Token': 'wrong'});
     assert.equal(wrong.status, 403);
   } finally {
     server.close();
@@ -521,7 +521,7 @@ test('POST /api/fetch/lyrics:带正确 token 但 folder 越界 → 403', async (
       port,
       '/api/fetch/lyrics',
       {folder: path.join(root, '..', '..'), id: 1},
-      {'X-Tsuzuri-Token': token},
+      {'X-Kiseki-Token': token},
     );
     assert.equal(res.status, 403);
   } finally {
@@ -560,12 +560,12 @@ test('POST /api/jobs 接受 fetch-audio 与 lyrics 两个新 kind,非法字段�
       port,
       '/api/jobs',
       {kind: 'fetch-audio', folder: root, options: {id: '../etc/passwd', title: 'x'}},
-      {'X-Tsuzuri-Token': token},
+      {'X-Kiseki-Token': token},
     );
     assert.equal(bad.status, 400);
     assert.equal(bad.body.field, 'id');
 
-    const ok = await postJson(port, '/api/jobs', {kind: 'lyrics', folder: root}, {'X-Tsuzuri-Token': token});
+    const ok = await postJson(port, '/api/jobs', {kind: 'lyrics', folder: root}, {'X-Kiseki-Token': token});
     assert.equal(ok.status, 201);
   } finally {
     server.close();

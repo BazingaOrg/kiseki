@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {resolveMedia} from './media.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-media-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-media-'));
 
 test('serves a full file with correct content type and length', () => {
   const root = makeTempRoot();

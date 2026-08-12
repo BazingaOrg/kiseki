@@ -12,10 +12,10 @@ const FIXTURE = JSON.parse(
   fs.readFileSync(path.join(__dirname, '..', 'examples', 'config-cases.json'), 'utf8'),
 );
 
-const makeProjectDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-config-'));
+const makeProjectDir = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-config-'));
 
 const writeCase = (dir, testCase) => {
-  fs.writeFileSync(path.join(dir, 'tsuzuri.toml'), testCase.toml, 'utf8');
+  fs.writeFileSync(path.join(dir, 'kiseki.toml'), testCase.toml, 'utf8');
   for (const file of testCase.files ?? []) {
     fs.writeFileSync(path.join(dir, file.name), file.content, 'utf8');
   }
@@ -48,7 +48,7 @@ for (const testCase of FIXTURE.cases) {
   });
 }
 
-test('missing tsuzuri.toml yields all defaults and no explicit keys', () => {
+test('missing kiseki.toml yields all defaults and no explicit keys', () => {
   const dir = makeProjectDir();
   try {
     const {values, explicitKeys} = loadProjectConfig(dir);
@@ -62,7 +62,7 @@ test('missing tsuzuri.toml yields all defaults and no explicit keys', () => {
 test('explicitKeys reflects exactly the keys present in the file', () => {
   const dir = makeProjectDir();
   try {
-    fs.writeFileSync(path.join(dir, 'tsuzuri.toml'), 'fps = 30\n', 'utf8');
+    fs.writeFileSync(path.join(dir, 'kiseki.toml'), 'fps = 30\n', 'utf8');
     const {explicitKeys} = loadProjectConfig(dir);
     assert.deepEqual([...explicitKeys], ['fps']);
   } finally {

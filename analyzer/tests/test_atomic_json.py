@@ -22,16 +22,16 @@ def test_atomic_json_failure_keeps_existing_file_and_removes_partial(tmp_path: P
         atomic_json.write_json_atomic(output, {"state": "new"})
 
     assert json.loads(output.read_text(encoding="utf-8")) == {"state": "old"}
-    assert not list(output.parent.glob(".tsuzuri-partial-*"))
+    assert not list(output.parent.glob(".kiseki-partial-*"))
 
 
 def test_task_temp_is_unique_child_of_task_root_and_is_cleaned(tmp_path: Path, monkeypatch):
     task_root = tmp_path / "task"
     task_root.mkdir()
-    monkeypatch.setenv("TSUZURI_LEASE_TASK_ROOT", str(task_root))
+    monkeypatch.setenv("KISEKI_LEASE_TASK_ROOT", str(task_root))
     monkeypatch.setenv("TMPDIR", str(tmp_path / "ignored"))
 
-    with temporary_directory(prefix="tsuzuri-test-") as temporary:
+    with temporary_directory(prefix="kiseki-test-") as temporary:
         assert temporary.parent == task_root.resolve()
         assert temporary.is_dir()
 

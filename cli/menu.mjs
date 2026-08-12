@@ -1,6 +1,6 @@
 /**
- * tsuzuri 裸命令交互菜单:数字 + 回车,只在 TTY 且零参数时进入(入口判断在
- * tsuzuri.mjs).菜单只组装 argv 交回 parseArgs,与命令行走同一条代码路径;
+ * kiseki 裸命令交互菜单:数字 + 回车,只在 TTY 且零参数时进入(入口判断在
+ * kiseki.mjs).菜单只组装 argv 交回 parseArgs,与命令行走同一条代码路径;
  * 执行前回显等效命令,用一次菜单就能学会直达写法.
  */
 
@@ -28,7 +28,7 @@ export const isResidentCommand = (argv) => Array.isArray(argv) && argv[0] === 'w
 
 // 极简 ASCII(不用方框):规避全角字符在窄/等宽异常终端的对齐错位
 const BANNER = [
-  '  /\\_/\\   tsuzuri 綴',
+  '  /\\_/\\   kiseki 軌跡',
   ' ( ·ᴥ· )  把照片和一首歌缀成影像日记',
 ];
 const FAREWELL = [
@@ -177,7 +177,7 @@ export const runMenu = async (
     const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, dark, portrait, square, filter, template});
     term.detail(`等效命令: ${formatEquivalentCommand(argv)}`);
     if (!['4', '5', '6'].includes(item.key)) {
-      term.detail('进阶配置(分辨率/过渡/字幕/背景...)见素材夹 tsuzuri.toml,参考 docs/config.md');
+      term.detail('进阶配置(分辨率/过渡/字幕/背景...)见素材夹 kiseki.toml,参考 docs/config.md');
     }
     return argv;
   }, {input, output});

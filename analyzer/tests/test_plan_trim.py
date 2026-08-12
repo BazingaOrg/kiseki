@@ -30,20 +30,20 @@ def make_beats(duration: float = 60.0, downbeats: list[float] | None = None) -> 
 
 @pytest.mark.parametrize("value", ['"auto"', '"full"', "12", "12.5"])
 def test_trim_config_accepts_supported_values(tmp_path: Path, value: str):
-    (tmp_path / "tsuzuri.toml").write_text(f"trim = {value}\n", encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text(f"trim = {value}\n", encoding="utf-8")
     assert plan.load_config(tmp_path)["trim"] in {"auto", "full", 12, 12.5}
 
 
 @pytest.mark.parametrize("value", ['"never"', "0", "-1", "true", "[]"])
 def test_trim_config_rejects_invalid_values(tmp_path: Path, value: str):
-    (tmp_path / "tsuzuri.toml").write_text(f"trim = {value}\n", encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text(f"trim = {value}\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         plan.load_config(tmp_path)
 
 
 @pytest.mark.parametrize("value", ['"adaptive"', "1", "[]"])
 def test_pacing_config_rejects_invalid_values_with_clear_error(tmp_path: Path, value: str, capsys):
-    (tmp_path / "tsuzuri.toml").write_text(f"pacing = {value}\n", encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text(f"pacing = {value}\n", encoding="utf-8")
     with pytest.raises(SystemExit):
         plan.load_config(tmp_path)
     assert 'pacing 必须是 "dynamic" 或 "uniform"' in capsys.readouterr().err
@@ -140,7 +140,7 @@ def test_main_trim_override_wins_over_toml(tmp_path: Path):
     metadata = tmp_path / "output" / "metadata"
     metadata.mkdir(parents=True)
     (metadata / "beats.json").write_text(json.dumps(make_beats()), encoding="utf-8")
-    (tmp_path / "tsuzuri.toml").write_text('trim = "auto"\n', encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text('trim = "auto"\n', encoding="utf-8")
 
     assert plan.main([str(tmp_path), "--trim", "full"]) == 0
     timeline = json.loads((metadata / "timeline.json").read_text(encoding="utf-8"))
@@ -179,7 +179,7 @@ def test_main_rejects_invalid_trim_override(tmp_path: Path, value: str):
 def test_trim_clips_lyrics_beyond_the_cut(tmp_path: Path):
     """歌长图少裁剪时,截断点之后的歌词行被过滤,跨线行的 end 收敛到 duration。"""
     make_photos(tmp_path, n=2)
-    (tmp_path / "tsuzuri.toml").write_text('trim = "auto"\n', encoding="utf-8")
+    (tmp_path / "kiseki.toml").write_text('trim = "auto"\n', encoding="utf-8")
     beats = make_beats(duration=60.0)
     lyrics = [
         {"start": 0.0, "end": 3.0, "text": "line in range", "lang": "zh", "confidence": 0.9},

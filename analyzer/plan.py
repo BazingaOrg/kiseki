@@ -4,7 +4,7 @@
 - 照片顺序:EXIF 拍摄时间优先,无 EXIF 按文件名排序(打印一行告知)
 - 快闪模式:平均每张展示 < 2s → 吸附目标从重拍降级为每拍,min_gap 放宽到 0.8s
 - 字幕:lyrics.json 存在则并入,否则空数组(纯音乐)
-配置:文件夹内可选 tsuzuri.toml(photo_scale / min_gap 等),缺省即默认值。
+配置:文件夹内可选 kiseki.toml(photo_scale / min_gap 等),缺省即默认值。
 """
 
 from __future__ import annotations
@@ -201,46 +201,46 @@ def _parse_trim_arg(value: str) -> str | float:
 def load_config(folder: Path) -> dict:
     cfg = dict(DEFAULTS)
     explicit_branding: set[str] = set()
-    toml_path = folder / "tsuzuri.toml"
+    toml_path = folder / "kiseki.toml"
     if toml_path.is_file():
         text = toml_path.read_text(encoding="utf-8")
         literal_string = _literal_string_key(text)
         if literal_string:
             key, line_no = literal_string
             term.error(
-                f"tsuzuri.toml 第 {line_no} 行: {key}: 字符串只允许双引号字符串,请改用 \"...\""
+                f"kiseki.toml 第 {line_no} 行: {key}: 字符串只允许双引号字符串,请改用 \"...\""
             )
             raise SystemExit(1)
         numeric_underscore = _numeric_underscore_key(text)
         if numeric_underscore:
             key, line_no = numeric_underscore
             term.error(
-                f"tsuzuri.toml 第 {line_no} 行: {key}: 数字不允许下划线,请改用不带下划线的十进制"
+                f"kiseki.toml 第 {line_no} 行: {key}: 数字不允许下划线,请改用不带下划线的十进制"
             )
             raise SystemExit(1)
         try:
             user = tomllib.loads(text)
         except tomllib.TOMLDecodeError as exc:
-            term.error(f"tsuzuri.toml 语法错误: {exc}")
+            term.error(f"kiseki.toml 语法错误: {exc}")
             raise SystemExit(1) from exc
         non_decimal_key = _non_decimal_integer_key(text)
         if non_decimal_key:
             term.error(
-                f"tsuzuri.toml: {non_decimal_key} 不支持 0x/0o/0b 进制整数,请改用十进制"
+                f"kiseki.toml: {non_decimal_key} 不支持 0x/0o/0b 进制整数,请改用十进制"
             )
             raise SystemExit(1)
         deprecated = set(user) & DEPRECATED_KEYS
         if deprecated:
-            term.error(f"tsuzuri.toml 配置 {sorted(deprecated)} 已弃用且不再生效,请删除该行")
+            term.error(f"kiseki.toml 配置 {sorted(deprecated)} 已弃用且不再生效,请删除该行")
             raise SystemExit(1)
         unknown = set(user) - set(CONFIG_SCHEMA)
         if unknown:
-            term.error(f"tsuzuri.toml 中存在未知配置项: {sorted(unknown)}")
+            term.error(f"kiseki.toml 中存在未知配置项: {sorted(unknown)}")
             raise SystemExit(1)
         for key, value in user.items():
             expected, validator = CONFIG_SCHEMA[key]
             if not validator(value, folder):
-                term.error(f"tsuzuri.toml: {key} 必须是 {expected},收到 {value!r}")
+                term.error(f"kiseki.toml: {key} 必须是 {expected},收到 {value!r}")
                 raise SystemExit(1)
         cfg.update(user)
         explicit_branding = set(user) & {"outro_text", "signature", "intro"}
@@ -501,7 +501,7 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="tsuzuri plan: beats/lyrics -> timeline.json")
+    parser = argparse.ArgumentParser(description="kiseki plan: beats/lyrics -> timeline.json")
     parser.add_argument("folder", type=Path, help="素材文件夹(照片 + 音频)")
     parser.add_argument("--beats", type=Path, default=None, help="beats.json(默认 folder/output/metadata/beats.json)")
     parser.add_argument("--lyrics", type=Path, default=None, help="lyrics.json(默认 folder/output/metadata/lyrics.json,可选)")
@@ -546,10 +546,10 @@ def main(argv: list[str] | None = None) -> int:
         if material_matches:
             # 本来打算用最新算法刷新,但 beats.json 缺失(如被手动删除)——
             # 退回保留现有文件,而不是报错中断(它仍是对应当前素材的有效结果)
-            term.warn(f"找不到 beats.json: {beats_path},保留现有 timeline.json(正常流程由 tsuzuri <folder> 自动生成;单独调试可用 uv run tsuzuri-analyze)")
+            term.warn(f"找不到 beats.json: {beats_path},保留现有 timeline.json(正常流程由 kiseki <folder> 自动生成;单独调试可用 uv run kiseki-analyze)")
             _write_status(args.status_output, "preserved_missing_beats")
             return 0
-        term.error(f"找不到 beats.json: {beats_path}(正常流程由 tsuzuri <folder> 自动生成;单独调试可用 uv run tsuzuri-analyze)")
+        term.error(f"找不到 beats.json: {beats_path}(正常流程由 kiseki <folder> 自动生成;单独调试可用 uv run kiseki-analyze)")
         return 1
     beats = json.loads(beats_path.read_text(encoding="utf-8"))
 
@@ -562,7 +562,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.trim is not None:
         cfg["trim"] = args.trim
     if not cfg["subtitles"] and lyrics:
-        term.info("已按 tsuzuri.toml 关闭字幕轨")
+        term.info("已按 kiseki.toml 关闭字幕轨")
         lyrics = []
 
     # 置信度过滤在 plan 层做并明确告知,timeline 即所见即所得

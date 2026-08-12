@@ -60,7 +60,7 @@ const listOutputFiles = (outputDir, exts) => {
   if (!fs.existsSync(outputDir)) return [];
   try {
     return fs.readdirSync(outputDir, {withFileTypes: true})
-      .filter((entry) => entry.isFile() && !entry.name.startsWith('.tsuzuri-partial-') && exts.has(path.extname(entry.name).toLowerCase()))
+      .filter((entry) => entry.isFile() && !entry.name.startsWith('.kiseki-partial-') && exts.has(path.extname(entry.name).toLowerCase()))
       .map((entry) => path.join(outputDir, entry.name))
       .sort();
   } catch {
@@ -134,7 +134,7 @@ export const getProject = (root, requestedPath) => {
   try {
     filterConfig = readFilterConfig(safePath);
   } catch {
-    // tsuzuri.json 非法时不阻断画廊浏览,只是不带滤镜配置回去
+    // kiseki.json 非法时不阻断画廊浏览,只是不带滤镜配置回去
     filterConfig = null;
   }
 
@@ -170,7 +170,7 @@ export const getProject = (root, requestedPath) => {
     body: {
       path: safePath,
       name: path.basename(safePath),
-      // 沙箱根.`tsuzuri web <folder>` 会把根锁定成那个素材夹,此时 root === path,
+      // 沙箱根.`kiseki web <folder>` 会把根锁定成那个素材夹,此时 root === path,
       // 选择器里除了它自己什么都挑不到 —— 前端据此把"切换素材夹"改成说明,
       // 而不是留一个点了只能选回原地的按钮.
       root: path.resolve(root),

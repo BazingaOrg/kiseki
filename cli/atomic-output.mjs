@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-const partialPrefix = '.tsuzuri-partial-';
+const partialPrefix = '.kiseki-partial-';
 
 const regularFileOrMissing = (file) => {
   try {
@@ -16,7 +16,7 @@ const regularFileOrMissing = (file) => {
 };
 
 export const resolveAtomicTaskId = ({env = process.env, randomUUID = crypto.randomUUID} = {}) => {
-  const inherited = env.TSUZURI_LEASE_TASK_ID || env.TSUZURI_TASK_ID;
+  const inherited = env.KISEKI_LEASE_TASK_ID || env.KISEKI_TASK_ID;
   return String(inherited || randomUUID()).replace(/[^A-Za-z0-9_-]/g, '_');
 };
 
@@ -28,7 +28,7 @@ export const createPartialOutput = (finalPath, taskId = resolveAtomicTaskId()) =
 export const isAtomicPartialName = (name) => name.startsWith(partialPrefix);
 
 export const removePartialOutput = (partialPath) => {
-  if (!isAtomicPartialName(path.basename(partialPath))) throw new Error('不是 tsuzuri partial 输出');
+  if (!isAtomicPartialName(path.basename(partialPath))) throw new Error('不是 kiseki partial 输出');
   fs.rmSync(partialPath, {force: true});
 };
 
@@ -42,7 +42,7 @@ export const outputArtifactPaths = (finalPath, taskId = resolveAtomicTaskId()) =
   return {
     finalPath: resolved,
     partialPath: path.join(path.dirname(resolved), `${partialPrefix}${safeTaskId}-${name}${ext}`),
-    backupPath: path.join(path.dirname(resolved), `.tsuzuri-backup-${safeTaskId}-${name}${ext}`),
+    backupPath: path.join(path.dirname(resolved), `.kiseki-backup-${safeTaskId}-${name}${ext}`),
   };
 };
 

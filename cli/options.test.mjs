@@ -103,7 +103,7 @@ test('a leading `lyrics` token routes to the lyrics command', () => {
 
 test('lyrics without a folder is a usage error', () => {
   assert.throws(() => parseArgs(['lyrics']), CliError);
-  assert.throws(() => parseArgs(['lyrics']), /用法: tsuzuri lyrics <folder>/);
+  assert.throws(() => parseArgs(['lyrics']), /用法: kiseki lyrics <folder>/);
 });
 
 test('lyrics does not accept -o', () => {
@@ -116,7 +116,7 @@ test('a leading `fetch` token routes to the fetch command', () => {
 });
 
 test('fetch without a folder or with extra arguments is a usage error', () => {
-  assert.throws(() => parseArgs(['fetch']), /用法: tsuzuri fetch <folder>/);
+  assert.throws(() => parseArgs(['fetch']), /用法: kiseki fetch <folder>/);
   assert.throws(() => parseArgs(['fetch', 'a', 'b']), /未知参数: b/);
   assert.throws(() => parseArgs(['fetch', 'album', '--audio']), /未知参数: --audio/);
 });
@@ -201,7 +201,7 @@ test('still --scale must be integer 1–4', () => {
 });
 
 test('still without a target is a usage error', () => {
-  assert.throws(() => parseArgs(['still']), /tsuzuri still/);
+  assert.throws(() => parseArgs(['still']), /kiseki still/);
   assert.throws(() => parseArgs(['still']), /--dark/);
   assert.throws(() => parseArgs(['still']), /--skip-existing/);
 });
@@ -258,10 +258,10 @@ test('still rejects unknown filter id and lists available ids', () => {
 });
 
 test('missing folder in the default command reports usage listing all forms', () => {
-  assert.throws(() => parseArgs([]), /tsuzuri <folder> \[-o out\.mp4\]/);
-  assert.throws(() => parseArgs([]), /tsuzuri doctor/);
-  assert.throws(() => parseArgs([]), /tsuzuri lyrics <folder>/);
-  assert.throws(() => parseArgs([]), /tsuzuri still/);
+  assert.throws(() => parseArgs([]), /kiseki <folder> \[-o out\.mp4\]/);
+  assert.throws(() => parseArgs([]), /kiseki doctor/);
+  assert.throws(() => parseArgs([]), /kiseki lyrics <folder>/);
+  assert.throws(() => parseArgs([]), /kiseki still/);
 });
 
 test('web command accepts an optional folder argument', () => {

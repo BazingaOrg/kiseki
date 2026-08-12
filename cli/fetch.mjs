@@ -1,4 +1,4 @@
-/** `tsuzuri fetch`:用 yt-dlp 与 LRCLIB 补齐可选的音频和同步歌词。 */
+/** `kiseki fetch`:用 yt-dlp 与 LRCLIB 补齐可选的音频和同步歌词。 */
 
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
@@ -23,7 +23,7 @@ import {installAtomicOutputs} from './atomic-output.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent
-const LRCLIB_UA = 'tsuzuri (https://github.com/tsuzuri)';
+const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/tsuzuri)';
 // 歌词与音频时长差超过这个秒数,大概率是不同版本(live/剪辑),时间轴会错位
 export const DURATION_WARN_SECONDS = 3;
 export const LYRICS_SEARCH_LIMIT = 10;
@@ -119,7 +119,7 @@ export const planOffers = ({audios, lyrics}) => ({
 
 /**
  * 以 lease claim 派生的同目录 partial/backup 事务安装下载结果.
- * 不扫描或创建项目内 `.tsuzuri-fetch-*` 目录.
+ * 不扫描或创建项目内 `.kiseki-fetch-*` 目录.
  */
 const installFetchedFile = ({source = null, contents = null, folder, filename, existing = null, task = null}) => {
   const audioFolder = path.join(folder, AUDIO_DIR);
@@ -429,7 +429,7 @@ export const lyricsFlow = async (
         task,
       });
       term.success(`歌词已保存: ${installed}`);
-      term.detail(`可运行 node cli/tsuzuri.mjs lyrics ${folder} 预览完整对轴效果`);
+      term.detail(`可运行 node cli/kiseki.mjs lyrics ${folder} 预览完整对轴效果`);
       return true;
     }
   }
@@ -472,7 +472,7 @@ export const chooseSingleAudio = async (ask, folder, audios) => {
   return [keep];
 };
 
-/** `tsuzuri fetch <folder>`:显式备料入口,任何状态可进,覆盖需确认. */
+/** `kiseki fetch <folder>`:显式备料入口,任何状态可进,覆盖需确认. */
 export const runFetch = async (
   folderArg,
   {input = process.stdin, output = process.stdout, leaseManager = createTaskLeaseManager()} = {},
@@ -482,9 +482,9 @@ export const runFetch = async (
   }
   const candidateFolder = path.resolve(folderArg);
   const inheritedTask = [
-    'TSUZURI_LEASE_TASK_ID',
-    'TSUZURI_LEASE_TASK_TOKEN',
-    'TSUZURI_LEASE_TASK_ROOT',
+    'KISEKI_LEASE_TASK_ID',
+    'KISEKI_LEASE_TASK_TOKEN',
+    'KISEKI_LEASE_TASK_ROOT',
   ].some((key) => process.env[key] !== undefined)
     ? acquireCommandLease({kind: 'fetch', folder: candidateFolder, manager: leaseManager})
     : null;
@@ -571,9 +571,9 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
   // missing.
   const manager = existingTask?.manager ?? createTaskLeaseManager();
   const inherited = existingTask ? null : [
-    'TSUZURI_LEASE_TASK_ID',
-    'TSUZURI_LEASE_TASK_TOKEN',
-    'TSUZURI_LEASE_TASK_ROOT',
+    'KISEKI_LEASE_TASK_ID',
+    'KISEKI_LEASE_TASK_TOKEN',
+    'KISEKI_LEASE_TASK_ROOT',
   ].some((key) => process.env[key] !== undefined)
     ? manager.attachInheritedLease({
       expectedFolder: folder,
@@ -588,9 +588,9 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
       manager,
       inherited: true,
       env: {
-        TSUZURI_LEASE_TASK_ID: inherited.id,
-        TSUZURI_LEASE_TASK_TOKEN: inherited.token,
-        TSUZURI_LEASE_TASK_ROOT: inherited.taskRoot,
+        KISEKI_LEASE_TASK_ID: inherited.id,
+        KISEKI_LEASE_TASK_TOKEN: inherited.token,
+        KISEKI_LEASE_TASK_ROOT: inherited.taskRoot,
         TMPDIR: path.join(inherited.taskRoot, 'tmp'),
         TMP: path.join(inherited.taskRoot, 'tmp'),
         TEMP: path.join(inherited.taskRoot, 'tmp'),

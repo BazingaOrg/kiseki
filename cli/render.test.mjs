@@ -178,7 +178,7 @@ test('render concurrency supports explicit integer and percentage escape hatches
   assert.equal(resolveRenderSettings({parallelism: 10, envConcurrency: '50%'}).concurrency, 5);
   assert.equal(resolveRenderSettings({parallelism: 10, envConcurrency: '1%'}).concurrency, 1);
   for (const value of ['0', '0%', '101%', 'half']) {
-    assert.throws(() => resolveRenderSettings({envConcurrency: value}), /TSUZURI_CONCURRENCY/);
+    assert.throws(() => resolveRenderSettings({envConcurrency: value}), /KISEKI_CONCURRENCY/);
   }
   assert.throws(
     () => resolveRenderSettings({parallelism: 2, envConcurrency: '3'}),

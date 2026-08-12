@@ -7,7 +7,7 @@ import test from 'node:test';
 import {AssetMutationError, clearRecognizedLyrics, mutateAsset, undoAssetDelete} from './assets.mjs';
 import {ProjectBusyError} from '../task-lease.mjs';
 
-const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-assets-'));
+const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-assets-'));
 const leaseManager = () => ({acquire: () => ({}), release: () => true});
 const macOSVarAlias = (folder) => {
   const canonical = fs.realpathSync(folder);
@@ -32,7 +32,7 @@ test('delete permanently removes paired lyrics, derived metadata, and the tempor
     assert.equal(fs.existsSync(path.join(folder, 'song.mp3')), false);
     assert.equal(fs.existsSync(path.join(folder, 'song.lrc')), false);
     assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'analysis.json')), false);
-    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
@@ -52,7 +52,7 @@ test('lyrics can be renamed or deleted and only lyrics-dependent timeline is inv
     assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'lyrics.json')), true);
     mutateAsset({folder, assetId: 'lyrics:edited.lrc', action: 'delete', leaseManager: leaseManager()});
     assert.equal(fs.existsSync(path.join(folder, 'edited.lrc')), false);
-    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
@@ -62,14 +62,14 @@ test('rename updates per-photo config and permanently invalidates derived metada
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
-    fs.writeFileSync(path.join(folder, 'tsuzuri.json'), JSON.stringify({perPhoto: {'photo.jpg': {filter: 'mono'}}}));
+    fs.writeFileSync(path.join(folder, 'kiseki.json'), JSON.stringify({perPhoto: {'photo.jpg': {filter: 'mono'}}}));
     writeDerived(folder);
     mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
     assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), false);
     assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), true);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder, 'tsuzuri.json'), 'utf8')).perPhoto, {'renamed.jpg': {filter: 'mono'}});
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder, 'kiseki.json'), 'utf8')).perPhoto, {'renamed.jpg': {filter: 'mono'}});
     assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'timeline.json')), false);
-    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
@@ -85,7 +85,7 @@ test('audio rename permanently keeps its paired lyrics in sync', () => {
     assert.equal(fs.readFileSync(path.join(folder, 'renamed.mp3'), 'utf8'), 'audio');
     assert.equal(fs.readFileSync(path.join(folder, 'renamed.lrc'), 'utf8'), 'lyrics');
     assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'analysis.json')), false);
-    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
@@ -97,7 +97,7 @@ test('delete rolls back when the transaction lease cannot be released', () => {
     fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
     assert.throws(() => mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'delete', leaseManager: {acquire: () => ({}), release: () => false}}), /租约|lease/);
     assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
-    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
@@ -128,7 +128,7 @@ test('clear rolls back files and removes its operation when lease release fails'
     assert.throws(() => clearRecognizedLyrics({folder, leaseManager: {acquire: () => ({}), release: () => false}}), /lease/);
     assert.equal(fs.existsSync(path.join(metadata, 'lyrics.json')), true);
     assert.equal(fs.existsSync(path.join(metadata, 'timeline.json')), true);
-    assert.equal(fs.existsSync(path.join(folder, '.tsuzuri-trash')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
@@ -168,7 +168,7 @@ test('undo preflights every recovery entry before moving any file, including sym
     const metadata = path.join(folder, 'output', 'metadata');
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), JSON.stringify({segments: [{text: 'line', start: 0}]}));
     const {undoId} = clearRecognizedLyrics({folder, leaseManager: leaseManager()});
-    const operation = path.join(folder, '.tsuzuri-trash', undoId);
+    const operation = path.join(folder, '.kiseki-trash', undoId);
     const bad = path.join(operation, 'files', 'output', 'metadata', 'timeline.json');
     fs.rmSync(bad);
     fs.mkdirSync(bad);
@@ -189,7 +189,7 @@ test('undo rejects mixed entries and canonical project/trash parent drift before
       const metadata = path.join(folder, 'output', 'metadata');
       fs.writeFileSync(path.join(metadata, 'lyrics.json'), JSON.stringify({segments: [{text: 'line', start: 0}]}));
       const {undoId} = clearRecognizedLyrics({folder, leaseManager: leaseManager()});
-      const operation = path.join(folder, '.tsuzuri-trash', undoId);
+      const operation = path.join(folder, '.kiseki-trash', undoId);
       if (drift === 'mixed') fs.writeFileSync(path.join(metadata, 'lyrics.json'), 'new');
       if (drift === 'project-parent') {
         const outside = path.join(folder, 'outside');
@@ -218,7 +218,7 @@ test('retained lease reconciles a compensated mixed recovery on the next undo', 
     const metadata = path.join(folder, 'output', 'metadata');
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), JSON.stringify({segments: [{text: 'line', start: 0}]}));
     fs.renameSync = (from, to) => {
-      if (failRestore && String(from).includes('.tsuzuri-trash') && String(to).endsWith('lyrics.json')) throw new Error('restore fails');
+      if (failRestore && String(from).includes('.kiseki-trash') && String(to).endsWith('lyrics.json')) throw new Error('restore fails');
       return originalRename(from, to);
     };
     let undoId = '';
@@ -232,7 +232,7 @@ test('retained lease reconciles a compensated mixed recovery on the next undo', 
     );
     assert.equal(releases, 1, 'failed release remains held for recovery');
     failRestore = false;
-    const trashedLyrics = path.join(folder, '.tsuzuri-trash', undoId, 'files', 'output', 'metadata', 'lyrics.json');
+    const trashedLyrics = path.join(folder, '.kiseki-trash', undoId, 'files', 'output', 'metadata', 'lyrics.json');
     originalRename(trashedLyrics, path.join(metadata, 'lyrics.json'));
     const result = undoAssetDelete({folder, undoId, leaseManager: {acquire: () => { throw new Error('must not acquire'); }, release: () => false}});
     assert.equal(result.restored, 1);
@@ -253,7 +253,7 @@ test('retained recovery lease accepts the macOS /var alias for the same project'
     const metadata = path.join(folder, 'output', 'metadata');
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), JSON.stringify({segments: [{text: 'line', start: 0, end: 1}]}));
     fs.renameSync = (from, to) => {
-      if (failRestore && String(from).includes('.tsuzuri-trash') && String(to).endsWith('lyrics.json')) throw new Error('restore fails');
+      if (failRestore && String(from).includes('.kiseki-trash') && String(to).endsWith('lyrics.json')) throw new Error('restore fails');
       return originalRename(from, to);
     };
     let undoId = '';
@@ -262,7 +262,7 @@ test('retained recovery lease accepts the macOS /var alias for the same project'
       return Boolean(undoId);
     });
     failRestore = false;
-    const trashedLyrics = path.join(folder, '.tsuzuri-trash', undoId, 'files', 'output', 'metadata', 'lyrics.json');
+    const trashedLyrics = path.join(folder, '.kiseki-trash', undoId, 'files', 'output', 'metadata', 'lyrics.json');
     originalRename(trashedLyrics, path.join(metadata, 'lyrics.json'));
     assert.equal(undoAssetDelete({folder, undoId, leaseManager: {acquire: () => { throw new Error('must not acquire'); }, release: () => false}}).restored, 1);
     assert.equal(releases, 2);
@@ -279,7 +279,7 @@ test('unverified retained lease acquires fresh authority, while a busy fresh acq
     const metadata = path.join(folder, 'output', 'metadata');
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), JSON.stringify({segments: [{text: 'line', start: 0}]}));
     fs.renameSync = (from, to) => {
-      if (failRestore && String(from).includes('.tsuzuri-trash') && String(to).endsWith('lyrics.json')) throw new Error('restore fails');
+      if (failRestore && String(from).includes('.kiseki-trash') && String(to).endsWith('lyrics.json')) throw new Error('restore fails');
       return originalRename(from, to);
     };
     let undoId = '';

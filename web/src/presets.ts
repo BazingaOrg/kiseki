@@ -11,7 +11,7 @@ export interface RenderPreset {
   options: JobOptions;
 }
 
-const keyFor = (folder: string) => `tsuzuri-presets:${folder}`;
+const keyFor = (folder: string) => `kiseki-presets:${folder}`;
 
 export const loadPresets = (folder: string): RenderPreset[] => {
   if (typeof localStorage === 'undefined') return [];

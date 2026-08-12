@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import {cacheKey, createPruner, etagFor, matchesIfNoneMatch, normalizeWidth, pruneCache, resolveThumb, runFfmpeg, THUMB_CONCURRENCY} from './thumb.mjs';
 
-const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-thumb-'));
+const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-thumb-'));
 
 test('width snaps to a fixed ladder so the cache does not explode', () => {
   assert.equal(normalizeWidth('44'), 128);

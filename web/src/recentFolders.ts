@@ -1,4 +1,4 @@
-const RECENT_FOLDERS_KEY = 'tsuzuri:recent-folders';
+const RECENT_FOLDERS_KEY = 'kiseki:recent-folders';
 const MAX_RECENT_FOLDERS = 5;
 
 export interface RecentFolder {

@@ -307,7 +307,7 @@ export const Workbench = ({
         </nav>
         <div className="topbar-actions">
           {/*
-            启动时锁定了素材夹的话(tsuzuri web <folder>),沙箱根就是这个素材夹,
+            启动时锁定了素材夹的话(kiseki web <folder>),沙箱根就是这个素材夹,
             选择器里除了它自己什么都挑不到。那就不该摆一个点了只能选回原地的按钮 ——
             换成一个说明,并告诉用户换一种启动方式就能挑别的。
           */}
@@ -342,7 +342,7 @@ export const Workbench = ({
         {locked && (
           <p className="locked-note">
             启动时锁定了这个素材夹，页面里换不了。想挑别的，改用不带参数的启动方式：
-            <CommandHint command="tsuzuri web" />
+            <CommandHint command="kiseki web" />
           </p>
         )}
         {!locked && jobBusy && (

@@ -123,7 +123,7 @@ export const deriveCapabilities = (
       ambiguousLyrics,
       hasLyricLines
         ? null
-        : {reason: '还没有歌词。可以放一份 .lrc，也可以让 tsuzuri 本地识别。', remedy: MATERIALS},
+        : {reason: '还没有歌词。可以放一份 .lrc，也可以让 kiseki 本地识别。', remedy: MATERIALS},
     ]),
 
     playVideo: make([

@@ -104,14 +104,14 @@ test('banner and farewell degrade to plain ASCII art without a TTY', () => {
   const output = {write: (chunk) => { text += chunk; }};
   writeBanner(output);
   writeFarewell(output);
-  assert.match(text, /tsuzuri 綴/);
+  assert.match(text, /kiseki 軌跡/);
   assert.match(text, /把照片和一首歌缀成影像日记/);
   assert.match(text, /晚安.素材都在原位置,随时再来./);
   assert.doesNotMatch(text, /\x1b\[/);
 });
 
 test('runMenu repeats missing and wrong-type folder paths', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-menu-test-'));
   const file = path.join(root, 'photo.jpg');
   fs.writeFileSync(file, 'photo');
   try {
@@ -132,7 +132,7 @@ test('path prompt returns to the menu on empty enter', async () => {
 });
 
 test('still accepts a file path and defaults presentation choices to off', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-menu-test-'));
   const file = path.join(root, 'photo.jpg');
   fs.writeFileSync(file, 'photo');
   try {
@@ -152,7 +152,7 @@ test('still accepts a file path and defaults presentation choices to off', async
 });
 
 test('render (choice 1) asks presentation questions and defaults to the project canvas', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-menu-test-'));
   try {
     const {result, confirmCalls} = await interact({
       lines: ['1', root],
@@ -181,7 +181,7 @@ test('buildArgvFromChoices appends --filter only when a filter is chosen', () =>
 });
 
 test('runMenu asks for a filter after the format pick and defaults to none on enter', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-menu-test-'));
   try {
     const {result} = await interact({
       lines: ['1', root],
@@ -195,7 +195,7 @@ test('runMenu asks for a filter after the format pick and defaults to none on en
 });
 
 test('runMenu wires a chosen filter id into the equivalent argv', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-menu-test-'));
   try {
     const filterIndex = FILTER_IDS.indexOf('mono') + 1; // 0 号是「无滤镜」
     const {result} = await interact({
@@ -210,7 +210,7 @@ test('runMenu wires a chosen filter id into the equivalent argv', async () => {
 });
 
 test('runMenu wires a chosen template into the equivalent argv and defaults to none', async () => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'tsuzuri-menu-test-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-menu-test-'));
   try {
     const cinemaIndex = TEMPLATES.findIndex((t) => t.id === 'slow-cinema') + 1; // 0 号是「不应用模板」
     const {result} = await interact({

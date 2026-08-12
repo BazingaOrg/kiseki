@@ -1,7 +1,7 @@
 [project]
-name = "tsuzuri-analyzer"
+name = "kiseki-analyzer"
 version = "0.1.0"
-description = "tsuzuri analyze + plan stages: beats/lyrics extraction and timeline planning"
+description = "kiseki analyze + plan stages: beats/lyrics extraction and timeline planning"
 # numba(librosa 依赖)尚不支持 3.13+,pin 3.11–3.12
 requires-python = ">=3.11,<3.13"
 dependencies = [
@@ -19,9 +19,9 @@ dependencies = [
 separation = ["demucs>=4"]
 
 [project.scripts]
-tsuzuri-analyze = "analyze:main"
-tsuzuri-analysis-fingerprint = "analysis_fingerprint:main"
-tsuzuri-plan = "plan:main"
+kiseki-analyze = "analyze:main"
+kiseki-analysis-fingerprint = "analysis_fingerprint:main"
+kiseki-plan = "plan:main"
 
 [build-system]
 requires = ["hatchling"]

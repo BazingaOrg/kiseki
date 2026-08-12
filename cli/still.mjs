@@ -1,5 +1,5 @@
 /**
- * tsuzuri still — 纯 Node 管道:扫描照片 → 可选 EXIF → renderStill PNG.
+ * kiseki still — 纯 Node 管道:扫描照片 → 可选 EXIF → renderStill PNG.
  * 不碰 analyzer / uv.
  */
 
@@ -370,8 +370,8 @@ if (isMain) {
     const parsed = parseArgs(['still', ...process.argv.slice(2)]);
     process.exitCode = await runStill(parsed);
   } catch (error) {
-    term.error(`tsuzuri still: ${error instanceof Error ? error.message : String(error)}`);
-    if ((process.env.TSUZURI_DEBUG === '1' || process.env.DEBUG === '1') && error instanceof Error && error.stack) term.detail(error.stack);
+    term.error(`kiseki still: ${error instanceof Error ? error.message : String(error)}`);
+    if ((process.env.KISEKI_DEBUG === '1' || process.env.DEBUG === '1') && error instanceof Error && error.stack) term.detail(error.stack);
     process.exitCode = 1;
   }
 }

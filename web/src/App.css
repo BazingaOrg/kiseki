@@ -143,7 +143,7 @@
   text-indent: 0.3em;
 }
 
-.logo-kana {
+.logo-kanji {
   font-family: var(--font-serif);
   font-size: 0.85rem;
   letter-spacing: 0.3em;
@@ -1835,7 +1835,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 }
 
 /* Lightbox 只通过实例 class 变更 YARL,避免影响未来的其他查看器。 */
-.tsuzuri-lightbox {
+.kiseki-lightbox {
   --yarl__color_backdrop: #090806;
   --yarl__color_button: #fffdf8;
   --yarl__color_button_active: #fffdf8;
@@ -1845,7 +1845,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   --yarl__navigation_button_padding: 8px;
 }
 
-.tsuzuri-lightbox .yarl__toolbar {
+.kiseki-lightbox .yarl__toolbar {
   top: max(20px, env(safe-area-inset-top));
   right: max(24px, env(safe-area-inset-right));
   align-items: center;
@@ -1858,8 +1858,8 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   backdrop-filter: blur(14px);
 }
 
-.tsuzuri-lightbox .yarl__button,
-.tsuzuri-lightbox-tool {
+.kiseki-lightbox .yarl__button,
+.kiseki-lightbox-tool {
   width: 32px;
   height: 32px;
   padding: 0;
@@ -1873,50 +1873,50 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   transition: background-color 160ms ease, color 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
 }
 
-.tsuzuri-lightbox-tool svg,
-.tsuzuri-lightbox .yarl__button svg {
+.kiseki-lightbox-tool svg,
+.kiseki-lightbox .yarl__button svg {
   width: 16px;
   height: 16px;
   stroke-width: 1.75;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .tsuzuri-lightbox .yarl__button:hover,
-  .tsuzuri-lightbox-tool:hover:not(:disabled) {
+  .kiseki-lightbox .yarl__button:hover,
+  .kiseki-lightbox-tool:hover:not(:disabled) {
     background: rgba(255, 253, 248, 0.13);
   }
 }
 
-.tsuzuri-lightbox .yarl__button:active,
-.tsuzuri-lightbox-tool:active:not(:disabled) {
+.kiseki-lightbox .yarl__button:active,
+.kiseki-lightbox-tool:active:not(:disabled) {
   transform: scale(0.96);
 }
 
-.tsuzuri-lightbox .yarl__button:focus-visible,
-.tsuzuri-lightbox-tool:focus-visible {
+.kiseki-lightbox .yarl__button:focus-visible,
+.kiseki-lightbox-tool:focus-visible {
   outline: 2px solid rgba(255, 253, 248, 0.94);
   outline-offset: 2px;
 }
 
-.tsuzuri-lightbox-tool {
+.kiseki-lightbox-tool {
   cursor: pointer;
   color: #fffdf8;
   -webkit-tap-highlight-color: transparent;
 }
 
-.tsuzuri-lightbox-tool:disabled {
+.kiseki-lightbox-tool:disabled {
   cursor: default;
   color: rgba(255, 253, 248, 0.34);
 }
 
-.tsuzuri-lightbox-zoom-controls {
+.kiseki-lightbox-zoom-controls {
   display: inline-flex;
   align-items: center;
   gap: 0.125rem;
 }
 
-.tsuzuri-lightbox .yarl__navigation_prev,
-.tsuzuri-lightbox .yarl__navigation_next {
+.kiseki-lightbox .yarl__navigation_prev,
+.kiseki-lightbox .yarl__navigation_next {
   width: 38px;
   height: 38px;
   padding: 0;
@@ -1927,7 +1927,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   backdrop-filter: blur(12px);
 }
 
-.tsuzuri-lightbox .yarl__slide_image {
+.kiseki-lightbox .yarl__slide_image {
   width: auto;
   height: auto;
   max-width: min(68vw, 1120px) !important;
@@ -1935,7 +1935,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   object-fit: contain;
 }
 
-.tsuzuri-lightbox .yarl__counter {
+.kiseki-lightbox .yarl__counter {
   top: 20px;
   left: 24px;
   margin: 0;
@@ -1953,7 +1953,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 }
 
 /* EXIF 是图片外的低干扰信息条,不再用渐变压住照片。 */
-.tsuzuri-lightbox .exif-tag {
+.kiseki-lightbox .exif-tag {
   position: absolute;
   right: max(1rem, env(safe-area-inset-right));
   bottom: max(1rem, env(safe-area-inset-bottom));
@@ -1980,38 +1980,38 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 }
 
 @media (pointer: coarse) {
-  .tsuzuri-lightbox .yarl__navigation_prev,
-  .tsuzuri-lightbox .yarl__navigation_next {
+  .kiseki-lightbox .yarl__navigation_prev,
+  .kiseki-lightbox .yarl__navigation_next {
     display: none;
   }
 }
 
 @media (max-width: 700px) {
-  .tsuzuri-lightbox .yarl__toolbar {
+  .kiseki-lightbox .yarl__toolbar {
     top: max(12px, env(safe-area-inset-top));
     right: max(16px, env(safe-area-inset-right));
   }
 
-  .tsuzuri-lightbox .yarl__slide_image {
+  .kiseki-lightbox .yarl__slide_image {
     max-width: calc(100vw - 48px) !important;
     max-height: 72vh !important;
   }
 
-  .tsuzuri-lightbox .yarl__counter {
+  .kiseki-lightbox .yarl__counter {
     top: 12px;
     left: 16px;
   }
 
-  .tsuzuri-lightbox .exif-tag {
+  .kiseki-lightbox .exif-tag {
     bottom: max(0.75rem, env(safe-area-inset-bottom));
     font-size: 0.72rem;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .tsuzuri-lightbox .yarl__slide_image,
-  .tsuzuri-lightbox .yarl__button,
-  .tsuzuri-lightbox-tool {
+  .kiseki-lightbox .yarl__slide_image,
+  .kiseki-lightbox .yarl__button,
+  .kiseki-lightbox-tool {
     transition: opacity 120ms ease !important;
     transform: none !important;
   }
@@ -2188,7 +2188,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
     max-height: 48vh;
   }
 
-  .logo-word {
+  .logo:not(.logo-hero) .logo-word {
     display: none;
   }
 

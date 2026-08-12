@@ -62,7 +62,7 @@ const App = () => {
         <Logo size={56} variant="hero" />
         <p className="welcome-lead">
           先挑一个素材夹。<br />
-          里面放着照片、一首歌，剩下的交给 tsuzuri。
+          里面放着照片、一首歌，剩下的交给 kiseki。
         </p>
         <FolderPicker onProjectLoaded={setProject} />
       </main>
