@@ -1,11 +1,3 @@
-/**
- * 照片墙。相对旧版的三处改动:
- * 1. 素材照片(project.photos)也展示 —— 旧版只显示 output/stills,原始素材从未被消费,
- *    等于"看照片"这个页签看不到用户自己放进去的照片。
- * 2. 大图查看换成 yet-another-react-lightbox。焦点陷阱、键盘、触摸手势、缩放、
- *    ARIA 自己写必然做不全,这是明确的"用库不造轮子"。
- * 3. 大图底部挂 EXIF 展签,按需请求 /api/exif —— 与成片上印的是同一份格式化结果。
- */
 import {useEffect, useRef, useState} from 'react';
 import {ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn, ZoomOut} from 'lucide-react';
 import Lightbox from 'yet-another-react-lightbox';
@@ -17,10 +9,7 @@ import 'yet-another-react-lightbox/plugins/counter.css';
 import {basename, mediaUrl, thumbUrl} from './media';
 import type {AssetItem, ExifResponse, ProjectResponse} from './types';
 
-// 把原始路径挂在 slide 上,让 render.slideFooter 从回调参数里取 —— 不要读闭包里的
-// 当前 index:lightbox 会同时挂载前后各若干张幻灯片,它们都会拿到同一个 index,
-// 于是每翻一页就发出 3~5 个重复的 /api/exif 请求,而且相邻页挂着当前页的 EXIF;
-// 加上 view 回调是在切换动画结束后才触发,翻页途中还会闪一下上一张的参数。
+// Lightbox 会同时挂载相邻幻灯片，路径必须来自当前 slide，不能读共享 index。
 declare module 'yet-another-react-lightbox' {
   interface GenericSlide {
     photoPath?: string;

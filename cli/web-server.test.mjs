@@ -411,8 +411,6 @@ test('POST /api/jobs/current → 405(不在 isAllowedPostRoute 白名单,落入�
   }
 });
 
-// ---- /api/fetch/* (批 C) ---------------------------------------------------
-
 const getJson = (port, pathname, token = null) =>
   new Promise((resolve, reject) => {
     const headers = token === null ? {} : {'X-Tsuzuri-Token': token};

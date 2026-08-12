@@ -13,9 +13,7 @@ const TRIM_VALUES = ['auto', 'full'];
 
 /**
  * 把 {kind, folder, options} 组装成 tsuzuri CLI 的 argv 数组.
- * `folder` 在这里已经是调用方(HTTP 层)用 resolveSafePath 校验过的绝对路径,
- * 本函数不做任何 fs 校验,只做字段合法性校验与 argv 拼接——这是唯一被允许
- * 生成 argv 的地方,前端传来的原始 argv/命令字符串一律不被接受(契约二安全前提 1).
+ * 本函数不做 fs 校验，只接受结构化白名单字段，不接受原始 argv 或命令字符串。
  * @param {{kind: 'render'|'still', folder: string, options?: object}} params
  * @returns {string[]}
  */
@@ -113,7 +111,7 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
  *
  * 走环境变量而不是新增一个 CLI flag:这个旋钮本来就存在、已文档化,渲染那侧
  * (`resolveRenderSettings`)读的就是它,加个 flag 等于让同一件事有两个入口.
- * 值仍然是从白名单枚举映射出来的常量,前端碰不到任意字符串(契约二安全前提 1).
+ * 值从白名单枚举映射为常量，前端不能注入任意字符串。
  *
  * `balanced` 不设并发值,直接用 CLI 的默认(一半核心)——少一个可能跑偏的来源.
  * 速度档位本身另行透传给渲染前诊断,不参与并发计算.

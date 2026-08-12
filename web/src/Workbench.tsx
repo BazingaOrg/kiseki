@@ -1,8 +1,3 @@
-/**
- * 选定素材夹之后的工作台:顶栏 + 素材 / 制作 / 成果 三段。
- *
- * 三段按「素材 → 制作 → 成果」受控前进；历史成片始终可以回看。
- */
 import {useCallback, useEffect, useRef, useState} from 'react';
 import {FolderOpen} from 'lucide-react';
 
@@ -79,11 +74,7 @@ export const Workbench = ({
     if (currentLocked) setSection(makeUnlocked ? 'make' : 'materials');
   }, [section, makeUnlocked, resultsUnlocked]);
 
-  // 任务状态挂在这一层而不是 Make 里:切区段会卸载 Make,那样 EventSource 被关掉、
-  // jobId 丢失,切回来界面就退回"可以开工",点了拿 409 且再没有入口取消。
-  // 放这里之后,渲染途中可以自由去看素材或成果,回来进度还在。
-  // 把 useJob 上移到 App 能让任务跨素材夹存活,但那恰好是本批次要禁止的语义
-  // (任务期间禁止切素材夹),且会让 onProjectRefresh 刷到错的项目 —— 不要上移。
+  // 任务状态必须覆盖可切换区段，但不能跨素材夹实例。
   const probeRef = useRef<() => void>(() => {});
   const probeGenerationRef = useRef(0);
   const probeAbortRef = useRef<AbortController | null>(null);
@@ -95,10 +86,8 @@ export const Workbench = ({
   const [activeKind, setActiveKind] = useState<JobKind | null>(null);
   const [jobLock, setJobLock] = useState<JobLock>('checking');
   const jobBusy = jobLock !== 'free' || job.busy;
-  // 服务端重启导致运行中任务丢失时的明确告知(与"素材夹状态没刷新"共用提示条样式)
   const [restartNotice, setRestartNotice] = useState<string | null>(null);
 
-  // 落盘记录里的 kind 来自旧版本页面时可能不认识,未知类型原样显示兜底
   const jobKindLabel = (kind: string) =>
     ({render: '渲染', still: '导出静态图', 'fetch-audio': '获取音频', lyrics: '识别歌词'})[kind] ?? kind;
 
@@ -134,11 +123,7 @@ export const Workbench = ({
         }
         const runningJob = payload.job;
         if (runningJob === null) {
-          // 这里只确认服务端锁已释放。不要抹掉终态面板，用户仍需看到这次
-          // done/failed/cancelled 的事件与错误，并主动决定是否重新调整参数。
-          // 本地留有"有任务在跑"的记录而服务端已无任务:查这个 id 是否还被
-          // 服务端认识 —— 404 说明服务重启过、任务已丢,明确告知;正常结束
-          // 会在 end 事件里清掉记录,这里不会有残留。
+          // 释放写锁但保留终态面板；残留任务记录仅用于识别服务重启。
           const lastJob = readLastJobRecord();
           if (lastJob) {
             clearLastJobRecord();
@@ -173,16 +158,7 @@ export const Workbench = ({
 
   probeRef.current = probeCurrentJob;
 
-  // 页面刷新/关标签页会丢掉 job 状态和 EventSource,但服务端任务(runningJobId)
-  // 可能还在跑——不探测的话,用户新起任务一律 409,取消按钮又只在本地
-  // status === 'running' 时才渲染,彻底没有入口停掉它。mount 时探测一次,
-  // 如果那个任务确实属于当前素材夹,就重新接管它的 SSE。
-  //
-  // 依赖数组用 []:本组件本来就是"素材夹已锁定/每个素材夹一个 Workbench 实例"
-  // (见上面「任务状态挂在这一层」的注释)——切素材夹在 App 里是先把 project 置
-  // null 回到欢迎页,再重新挑选,Workbench 会整个卸载重挂,不存在"同一个
-  // Workbench 实例、project.path 变了"的情况,所以只在真正首次挂载时探测一次
-  // 就够了,不需要跟着 project.path 重跑。
+  // 挂载时重新接管属于当前素材夹的服务端任务。
   useEffect(() => {
     probeCurrentJob();
     // 不能只清理这一次 probe：SSE 断开或任务终态可能在之后发起更新的 probe，
@@ -197,7 +173,6 @@ export const Workbench = ({
   const [assetBusy, setAssetBusy] = useState(false);
   const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean; confirmLabel?: string} | null>(null);
 
-  // folder 在这里补上:起任务的组件只说要做什么,不必自己传素材夹路径
   const handleStart = async (request: JobRequest): Promise<boolean> => {
     if (jobBusy) return false;
     // 请求在途也必须锁住，直到服务端明确接受或 current 明确为空。
@@ -213,7 +188,7 @@ export const Workbench = ({
         return true;
       }
     } catch {
-      // start 当前会把网络错误转成 false；保留这个分支以免未来实现变化时误解锁。
+      // 保持 fail-closed，由 current probe 决定是否释放写锁。
     }
     // 失败或未被接受时仍然 fail-closed，只有最新一次 current probe 明确为 null
     // 才会解锁；不要清空 pending kind 或旧终态展示。

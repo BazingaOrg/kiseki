@@ -1,10 +1,4 @@
-/**
- * GET /api/project?path=<abs 素材夹路径> —— 汇总一个素材夹的清单:照片/音频/
- * 歌词(复用 project.mjs 的 scanFolderLoose,宽松扫描不因缺件报错)、逐张滤镜
- * 配置(readFilterConfig)、以及 output/ 下已导出的视频与 still 照片列表.
- * 不做 EXIF 批量提取(耗时):批量解析几十张会让"选择文件夹"这一步明显变慢,
- * 而 EXIF 只在点开大图时才看,交给 /api/exif 按需请求单张.
- */
+/** 汇总素材夹清单与产物；EXIF 保持按需读取，避免拖慢目录切换。 */
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -19,7 +13,6 @@ const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const assetItem = ({kind, origin, folder, relativePath, manageable = true, actionHint = null}) => {
   const assetPath = path.join(folder, relativePath);
   return {
-    // id 由 kind + 当前项目内路径组成;改名后会变化.写操作仍必须重新扫描验证.
     id: `${kind}:${relativePath}`,
     kind,
     origin,
@@ -122,13 +115,11 @@ export const getProject = (root, requestedPath) => {
         .map((segment) => ({
           time: segment.start,
           text: segment.text.trim(),
-          // 低于渲染阈值的段落成片里不会显示字幕,前端据此标注
           confidence: typeof segment.confidence === 'number' ? segment.confidence : null,
         }))
         // parseLrc 自己会排序,识别产物则原样保留 whisper 的输出顺序;
         // 前端找当前行是"遇到第一个更晚的就停",乱序会让高亮卡住
         .sort((a, b) => a.time - b.time);
-      // 过滤后可能一条不剩,那就等于没有歌词,不能挂上 'recognized' 的来源标注
       if (normalized.length > 0) {
         lyricsEntries = normalized;
         lyricsSource = 'recognized';
@@ -166,8 +157,6 @@ export const getProject = (root, requestedPath) => {
     relativePaths: exportedVideos.map((file) => path.relative(safePath, file)),
   });
 
-  // 中间产物的存在性:前端据此判断"歌词已识别过""时间线已规划过",
-  // 从而知道再次渲染会走缓存
   const existsFile = (target) => {
     try {
       return fs.statSync(target).isFile();

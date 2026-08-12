@@ -1,11 +1,4 @@
-/**
- * tsuzuri fetch <folder> — 在线备料:用用户自装的 yt-dlp 下载音频,用 LRCLIB
- * 公开 API 搜索同步歌词.两者都是可选步骤:yt-dlp 用时才检测(不内置下载器),
- * 歌词搜不到就照旧走本地识别.fetch 获取的音频与同名 .lrc 归档到 audio/.
- *
- * 交互约定与 menu.mjs 一致:readline 问答、回车走安全默认值、q 退出、Ctrl+C 中断.
- * 决策逻辑抽成纯函数(可测),交互层只负责问答与 spawn.
- */
+/** `tsuzuri fetch`:用 yt-dlp 与 LRCLIB 补齐可选的音频和同步歌词。 */
 
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
@@ -34,10 +27,6 @@ const LRCLIB_UA = 'tsuzuri (https://github.com/tsuzuri)';
 // 歌词与音频时长差超过这个秒数,大概率是不同版本(live/剪辑),时间轴会错位
 export const DURATION_WARN_SECONDS = 3;
 export const LYRICS_SEARCH_LIMIT = 10;
-
-// ---------------------------------------------------------------------------
-// 纯逻辑(fetch.test.mjs 覆盖)
-// ---------------------------------------------------------------------------
 
 export const formatDuration = (totalSeconds) => {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '?:??';
@@ -128,10 +117,6 @@ export const planOffers = ({audios, lyrics}) => ({
   offerLyrics: audios.length === 1 && lyrics.length === 0,
 });
 
-// ---------------------------------------------------------------------------
-// 外部进程:ffprobe
-// ---------------------------------------------------------------------------
-
 /**
  * 以 lease claim 派生的同目录 partial/backup 事务安装下载结果.
  * 不扫描或创建项目内 `.tsuzuri-fetch-*` 目录.
@@ -193,10 +178,6 @@ export const probeAudio = (file, spawn = spawnSync) => {
     return {};
   }
 };
-
-// ---------------------------------------------------------------------------
-// LRCLIB
-// ---------------------------------------------------------------------------
 
 // 用 curl 而非 Node fetch:curl 跟随系统代理环境变量(http_proxy 等),
 // 且与本项目 spawnSync 外部命令的风格一致;macOS 与 Windows 10+ 均自带.

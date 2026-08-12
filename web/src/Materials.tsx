@@ -1,12 +1,3 @@
-/**
- * 「素材」区段:这个文件夹里有什么、还缺什么。
- *
- * 关键设计:缺件时那张卡不是灰掉的空壳,而是变成一张「行动卡」—— 说清缺什么、
- * 怎么补,并且就地补。fetch 因此不再是主菜单第 5 项,而是长在它真正该出现的地方。
- *
- * 补齐动作分两类:搜索(百毫秒)当场做,下载与识别(分钟级)交给任务系统 ——
- * 判据是"会不会让用户盯着转圈"。任务状态由 Workbench 持有,见下面 MaterialsProps 的注记。
- */
 import {useRef, useState} from 'react';
 import type {FormEvent} from 'react';
 import {CircleHelp, Search} from 'lucide-react';
@@ -25,7 +16,6 @@ import type {useJob} from './useJob';
 import {formatTime} from './useAudioPlayer';
 import {useTabs} from './useTabs';
 
-/** 素材段能起的两种任务。渲染/导出属于「制作」,不在这里。 */
 type MaterialJob = Extract<JobRequest, {kind: 'fetch-audio'} | {kind: 'lyrics'}>;
 
 /** 与 cli/fetch.mjs 的 DURATION_WARN_SECONDS 一致:差得比这多就可能整段字幕错位。 */
@@ -42,7 +32,6 @@ const sanitizeFilePart = (value: string): string => value
   .replace(/[. ]+$/g, '')
   .trim();
 
-/** 搜索失败的展示:yt-dlp 没装时后端把安装提示放在 fix 里,原样给出去,可复制。 */
 const Failure = ({message, fix}: {message: string; fix: string | null}) => (
   <div className="fetch-failure">
     <p className="hint hint-error">{message}</p>
@@ -61,9 +50,6 @@ interface FetchProps {
   onReset: () => void;
 }
 
-/**
- * 缺音频时的在线搜索。关键词要用户自己给 —— 空素材夹里没有任何东西能推出查询词。
- */
 const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps) => {
   const [query, setQuery] = useState('');
   const [searching, setSearching] = useState(false);
@@ -357,11 +343,6 @@ interface LyricsFetchProps extends FetchProps {
   locked: boolean;
 }
 
-/**
- * 缺歌词时的两条路:在线找现成的,或本地识别。并列摆着,各自按自己的能力门禁。
- * 两条路都缺音频时会各自说一遍原因 —— 重复,但每一行解释的是它自己那一条路,
- * 比合并成一句"先补音频"更贴事实。
- */
 const LyricsFetch = ({
   project,
   capabilities,
@@ -435,10 +416,7 @@ interface MaterialsProps {
   project: ProjectResponse;
   capabilities: Capabilities;
   onRemedy: (target: Remedy['target']) => void;
-  /**
-   * 任务状态由 Workbench 持有,不在这里 useJob —— 切区段会卸载 Materials,
-   * hook 的 cleanup 会关掉 EventSource 并丢掉 jobId,回来就再没有入口能取消。
-   */
+  /** 由 Workbench 持有，以便切换区段时保留任务与取消入口。 */
   job: ReturnType<typeof useJob>;
   activeKind: MaterialJob['kind'] | null;
   onStart: (request: MaterialJob) => Promise<boolean>;
@@ -561,8 +539,6 @@ export const Materials = ({
           {activeKind === 'lyrics' && job.status !== 'idle' ? (
             <JobPanel verb="识别" status={job.status} events={job.events} error={job.error} onCancel={job.cancel} onReset={onReset} resetLabel="收起" />
           ) : lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
-            /* 原先只列前 3 行,刚下完歌词的人看到的就是"显示不全"。这里是素材段,
-               确认自己拿到的是哪一份歌词正是它的用途,所以列全,超高了自己滚。 */
             <ol className="material-lyric-preview">
               {project.lyrics!.map((line, index) => (
                 <li key={`${line.time}-${index}`}>{line.text || '⋯'}</li>

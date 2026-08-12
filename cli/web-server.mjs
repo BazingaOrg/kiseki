@@ -1,10 +1,4 @@
-/**
- * 本地网页工作台 server:Node 原生 http,不引入 express.
- * 五个 API(dirs / project / doctor / exif / thumb)+ 媒体透传(media)+ 静态前端
- * (`web/dist`,未构建时回退占位页).除 /api/thumb 会往系统临时目录写缩略图缓存外,
- * 全部只读,不碰用户的素材夹.
- * `root` 是路径沙箱的允许根目录,由 cli/web.mjs 决定(锁定素材夹或用户主目录).
- */
+/** 本地工作台 HTTP 服务。所有文件与任务路由都受 root 沙箱约束。 */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
@@ -61,7 +55,6 @@ const sendMedia = (res, result, createReadStream = fs.createReadStream) => {
     return;
   }
   res.writeHead(result.status, result.headers);
-  // 304 没有消息体,也不应打开文件描述符(缩略图条件请求的关键契约).
   if (result.status === 304) {
     res.end();
     return;
@@ -84,13 +77,10 @@ const staticEtag = (filePath) => {
 const serveFile = (req, res, filePath) => {
   const contentType = STATIC_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   const headers = {'Content-Type': contentType};
-  // vite 把带内容哈希的产物全部打进 assets/:文件名变了内容才变,可永久缓存;
-  // 其余(如 favicon)按 stat 出 ETag,no-cache 每次都重新校验.
   if (filePath.startsWith(ASSETS_DIR + path.sep)) {
     headers['Cache-Control'] = 'public, max-age=31536000, immutable';
   } else {
     headers['Cache-Control'] = 'private, no-cache';
-    // existsSync 之后、stat 之前文件被删的竞态:退化为不带 ETag 直发,不崩.
     let etag = null;
     try { etag = staticEtag(filePath); } catch {}
     if (etag !== null) {
@@ -107,9 +97,7 @@ const serveFile = (req, res, filePath) => {
 };
 
 /**
- * index.html 需要在返回前注入任务 API 用的 token(契约二:token 通过
- * `<meta name="tsuzuri-token">` 下发,不做 GET /api/token 端点白送出去),
- * 所以这里不能再用 fs.createReadStream 直接管道,要先读出内容改字符串.
+ * index.html 需要在返回前注入任务 API 用的 token，因此不能直接流式返回。
  * HTML 不缓存:token 每次启动都换,且它引用的哈希资源必须能立刻切换到新版本.
  */
 const serveIndexHtml = (res, token) => {
@@ -123,14 +111,11 @@ const serveIndexHtml = (res, token) => {
 const serveStatic = (req, res, token) => {
   const urlPath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
   const filePath = path.join(STATIC_DIR, urlPath);
-  // 静态资源只在 web/dist 内,不接受外部路径(简单前缀校验,已经是构建产物无用户输入)
   if (!filePath.startsWith(STATIC_DIR + path.sep) && filePath !== STATIC_DIR) {
     res.writeHead(403);
     res.end();
     return;
   }
-  // web/dist 整个还没构建时,保持占位页兜底,不区分路径,也不需要注入 token
-  // (反正 API 还没有前端可用)
   if (!isDistBuilt()) {
     res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
     res.end(PLACEHOLDER_HTML);
@@ -144,7 +129,6 @@ const serveStatic = (req, res, token) => {
     serveFile(req, res, filePath);
     return;
   }
-  // 已构建但没命中:带静态资源扩展名的路径确实是 404,其余(SPA 路由)回退到 index.html
   if (path.extname(urlPath) && STATIC_MIME_TYPES[path.extname(urlPath).toLowerCase()]) {
     res.writeHead(404);
     res.end();
@@ -172,9 +156,7 @@ const ASSET_UNDO_RE = /^\/api\/assets\/undo$/;
 const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 const VALIDATE_LYRICS_PATH = '/api/fetch/lyrics-validate';
 
-// 这几条是仅有的非 GET 路由,其余路由维持 GET-only,与下方全局方法拦截配合.
-// 必须同时校验 method,否则"路径对但方法错"(比如 PUT /api/jobs)会被当成合法的
-// post-route 放过 405 拦截,一路落到 serveStatic 的 SPA fallback.
+// 仅这些路径接受 POST；其他方法必须在进入 SPA fallback 前被拒绝。
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
   && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
@@ -191,12 +173,8 @@ const isAllowedPostRoute = (method, pathname) =>
  * @returns {{server: import('node:http').Server, token: string}}
  */
 export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps} = {}) => {
-  // 只在测试注入时才传下去,生产环境走 fetch.mjs 的默认实现.
   const fetchDeps = runImpl ? {run: runImpl} : {};
-  // doctor 缓存属于本 server 实例,不能让测试或同进程的第二个 web server 共用.
   const requestDoctor = doctorGet ?? createDoctorService().getDoctor;
-  // 所有非 GET 请求(创建/取消任务)必须带上这个 token(契约二安全前提 3),
-  // 与既有的 Host 头校验彼此独立、互不替代,构成双控制.
   const token = crypto.randomBytes(32).toString('hex');
   const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {})});
 
@@ -218,8 +196,6 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     });
 
   const server = http.createServer((req, res) => {
-    // 监听端口在 listen() 之后才确定,这里从连接的本地端口读取,
-    // 与调用方实际调用 server.listen() 时使用的端口一致.
     const port = req.socket.localPort;
     if (!isAllowedHost(req.headers.host, port)) {
       res.writeHead(403);

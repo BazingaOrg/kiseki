@@ -1,10 +1,3 @@
-/**
- * 任务进度面板:状态 + 进度条 + 日志 + 取消。
- *
- * 从 Make.tsx 提出来是因为素材段的「在线取音频」「本地识别歌词」也走同一套任务系统,
- * 事件形状完全一致(批 B 契约一),没有理由维护两份面板。差异只有动词和收起时的按钮
- * 文案,所以参数化的只有这两项。
- */
 import {useEffect, useRef} from 'react';
 import type {CSSProperties, ReactNode} from 'react';
 import {CircleAlert, CircleCheck, Info, Loader2, Play, TriangleAlert, X} from 'lucide-react';
@@ -70,7 +63,6 @@ export const JobPanel = ({
   resetLabel,
 }: JobPanelProps) => {
   const logRef = useRef<HTMLDivElement>(null);
-  // 只有收到过带 percent 的 progress 事件才画确定进度条,纯日志(start/info…)期间用不确定态
   const lastProgress = [...events]
     .reverse()
     .find((event): event is Extract<JobEvent, {kind: 'progress'}> => event.kind === 'progress');

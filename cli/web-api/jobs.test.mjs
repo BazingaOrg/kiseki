@@ -704,8 +704,6 @@ test('killAll escalates every running job so Ctrl+C leaves no orphans', async ()
   assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
 
-// ---- 批 C:kind 泛化 -------------------------------------------------------
-
 test('parseYtDlpProgress:标准进度行', () => {
   assert.deepEqual(parseYtDlpProgress('[download]  42.3% of ~10.00MiB at 1.00MiB/s ETA 00:06'), {
     kind: 'progress',
@@ -1077,8 +1075,6 @@ test('取消时冻结并快照后代,再逐个发送 SIGTERM', async () => {
   // 宽限期过后仍对整个进程组补一刀,兜住扛过 SIGTERM 的自家进程
   assert.ok(signals.some(([pid, signal]) => pid === -12345 && signal === 'SIGKILL'));
 });
-
-// --- 遗留项:停滞看门狗、任务表上限、临时目录收尾 --------------------------
 
 /** 停滞阈值与轮询间隔都调到毫秒级,免得单测干等两分钟. */
 const fastStallDeps = (extra = {}) => ({

@@ -53,8 +53,6 @@ test('rejects a folder argument that does not exist', async () => {
  * 占住起始端口.如果它已经被机器上别的进程占着(开发时很常见:另开着一个
  * tsuzuri web),前置条件本来就满足了,不必也不能再占一次 —— 这个用例真正要
  * 断言的是"起始端口不可用时会往后找",谁占的无所谓.
- * 原先这里硬 listen(3000),端口被别人占着就直接 EADDRINUSE 让测试挂掉,
- * 是测试自身的环境脆弱性,不是被测代码的问题.
  */
 const occupyStartPort = async () => {
   const blocker = net.createServer();

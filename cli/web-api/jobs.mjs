@@ -1,14 +1,4 @@
-/**
- * 任务执行:把网页发来的结构化选项组装成一条"命令 + 参数 + 进度来源"的任务描述,
- * 起子进程执行,并把进度事件(契约一的形状)收集起来供 HTTP 层轮询或 SSE 推送.
- *
- * 任务有两种形态,差异全部收敛在 buildJobSpec 里,对前端完全透明:
- * - `progressSource: 'fd3'` —— 跑 tsuzuri CLI,读 fd 3 上的 NDJSON(term.mjs 产出).
- * - `progressSource: 'ytdlp-stdout'` —— 直接跑 yt-dlp,它不认识 fd 3,进度写在
- *   stdout 上的 `[download]  42.3% of ...`,由本模块翻译成同一份事件形状.
- *
- * 本模块不碰 http,argv/spec 组装尽量做成纯函数,方便单测直接调用.
- */
+/** 执行 Web 任务，并把不同进度源归一为 SSE 事件。 */
 import {spawn as spawnActual, spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -20,7 +10,6 @@ import {executorIdentity, executorLiveness, freezeExecutorTree, resumeFrozenExec
 
 export {JobValidationError, buildJobArgv, buildJobEnv, buildJobInvocation} from '../job-argv.mjs';
 
-/** 失败时回带的 stderr 行数上限,够定位又不至于把整屏日志灌给前端. */
 const STDERR_TAIL_LINES = 5;
 export {buildJobSpec, parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from './job-spec.mjs';
 
@@ -40,21 +29,14 @@ const FORCE_KILL_AFTER_MS = 3000;
  */
 const STALL_TIMEOUT_MS = 120_000;
 
-/** 停滞检查的轮询间隔. */
 const STALL_CHECK_INTERVAL_MS = 15_000;
 
-/** 内存里最多保留多少条任务记录.本地单人工具,留最近的够回看就行. */
 const MAX_JOBS_KEPT = 20;
 
-  /**
+/**
  * 列出某个 pid 的全部后代(含自身之外的各级子孙).
  *
- * 为什么不能只靠进程组:puppeteer/remotion 起 chromium 时自己也用了 detached,
- * 浏览器进城在**它自己的进程组**里,`kill(-pgid)` 够不到 —— 实测取消一次渲染,
- * render.mjs 死了但 13 个 chromium 全部存活(闲置不吃 CPU,但也永远不退).
- *
- * 必须在树还完整的时候快照:一旦中间的 render.mjs 被杀,chromium 会被 reparent
- * 到 launchd/init,从我们的 pid 再也走不到它们.
+ * Chromium 等后代可能自建进程组，必须在父进程退出前快照完整子树。
  */
 export const listDescendants = (rootPid, readTable = defaultReadProcessTable) => {
   const table = readTable() ?? '';
@@ -83,8 +65,6 @@ export const listDescendants = (rootPid, readTable = defaultReadProcessTable) =>
 
 const defaultReadProcessTable = () => {
   try {
-    // lstart 是 pid 复用防护的一部分.KILL 前必须重新确认还是同一个进程,
-    // 不能把三秒前的 pid 快照直接当作永远有效.
     const result = spawnSync('ps', ['-Ao', 'pid=,ppid=,lstart='], {encoding: 'utf8', timeout: 2000});
     return result.error || result.signal ? null : result.stdout ?? '';
   } catch {
@@ -185,8 +165,7 @@ export const createJobManager =({
     if (runningJobId !== null) {
       return {error: 'busy'};
     }
-    // Lease 先于 spawn:第二个 web server 即使内存里没有 runningJobId,也不能
-    // 在同一个项目上并发写入.临时下载目录必须位于 taskRoot,不碰系统 /tmp.
+    // Lease 必须先于 spawn，阻止不同 Web 实例并发写同一项目。
     let lease;
     let spec;
     try {
@@ -225,14 +204,11 @@ export const createJobManager =({
       throw error;
     }
 
-    // Probe the identity exactly once. registerExecutor may return the value
-    // already persisted by the child; job termination must use that canonical
-    // pid/start pair, never a second adjacent ps lookup that can drift.
+    // 只探测一次进程身份；终止时必须使用持久化的 pid/start，避免二次探测漂移。
     const spawnedExecutor = executorIdentity(child.pid);
     const job = {
       id, kind, folder, spec, status: 'running', exitCode: null, events: [], child, lease,
       cancelled: false, listeners: new Set(), killTimer: null,
-      // 停滞检测用:最后一次收到事件的时间
       lastActivityAt: Date.now(),
       stallTimer: null,
       exited: false, closed: false, finalized: false, descendants: [], executor: spawnedExecutor,
@@ -243,8 +219,6 @@ export const createJobManager =({
     runningJobId = id;
     let executorRegistered = false;
 
-    // 停滞看门狗:只给 fetch-audio 挂.yt-dlp 下载时每秒都在刷进度,长时间一条
-    // 都没有就是卡死了;而 whisper 识别本来就会安静好几分钟,给它挂必然误杀.
     if (spec.progressSource === 'ytdlp-stdout') {
       job.stallTimer = setInterval(() => {
         if (job.status !== 'running') return;
@@ -255,12 +229,8 @@ export const createJobManager =({
       job.stallTimer.unref?.();
     }
 
-    // 没被当作进度来源的那几路输出不暴露给前端(契约没有要求),但必须消费掉,
-    // 否则子进程写满 pipe 缓冲区之后会被阻塞挂起.
+    // 未使用的输出也必须消费，避免 pipe 填满后阻塞子进程。
     if (spec.progressSource !== 'ytdlp-stdout') child.stdio[1]?.resume?.();
-    // stderr 不推给前端(契约没要求),但也不能全丢:yt-dlp 的真实报错
-    // (Video unavailable / Sign in to confirm / 地区限制)全在这里,丢掉之后
-    // 用户只会看到一句放之四海皆准的"下载失败",完全无从排查.留最后几行.
     const stderrTail = [];
     child.stdio[2]?.setEncoding?.('utf8');
     child.stdio[2]?.on?.('data', (chunk) => {

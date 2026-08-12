@@ -1,17 +1,7 @@
-/**
- * 「制作」区段:选参数、起任务、看进度、随时取消。
- *
- * 门禁(能不能点)完全交给 capabilities,这里只管点了之后的事。本地单人工具,
- * 服务端同一时刻只跑一个任务(见批 B 契约二),所以两张卡共享同一个 useJob 实例:
- * activeKind 记着进度面板当前属于哪张卡,另一张卡在此期间只把开始按钮禁掉、
- * 说明原因 —— 沿用 Blocked 组件"禁用必须带理由"的规矩,这里理由是任务占用而非
- * 素材缺失,所以没有直接套 Blocked,而是单独一行提示。
- */
 import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
 import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
-// 直接复用渲染管线的滤镜/模板定义:预览与成片同源,不再养第三份副本
 import {FILTERS, getFilter} from '../../renderer/src/filters';
 import {TEMPLATES as RENDER_TEMPLATES, type Template} from '../../renderer/src/templates';
 import type {Capability, Capabilities, Remedy} from './capabilities';
@@ -51,14 +41,12 @@ const FORMAT_LABELS: {value: JobOptions['format']; label: string}[] = [
   {value: 'square', label: '方形'},
 ];
 
-// null = 交给默认逻辑;auto/full 对应 CLI 交互里"接受裁剪"/"播完整首歌"两个选项(见 cli/trim.mjs)
 const TRIM_LABELS: {value: JobOptions['trim']; label: string}[] = [
   {value: null, label: '默认'},
   {value: 'auto', label: '截到重拍处'},
   {value: 'full', label: '播完整首歌'},
 ];
 
-// 并发档位。默认 balanced = CLI 的默认(一半核心) —— 渲染时你多半还在用这台机器
 const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string; hint: string}[] = [
   {value: 'saver', label: '省着点', hint: '约四分之一核心，边渲染边干别的'},
   {value: 'balanced', label: '均衡', hint: '约一半核心'},
@@ -524,16 +512,11 @@ interface MakeProps {
   project: ProjectResponse;
   capabilities: Capabilities;
   onRemedy: (target: Remedy['target']) => void;
-  /**
-   * 任务状态由 Workbench 持有,不在这里 useJob —— 切到别的区段时 Make 会被卸载,
-   * hook 的 cleanup 会关掉 EventSource 并丢掉 jobId。用户渲染途中切去看一眼成果
-   * 再切回来,界面就会退回"可以开工",点了拿 409,而且再没有入口能取消那个任务。
-   */
+  /** 由 Workbench 持有，以便切换区段时保留任务与取消入口。 */
   job: ReturnType<typeof useJob>;
   activeKind: Kind | null;
   locked: boolean;
   onStart: (kind: Kind, options: JobOptions) => void;
-  /** 收起已结束的进度面板,回到参数表单 */
   onReset: () => void;
 }
 

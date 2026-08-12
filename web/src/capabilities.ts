@@ -1,14 +1,4 @@
-/**
- * 能力门禁的唯一真相。
- *
- * 计划文档 §1.2 的「能力 → 依赖」表在这里实现为一个纯函数:输入是素材夹的状态
- * (/api/project)与环境依赖状态(/api/doctor),输出是每个能力能不能用、为什么
- * 不能用、以及怎么补。UI 一律读这份结果,不允许在组件里各自判断 —— 否则同一个
- * "缺音频"会在三个地方写出三种说法。
- *
- * 设计取舍:返回全部 blocker 而不是只返回第一个。只报第一个会让用户来回补两次
- * (补完歌才发现还缺 ffmpeg),UI 展示时取首条、需要时展开其余。
- */
+/** 从项目与环境状态派生所有能力门禁，避免组件各自维护依赖规则。 */
 import type {DoctorState, ProjectResponse} from './types';
 
 export type CapabilityId =
@@ -21,7 +11,6 @@ export type CapabilityId =
   | 'fetchAudio'
   | 'fetchLyrics';
 
-/** 补齐动作:UI 把它渲染成一个真按钮,而不是让用户自己猜去哪。 */
 export interface Remedy {
   label: string;
   /** 跳到某个区段,或打开环境面板 */
@@ -60,7 +49,6 @@ const depBlocker = (doctor: DoctorState, id: string, what: string): Blocker | nu
   return {reason: `${what}需要 ${id}，现在还没装好。`, remedy: DOCTOR};
 };
 
-/** 同一次 derive 里多个依赖都缺时,"环境检查没能完成"只需要说一遍。 */
 const dedupeBlockers = (blockers: Blocker[]): Blocker[] => {
   const seen = new Set<string>();
   return blockers.filter((blocker) => {

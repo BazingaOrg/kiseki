@@ -1,14 +1,4 @@
-/**
- * 在线取音频/歌词的"快"端点(契约 C):LRCLIB 搜索是一次 HTTP 往返、写 .lrc 是一次
- * 文件写,都在百毫秒级,不值得走任务系统;真正分钟级的下载/识别走 /api/jobs.
- *
- * 决策逻辑一行都不重写,全部复用 cli/fetch.mjs 与 cli/ytdlp.mjs 已导出的纯函数.
- * 唯一新增的是**异步进程封装**:那两个模块里的 checkYtDlp / searchYtDlp / probeAudio /
- * lrclibFetch 内部都是 spawnSync,在 HTTP handler 里直接调用会把单线程 server 整个
- * 卡住(/api/doctor 已经为此吃过亏).这里用 child_process.spawn 的异步形式重新包一层,
- * 再把收集到的结果**喂回那些函数的解析逻辑**(它们的 spawn 参数是可注入的,或者解析部分
- * 单独导出了),所以解析规则只有一份.cli/ytdlp.mjs 的同步实现保持不动,CLI 还在用.
- */
+/** 在线素材端点。外部命令使用异步 spawn，解析规则复用 CLI 纯函数。 */
 import {spawn as spawnActual} from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -196,10 +186,6 @@ export const createLrclibFetch = (run = runProcess) => async (pathname, params =
   if (parsed.status < 200 || parsed.status >= 300) throw new Error(`LRCLIB 返回 ${parsed.status}`);
   return JSON.parse(parsed.body);
 };
-
-// ---------------------------------------------------------------------------
-// 端点
-// ---------------------------------------------------------------------------
 
 /** 三个端点共用:把 folder 过沙箱并确认是目录,顺带定位唯一音频. */
 const resolveAudioFolder = (root, folderParam) => {
