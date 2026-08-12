@@ -23,7 +23,7 @@ import {installAtomicOutputs} from './atomic-output.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent
-const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/tsuzuri)';
+const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 // 歌词与音频时长差超过这个秒数,大概率是不同版本(live/剪辑),时间轴会错位
 export const DURATION_WARN_SECONDS = 3;
 export const LYRICS_SEARCH_LIMIT = 10;

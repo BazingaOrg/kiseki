@@ -1,7 +1,7 @@
 # tsuzuri → kiseki 全量改名与换图标执行计划
 
 日期：2026-08-12
-状态：仓库内改名与品牌资产实施中；commit、push、远端仓库改名、本地目录改名与仓库外记忆迁移须分别授权
+状态：仓库内改名、品牌资产、commit（615a0a2）、push 与远端仓库改名（BazingaOrg/kiseki）已完成；本地目录改名（Phase H）与 Claude 记忆复制（Phase I）仍须独立授权
 
 ## Context
 

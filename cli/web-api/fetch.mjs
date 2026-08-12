@@ -28,7 +28,7 @@ import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
-const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/tsuzuri)';
+const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 const DEFAULT_TIMEOUT_MS = 20000;
 const ANALYZER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../analyzer');
 const validationRecognitionCache = new Map();
