@@ -1,7 +1,8 @@
-import {useEffect, useRef, useState} from 'react';
-import {ChevronRight, Folder} from 'lucide-react';
+import {useEffect, useRef, useState, type KeyboardEvent} from 'react';
+import {ChevronRight, Clock3, Folder} from 'lucide-react';
 
 import {createLatestGate} from './latest';
+import {loadRecentFolders, rememberFolder, type RecentFolder} from './recentFolders';
 import type {DirsResponse, ProjectResponse} from './types';
 
 const pathSeparator = (p: string): string => (p.includes('\\') && !p.includes('/') ? '\\' : '/');
@@ -29,16 +30,21 @@ interface FolderPickerProps {
 }
 
 export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
-  const [dirsResponse, setDirsResponse] = useState<DirsResponse | null>(null);
+  const [columns, setColumns] = useState<DirsResponse[]>([]);
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [recentFolders, setRecentFolders] = useState<RecentFolder[]>(loadRecentFolders);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
+  const pendingFocusColumn = useRef<number | null>(null);
   // loadDirs 和 handleSelectFolder 共用同一个 gate ——
   // 两者操作重叠的界面状态(面包屑、列表、error),各用一个等于没修。
   const gate = useRef(createLatestGate()).current;
 
-  const loadDirs = (targetPath: string) => {
+  const loadDirs = (targetPath: string, parentColumn = -1) => {
     const ticket = gate.begin();
+    const previousSelectedPath = selectedPath;
+    if (parentColumn >= 0) setSelectedPath(targetPath);
     setLoading(true);
     setError(null);
     fetch(`/api/dirs?path=${encodeURIComponent(targetPath)}`)
@@ -47,10 +53,15 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         return res.json();
       })
       .then((data: DirsResponse) => {
-        if (gate.isCurrent(ticket)) setDirsResponse(data);
+        if (!gate.isCurrent(ticket)) return;
+        setColumns((current) => parentColumn < 0 ? [data] : [...current.slice(0, parentColumn + 1), data]);
+        setSelectedPath(data.path);
       })
       .catch(() => {
-        if (gate.isCurrent(ticket)) setError('浏览这个文件夹时出了点问题。');
+        if (!gate.isCurrent(ticket)) return;
+        pendingFocusColumn.current = null;
+        setSelectedPath(previousSelectedPath);
+        setError('浏览这个文件夹时出了点问题。');
       })
       .finally(() => {
         if (gate.isCurrent(ticket)) setLoading(false);
@@ -61,18 +72,27 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
     loadDirs('.');
   }, []);
 
-  const handleSelectFolder = () => {
-    if (!dirsResponse) return;
+  useEffect(() => {
+    const columnIndex = pendingFocusColumn.current;
+    if (columnIndex === null || columns.length <= columnIndex) return;
+    pendingFocusColumn.current = null;
+    document.querySelectorAll<HTMLElement>('.folder-column')[columnIndex]?.querySelector<HTMLElement>('.folder-item')?.focus();
+  }, [columns]);
+
+  const handleSelectFolder = (targetPath = selectedPath) => {
+    if (!targetPath) return;
     const ticket = gate.begin();
     setSelecting(true);
     setError(null);
-    fetch(`/api/project?path=${encodeURIComponent(dirsResponse.path)}`)
+    fetch(`/api/project?path=${encodeURIComponent(targetPath)}`)
       .then((res) => {
         if (!res.ok) throw new Error('failed');
         return res.json();
       })
       .then((data: ProjectResponse) => {
-        if (gate.isCurrent(ticket)) onProjectLoaded(data);
+        if (!gate.isCurrent(ticket)) return;
+        setRecentFolders(rememberFolder({name: data.name, path: data.path}));
+        onProjectLoaded(data);
       })
       .catch(() => {
         if (gate.isCurrent(ticket)) setError('读取这个文件夹时出了点问题。');
@@ -82,45 +102,99 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
       });
   };
 
-  const crumbs = dirsResponse ? splitBreadcrumb(dirsResponse.path, dirsResponse.root) : [];
+  const root = columns[0]?.root;
+  const visibleRecentFolders = root
+    ? recentFolders.filter((folder) => folder.path === root || folder.path.startsWith(root + pathSeparator(root)))
+    : [];
+  const crumbs = selectedPath && root ? splitBreadcrumb(selectedPath, root) : [];
+  const selectedName = crumbs[crumbs.length - 1]?.label ?? '';
+
+  const handleFolderKeyDown = (event: KeyboardEvent<HTMLButtonElement>, columnIndex: number, dirPath: string) => {
+    const items = Array.from(event.currentTarget.closest('.folder-column')?.querySelectorAll<HTMLButtonElement>('.folder-item') ?? []);
+    const itemIndex = items.indexOf(event.currentTarget);
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const offset = event.key === 'ArrowDown' ? 1 : -1;
+      items[(itemIndex + offset + items.length) % items.length]?.focus();
+    } else if (event.key === 'ArrowRight') {
+      event.preventDefault();
+      pendingFocusColumn.current = columnIndex + 1;
+      loadDirs(dirPath, columnIndex);
+    } else if (event.key === 'ArrowLeft' && columnIndex > 0) {
+      event.preventDefault();
+      document.querySelectorAll<HTMLElement>('.folder-column')[columnIndex - 1]?.querySelector<HTMLElement>('.folder-item[aria-selected="true"]')?.focus();
+    } else if (event.key === 'Enter') {
+      event.preventDefault();
+      handleSelectFolder(dirPath);
+    }
+  };
 
   return (
     <div className="folder-picker">
-      {dirsResponse && (
+      {error && <p className="hint hint-error" role="alert">{error}</p>}
+
+      {visibleRecentFolders.length > 0 && (
+        <section className="recent-folders" aria-labelledby="recent-folders-title">
+          <h2 id="recent-folders-title">最近使用</h2>
+          <div className="recent-folder-list">
+            {visibleRecentFolders.map((folder) => (
+              <button className="recent-folder" key={folder.path} onClick={() => handleSelectFolder(folder.path)} title={folder.path}>
+                <Clock3 size={14} strokeWidth={1.5} />
+                <span>{folder.name}</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {columns.length > 0 && (
         <nav className="breadcrumb" aria-label="当前位置">
           {crumbs.map((crumb, index) => (
             <span className="breadcrumb-crumb" key={crumb.path}>
               {index > 0 && <ChevronRight className="breadcrumb-sep" size={13} />}
-              <button className="breadcrumb-item" onClick={() => loadDirs(crumb.path)}>
-                {crumb.label}
-              </button>
+              <button className="breadcrumb-item" onClick={() => loadDirs(crumb.path)}>{crumb.label}</button>
             </span>
           ))}
         </nav>
       )}
 
-      {error && <p className="hint hint-error" role="alert">{error}</p>}
-
-      {dirsResponse && (
-        <ul className="folder-list" aria-busy={loading}>
-          {dirsResponse.dirs.length === 0 && !loading && (
-            <li className="folder-empty">这里没有下一层文件夹了。就选它，或者往回退。</li>
-          )}
-          {dirsResponse.dirs.map((dir) => (
-            <li key={dir.path}>
-              <button className="folder-item" onClick={() => loadDirs(dir.path)}>
-                <Folder size={15} strokeWidth={1.5} className="folder-item-icon" />
-                <span className="folder-item-name">{dir.name}</span>
-                {dir.isProject && <span className="folder-badge" title="包含 tsuzuri 配置或 output 目录">检测到 tsuzuri 文件</span>}
-              </button>
-            </li>
+      {columns.length > 0 && (
+        <div className="folder-columns" aria-busy={loading}>
+          {columns.map((column, columnIndex) => (
+            <section className="folder-column" key={column.path} aria-label={`${splitBreadcrumb(column.path, column.root).slice(-1)[0]?.label ?? column.path}中的文件夹`}>
+              <ul className="folder-list">
+                {column.dirs.length === 0 && (
+                  <li className="folder-empty">没有下一层文件夹</li>
+                )}
+                {column.dirs.map((dir) => {
+                  const isSelected = selectedPath === dir.path || columns[columnIndex + 1]?.path === dir.path;
+                  return (
+                    <li key={dir.path}>
+                      <button
+                        className="folder-item"
+                        aria-selected={isSelected}
+                        onClick={() => loadDirs(dir.path, columnIndex)}
+                        onDoubleClick={() => handleSelectFolder(dir.path)}
+                        onKeyDown={(event) => handleFolderKeyDown(event, columnIndex, dir.path)}
+                      >
+                        <Folder size={15} strokeWidth={1.5} className="folder-item-icon" />
+                        <span className="folder-item-name">{dir.name}</span>
+                        {dir.isProject && <span className="folder-project-mark" title="检测到 tsuzuri 文件" aria-label="检测到 tsuzuri 文件">●</span>}
+                        <ChevronRight size={13} className="folder-item-chevron" aria-hidden="true" />
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
           ))}
-        </ul>
+        </div>
       )}
 
       <div className="folder-actions">
-        <button className="primary-button" onClick={handleSelectFolder} disabled={selecting || !dirsResponse}>
-          {selecting ? '正在读取…' : '就用这个文件夹'}
+        <span className="folder-selection" title={selectedPath ?? undefined}>{selectedPath ? `当前选择：${selectedName}` : '请选择一个文件夹'}</span>
+        <button className="primary-button" onClick={() => handleSelectFolder()} disabled={selecting || !selectedPath}>
+          {selecting ? '正在读取…' : selectedName ? `打开「${selectedName}」` : '打开文件夹'}
         </button>
       </div>
     </div>

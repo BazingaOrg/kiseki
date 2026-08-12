@@ -162,7 +162,7 @@
 }
 
 .welcome .folder-picker {
-  width: min(560px, 100%);
+  width: min(840px, 100%);
 }
 
 /* ── 选文件夹 ─────────────────────────────────────────── */
@@ -187,7 +187,7 @@
   font: inherit;
   color: inherit;
   padding: 0.15rem 0.25rem;
-  transition: color 0.2s ease-out;
+  transition: color 0.16s ease-out;
 }
 
 .breadcrumb-item:hover {
@@ -199,18 +199,71 @@
   flex-shrink: 0;
 }
 
-.folder-list {
-  list-style: none;
-  margin: 0 0 1.25rem;
-  padding: 0;
-  max-height: 42vh;
-  overflow-y: auto;
-  border-top: 1px solid var(--color-divider);
-  transition: opacity 0.2s ease-out;
+.recent-folders {
+  margin-bottom: 1rem;
 }
 
-.folder-list[aria-busy='true'] {
-  opacity: 0.45;
+.recent-folders h2 {
+  margin: 0 0 0.45rem;
+  color: var(--color-secondary-text);
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.recent-folder-list {
+  display: flex;
+  gap: 0.45rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+}
+
+.recent-folder {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-control);
+  background: none;
+  color: var(--color-secondary-text);
+  padding: 0.42rem 0.65rem;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.recent-folder span {
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.folder-columns {
+  display: flex;
+  height: min(42vh, 360px);
+  overflow-x: auto;
+  border-block: 1px solid var(--color-divider);
+  transition: opacity 0.16s ease-out;
+}
+
+.folder-columns[aria-busy='true'] {
+  opacity: 0.6;
+}
+
+.folder-column {
+  flex: 0 0 clamp(220px, 30vw, 280px);
+  min-width: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--color-divider);
+}
+
+.folder-column:last-child {
+  border-right: 0;
+}
+
+.folder-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .folder-list li {
@@ -240,6 +293,11 @@
   background: var(--color-surface);
 }
 
+.folder-item[aria-selected='true'] {
+  background: var(--color-surface);
+  color: var(--color-text);
+}
+
 .folder-item-icon {
   color: var(--color-secondary-text);
   flex-shrink: 0;
@@ -252,18 +310,59 @@
   white-space: nowrap;
 }
 
-.folder-badge {
-  font-size: 0.72rem;
+.folder-project-mark {
+  font-size: 0.55rem;
   color: var(--color-secondary-text);
-  border: 1px solid var(--color-divider);
-  border-radius: 999px;
-  padding: 0.1rem 0.5rem;
+  flex-shrink: 0;
+}
+
+.folder-item-chevron {
+  color: var(--color-divider);
   flex-shrink: 0;
 }
 
 .folder-actions {
   display: flex;
+  align-items: center;
+  gap: 1rem;
   justify-content: flex-end;
+  margin-top: 1rem;
+}
+
+.folder-selection {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--color-secondary-text);
+  font-size: 0.82rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (max-width: 640px) {
+  .folder-columns {
+    height: min(44vh, 340px);
+    overflow: hidden;
+  }
+
+  .folder-column {
+    display: none;
+    flex-basis: 100%;
+    border-right: 0;
+  }
+
+  .folder-column:last-child {
+    display: block;
+  }
+
+  .folder-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .folder-actions .primary-button {
+    width: 100%;
+  }
 }
 
 /* ── 工作台骨架 ───────────────────────────────────────── */
