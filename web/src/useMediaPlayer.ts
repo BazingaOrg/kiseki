@@ -29,7 +29,7 @@ const getBufferedEnd = (media: HTMLMediaElement): number => {
 };
 
 /** A narrow native-media bridge. Browser events, rather than commands, own playback state. */
-export const useMediaPlayer = <T extends HTMLMediaElement>(src: string | null) => {
+export const useMediaPlayer = <T extends HTMLMediaElement>(src: string | null, preload: 'metadata' | 'auto' = 'metadata') => {
   const mediaRef = useRef<T | null>(null);
   const waitingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [state, setState] = useState<MediaPlayerState>({
@@ -90,7 +90,7 @@ export const useMediaPlayer = <T extends HTMLMediaElement>(src: string | null) =
     switch (event.type) {
       case 'loadedmetadata':
       case 'durationchange':
-        setState((previous) => ({...previous, status: 'ready', duration: Number.isFinite(media.duration) ? media.duration : 0, buffered: getBufferedEnd(media)}));
+        setState((previous) => ({...previous, duration: Number.isFinite(media.duration) ? media.duration : 0, buffered: getBufferedEnd(media)}));
         break;
       case 'timeupdate':
         setState((previous) => ({...previous, currentTime: media.currentTime, buffered: getBufferedEnd(media)}));
@@ -100,6 +100,7 @@ export const useMediaPlayer = <T extends HTMLMediaElement>(src: string | null) =
         break;
       case 'play':
       case 'playing':
+      case 'loadeddata':
       case 'canplay':
         clearWaiting();
         setState((previous) => ({...previous, status: 'ready', playing: !media.paused}));
@@ -127,8 +128,8 @@ export const useMediaPlayer = <T extends HTMLMediaElement>(src: string | null) =
   const mediaProps = {
     ref: mediaRef,
     src: src ?? undefined,
-    preload: 'metadata' as const,
-    onLoadedMetadata: onMediaEvent, onDurationChange: onMediaEvent, onTimeUpdate: onMediaEvent,
+    preload,
+    onLoadedMetadata: onMediaEvent, onLoadedData: onMediaEvent, onDurationChange: onMediaEvent, onTimeUpdate: onMediaEvent,
     onProgress: onMediaEvent, onPlay: onMediaEvent, onPause: onMediaEvent, onVolumeChange: onMediaEvent,
     onWaiting: onMediaEvent, onStalled: onMediaEvent, onPlaying: onMediaEvent, onCanPlay: onMediaEvent,
     onError: onMediaEvent, onEnded: onMediaEvent,

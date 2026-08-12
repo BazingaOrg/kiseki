@@ -37,3 +37,14 @@ test('narrow topbar and media status rules preserve truncation and status visibi
   assert.match(css, /@media \(max-width: 640px\)\s*\{[\s\S]*?\.topbar\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\) auto;/);
   assert.match(css, /\.audio-bar \.media-buffering,[\s\S]*?\.audio-bar \.media-error\s*\{[^}]*order: 3;/);
 });
+
+test('video waits for a decoded frame and keeps the media stage at the source aspect ratio', async () => {
+  const [player, mediaPlayer, css] = await Promise.all([source('Player.tsx'), source('useMediaPlayer.ts'), source('App.css')]);
+  assert.match(player, /loadedVideo === video/);
+  assert.match(player, /onLoadedData=\{handleLoadedData\}/);
+  assert.match(player, /--player-video-aspect-ratio/);
+  assert.match(mediaPlayer, /case 'loadeddata':/);
+  assert.match(css, /\.player-media-stage\s*\{[^}]*aspect-ratio: var\(--player-video-aspect-ratio\);/s);
+  assert.match(css, /\.player-video\s*\{[^}]*background: transparent;[^}]*opacity: 0;/s);
+  assert.match(css, /\.player-video-ready\s*\{[^}]*opacity: 1;/s);
+});

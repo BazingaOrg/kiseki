@@ -1239,7 +1239,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   overflow: hidden;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-media);
-  background: #171512;
+  background: var(--color-surface);
 }
 
 .player:fullscreen {
@@ -1259,16 +1259,46 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   border-top: 1px solid var(--color-divider);
 }
 
+.player-media-stage {
+  position: relative;
+  display: grid;
+  width: min(100%, var(--player-video-max-width));
+  margin-inline: auto;
+  aspect-ratio: var(--player-video-aspect-ratio);
+  place-items: center;
+  background: var(--color-background);
+}
+
 .player-video {
+  grid-area: 1 / 1;
   display: block;
   width: 100%;
-  max-height: min(60vh, 600px);
+  height: 100%;
   object-fit: contain;
+  background: transparent;
+  opacity: 0;
+}
+
+.player-video-ready {
+  opacity: 1;
+}
+
+.player-media-stage > .media-loading {
+  grid-area: 1 / 1;
+  z-index: 1;
+}
+
+.player:fullscreen .player-media-stage {
+  width: 100%;
+  aspect-ratio: auto;
   background: #000;
 }
 
 .player:fullscreen .player-video {
+  width: 100%;
+  height: auto;
   max-height: 100vh;
+  background: #000;
 }
 
 .result-video-with-playlist {

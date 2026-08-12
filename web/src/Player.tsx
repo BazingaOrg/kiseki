@@ -1,6 +1,6 @@
 /** 项目风格的原生视频控制层；解码与媒体语义仍由 HTMLVideoElement 提供。 */
 import {useEffect, useRef, useState} from 'react';
-import type {ReactNode} from 'react';
+import type {CSSProperties, ReactNode, SyntheticEvent} from 'react';
 import {Maximize, Pause, PictureInPicture, Play, RotateCcw, RotateCw, Volume2, VolumeX} from 'lucide-react';
 
 import {mediaUrl} from './media';
@@ -22,10 +22,12 @@ const ControlButton = ({label, onClick, children, disabled = false}: {label: str
 export const Player = ({video}: {video: string | null}) => {
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const [customControlsReady, setCustomControlsReady] = useState(false);
+  const [loadedVideo, setLoadedVideo] = useState<string | null>(null);
+  const [aspectRatio, setAspectRatio] = useState(16 / 9);
   const [pictureInPictureAvailable, setPictureInPictureAvailable] = useState(false);
   const [isPictureInPicture, setIsPictureInPicture] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const {mediaRef, mediaProps, state, toggle, seekTo, seekBy, setVolume, toggleMute} = useMediaPlayer<HTMLVideoElement>(video ? mediaUrl(video) : null);
+  const {mediaRef, mediaProps, state, toggle, seekTo, seekBy, setVolume, toggleMute} = useMediaPlayer<HTMLVideoElement>(video ? mediaUrl(video) : null, 'auto');
 
   useEffect(() => {
     setCustomControlsReady(true);
@@ -53,6 +55,23 @@ export const Player = ({video}: {video: string | null}) => {
 
   if (!video) return null;
 
+  const mediaReady = loadedVideo === video;
+  const playerStyle = {
+    '--player-video-aspect-ratio': aspectRatio,
+    '--player-video-max-width': `min(${60 * aspectRatio}vh, ${600 * aspectRatio}px)`,
+  } as CSSProperties;
+
+  const handleLoadedMetadata = (event: SyntheticEvent<HTMLVideoElement>) => {
+    mediaProps.onLoadedMetadata(event);
+    const {videoWidth, videoHeight} = event.currentTarget;
+    if (videoWidth > 0 && videoHeight > 0) setAspectRatio(videoWidth / videoHeight);
+  };
+
+  const handleLoadedData = (event: SyntheticEvent<HTMLVideoElement>) => {
+    mediaProps.onLoadedData(event);
+    setLoadedVideo(video);
+  };
+
   const togglePictureInPicture = () => {
     const media = mediaRef.current;
     if (!media) return;
@@ -75,6 +94,7 @@ export const Player = ({video}: {video: string | null}) => {
     <div
       ref={wrapperRef}
       className="player"
+      style={playerStyle}
       tabIndex={0}
       aria-label="成片播放器"
       onKeyDown={(event) => {
@@ -98,7 +118,18 @@ export const Player = ({video}: {video: string | null}) => {
       }}
     >
       {/* 挂载前保留原生 controls，确保自定义层未就绪时仍有可用的播放路径。 */}
-      <video key={video} {...mediaProps} className="player-video" controls={!customControlsReady} playsInline />
+      <div className="player-media-stage">
+        <video
+          key={video}
+          {...mediaProps}
+          className={mediaReady ? 'player-video player-video-ready' : 'player-video'}
+          controls={!customControlsReady}
+          playsInline
+          onLoadedMetadata={handleLoadedMetadata}
+          onLoadedData={handleLoadedData}
+        />
+        {!mediaReady && <span className="media-loading" role="status">正在加载视频</span>}
+      </div>
       <div className="video-controls" aria-label="成片控制">
         <ControlButton label={state.playing ? '暂停' : '播放'} onClick={toggle}>
           {state.playing ? <Pause aria-hidden="true" size={18} /> : <Play aria-hidden="true" size={18} />}
@@ -114,7 +145,6 @@ export const Player = ({video}: {video: string | null}) => {
         <ControlButton label={isFullscreen ? '退出全屏' : '全屏'} onClick={toggleFullscreen}><Maximize aria-hidden="true" size={17} /></ControlButton>
       </div>
       <p className="player-shortcuts">键盘:空格/k 播放暂停 · ←/→ 快退快进 · M 静音 · F 全屏</p>
-      {state.status === 'loading' && <span className="media-loading" role="status">正在加载视频</span>}
       {state.status === 'buffering' && <span className="media-buffering" role="status">正在缓冲</span>}
       {state.error && <p className="media-error" role="alert">{state.error}</p>}
     </div>
