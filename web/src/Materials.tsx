@@ -9,7 +9,7 @@
  */
 import {useRef, useState} from 'react';
 import type {FormEvent} from 'react';
-import {Search} from 'lucide-react';
+import {CircleHelp, Search} from 'lucide-react';
 
 import type {ApiResult} from './api';
 import {installLyrics, normalizeSearchQuery, searchAudio, searchLyrics, validateLyrics} from './api';
@@ -401,7 +401,17 @@ const LyricsFetch = ({
       </div>
 
       <div className="fetch-path">
-        <span className="fetch-path-label">本地识别</span>
+        <span className="fetch-path-label fetch-path-label-with-help">
+          本地识别
+          <span className="fetch-path-help">
+            <button className="fetch-path-help-button" type="button" aria-label="了解本地识别" aria-describedby="recognize-lyrics-help">
+              <CircleHelp size={13} strokeWidth={1.6} aria-hidden="true" />
+            </button>
+            <span className="fetch-path-tooltip" id="recognize-lyrics-help" role="tooltip">
+              用 whisper 把人声转成带时间的歌词，几分钟。第一次还要先下模型（几百 MB，没有百分比），可以放着不管。
+            </span>
+          </span>
+        </span>
         {capabilities.recognizeLyrics.enabled ? (
           <>
             <button
@@ -411,10 +421,6 @@ const LyricsFetch = ({
             >
               开始识别
             </button>
-            <p className="hint">
-              用 whisper 把人声转成带时间的歌词，几分钟。第一次还要先下模型（几百 MB，没有百分比），
-              可以放着不管。
-            </p>
             {busy && <p className="hint">另一项任务正在跑，等它结束再识别。</p>}
           </>
         ) : (

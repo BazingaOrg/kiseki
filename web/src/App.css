@@ -483,7 +483,7 @@
   max-width: 940px;
   width: 100%;
   margin: 0 auto;
-  padding: 2rem 1.5rem 4rem;
+  padding: 1.25rem 1.5rem 2.5rem;
 }
 
 .section + .section {
@@ -664,11 +664,68 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   margin-bottom: 0.45rem;
 }
 
+.fetch-path-label-with-help {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.fetch-path-help {
+  position: relative;
+  display: inline-flex;
+}
+
+.fetch-path-help-button {
+  display: inline-grid;
+  place-items: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--color-secondary-text);
+  transition: color 0.16s ease-out;
+}
+
+.fetch-path-help-button:hover,
+.fetch-path-help-button:focus-visible {
+  color: var(--color-text);
+}
+
+.fetch-path-tooltip {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 0.4rem);
+  left: 0;
+  width: min(20rem, calc(100vw - 3rem));
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-control);
+  background: var(--color-background);
+  color: var(--color-secondary-text);
+  box-shadow: 0 8px 24px rgba(24, 22, 18, 0.08);
+  font-size: 0.78rem;
+  line-height: 1.65;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-2px);
+  transition: opacity 0.16s ease-out, transform 0.16s ease-out, visibility 0.16s;
+}
+
+.fetch-path-help:hover .fetch-path-tooltip,
+.fetch-path-help:focus-within .fetch-path-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
 .fetch-search {
   display: flex;
   gap: 0.5rem;
   align-items: center;
-  margin-top: 0.75rem;
+  margin-top: 0;
 }
 
 .fetch-input {
@@ -2125,7 +2182,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   }
 
   .workbench-main {
-    padding: 1.5rem 1rem 3rem;
+    padding: 1rem 1rem 2rem;
   }
 
   .fetch-candidates {
