@@ -8,6 +8,7 @@ import type {CSSProperties} from 'react';
 export type FilterDef = {
   id: string;
   label: string;
+  group: 'camera' | 'film' | 'legacy';
   defaultIntensity: number;
   /** 返回可直接赋给 style.filter 的 CSS filter() 串;intensity=0 时应等价于恒等 */
   css?: (intensity: number) => string;
@@ -24,8 +25,120 @@ const lerp = (from: number, to: number, intensity: number): number => from + (to
 
 export const FILTERS: readonly FilterDef[] = [
   {
+    id: 'fuji-classic-chrome',
+    label: '富士 · 经典铬',
+    group: 'camera',
+    defaultIntensity: 0.7,
+    css: (intensity) =>
+      `saturate(${lerp(1, 0.72, intensity)}) contrast(${lerp(1, 1.08, intensity)}) brightness(${lerp(1, 0.98, intensity)})`,
+    svg: (intensity) => {
+      const shadowBlue = lerp(0, 0.07, intensity);
+      const highlightRed = lerp(1, 0.94, intensity);
+      return `<feComponentTransfer>
+        <feFuncR type="table" tableValues="0 0.5 ${highlightRed}" />
+        <feFuncG type="table" tableValues="0 0.5 ${lerp(1, 0.98, intensity)}" />
+        <feFuncB type="table" tableValues="${shadowBlue} ${lerp(0.5, 0.52, intensity)} 1" />
+      </feComponentTransfer>`;
+    },
+  },
+  {
+    id: 'fuji-classic-neg',
+    label: '富士 · 经典负片',
+    group: 'camera',
+    defaultIntensity: 0.7,
+    css: (intensity) => `saturate(${lerp(1, 0.92, intensity)}) contrast(${lerp(1, 1.18, intensity)})`,
+    svg: (intensity) => {
+      const shadowRed = lerp(0, 0.02, intensity);
+      const shadowGreen = lerp(0, 0.08, intensity);
+      const highlightRed = lerp(1, 1.03, intensity);
+      const highlightBlue = lerp(1, 0.9, intensity);
+      return `<feComponentTransfer>
+        <feFuncR type="table" tableValues="${shadowRed} 0.5 ${highlightRed}" />
+        <feFuncG type="table" tableValues="${shadowGreen} 0.5 ${lerp(1, 0.98, intensity)}" />
+        <feFuncB type="table" tableValues="0 ${lerp(0.5, 0.48, intensity)} ${highlightBlue}" />
+      </feComponentTransfer>`;
+    },
+  },
+  {
+    id: 'ricoh-positive',
+    label: '理光 · 正片',
+    group: 'camera',
+    defaultIntensity: 0.7,
+    css: (intensity) => `saturate(${lerp(1, 1.42, intensity)}) contrast(${lerp(1, 1.14, intensity)})`,
+  },
+  {
+    id: 'ricoh-negative',
+    label: '理光 · 负片',
+    group: 'camera',
+    defaultIntensity: 0.7,
+    css: (intensity) =>
+      `saturate(${lerp(1, 0.88, intensity)}) contrast(${lerp(1, 1.06, intensity)}) brightness(${lerp(1, 1.025, intensity)})`,
+  },
+  {
+    id: 'leica-classic',
+    label: '徕卡 · 经典',
+    group: 'camera',
+    defaultIntensity: 0.7,
+    css: (intensity) =>
+      `sepia(${lerp(0, 0.13, intensity)}) saturate(${lerp(1, 0.84, intensity)}) contrast(${lerp(1, 1.2, intensity)}) brightness(${lerp(1, 1.025, intensity)})`,
+  },
+  {
+    id: 'kodak-portra-400',
+    label: '柯达 · Portra 400',
+    group: 'film',
+    defaultIntensity: 0.7,
+    css: (intensity) =>
+      `sepia(${lerp(0, 0.1, intensity)}) saturate(${lerp(1, 0.86, intensity)}) contrast(${lerp(1, 0.88, intensity)}) brightness(${lerp(1, 1.04, intensity)})`,
+    svg: (intensity) => {
+      const black = lerp(0, 0.065, intensity);
+      const white = lerp(1, 0.96, intensity);
+      return `<feComponentTransfer>
+        <feFuncR type="linear" slope="${white - black}" intercept="${black}" />
+        <feFuncG type="linear" slope="${white - black}" intercept="${black}" />
+        <feFuncB type="linear" slope="${white - black}" intercept="${black}" />
+      </feComponentTransfer>`;
+    },
+  },
+  {
+    id: 'kodak-gold-200',
+    label: '柯达 · Gold 200',
+    group: 'film',
+    defaultIntensity: 0.7,
+    css: (intensity) =>
+      `sepia(${lerp(0, 0.16, intensity)}) saturate(${lerp(1, 1.22, intensity)}) contrast(${lerp(1, 1.09, intensity)}) brightness(${lerp(1, 1.035, intensity)})`,
+  },
+  {
+    id: 'fuji-velvia-50',
+    label: '富士 · Velvia 50',
+    group: 'film',
+    defaultIntensity: 0.7,
+    css: (intensity) =>
+      `saturate(${lerp(1, 1.62, intensity)}) contrast(${lerp(1, 1.25, intensity)}) brightness(${lerp(1, 0.97, intensity)})`,
+    svg: (intensity) => {
+      const mid = lerp(0.5, 0.48, intensity);
+      return `<feComponentTransfer>
+        <feFuncR type="table" tableValues="0 ${mid} 1" />
+        <feFuncG type="table" tableValues="0 ${mid} 1" />
+        <feFuncB type="table" tableValues="0 ${mid} 1" />
+      </feComponentTransfer>`;
+    },
+  },
+  {
+    id: 'ilford-hp5',
+    label: '伊尔福 · HP5 Plus',
+    group: 'film',
+    defaultIntensity: 0.7,
+    css: (intensity) => `grayscale(${intensity}) contrast(${lerp(1, 1.17, intensity)}) brightness(${lerp(1, 0.99, intensity)})`,
+    overlay: (intensity) => ({
+      backgroundImage: `radial-gradient(rgba(20,20,20,${lerp(0, 0.12, intensity)}) 0.55px, transparent 0.8px)`,
+      backgroundSize: '3px 3px',
+      mixBlendMode: 'multiply',
+    }),
+  },
+  {
     id: 'faded',
     label: '褪色',
+    group: 'legacy',
     defaultIntensity: 0.6,
     css: (intensity) =>
       `saturate(${lerp(1, 0.55, intensity)}) contrast(${lerp(1, 0.88, intensity)}) brightness(${lerp(1, 1.06, intensity)})`,
@@ -33,6 +146,7 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'warm',
     label: '暖阳',
+    group: 'legacy',
     defaultIntensity: 0.6,
     css: (intensity) =>
       `sepia(${lerp(0, 0.35, intensity)}) saturate(${lerp(1, 1.15, intensity)}) hue-rotate(${lerp(0, -8, intensity)}deg) brightness(${lerp(1, 1.04, intensity)})`,
@@ -40,6 +154,7 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'cool',
     label: '冷调',
+    group: 'legacy',
     defaultIntensity: 0.6,
     css: (intensity) =>
       `saturate(${lerp(1, 0.9, intensity)}) hue-rotate(${lerp(0, 12, intensity)}deg) brightness(${lerp(1, 1.02, intensity)})`,
@@ -47,12 +162,14 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'mono',
     label: '黑白',
+    group: 'legacy',
     defaultIntensity: 1,
     css: (intensity) => `grayscale(${intensity}) contrast(${lerp(1, 1.06, intensity)})`,
   },
   {
     id: 'vintage',
     label: '怀旧',
+    group: 'legacy',
     defaultIntensity: 0.6,
     css: (intensity) =>
       `sepia(${lerp(0, 0.5, intensity)}) contrast(${lerp(1, 0.92, intensity)}) brightness(${lerp(1, 1.05, intensity)}) saturate(${lerp(1, 0.85, intensity)})`,
@@ -60,6 +177,7 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'vignette',
     label: '暗角',
+    group: 'legacy',
     defaultIntensity: 0.6,
     overlay: (intensity) => ({
       background: `radial-gradient(ellipse at center, rgba(0,0,0,0) ${lerp(75, 45, intensity)}%, rgba(0,0,0,${lerp(0, 0.45, intensity)}) 100%)`,
@@ -68,6 +186,7 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'teal-orange',
     label: '青橙',
+    group: 'legacy',
     defaultIntensity: 0.6,
     // 分离色调:蓝通道抬暗部压高光(暗部偏青、高光偏橙),红通道抬中间调增暖,配合轻微提饱和
     css: (intensity) => `saturate(${1 + lerp(0, 0.25, intensity)})`,
@@ -85,6 +204,7 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'riso',
     label: '孔版',
+    group: 'legacy',
     defaultIntensity: 1,
     // duotone:先去色提对比,再按五段查表把灰阶映射到 墨蓝→青→橙→浅橙→纸白;intensity 控制与恒等的插值程度
     svg: (intensity) => {
@@ -120,6 +240,7 @@ export const FILTERS: readonly FilterDef[] = [
   {
     id: 'film',
     label: '胶片褪色',
+    group: 'legacy',
     defaultIntensity: 0.6,
     // feComponentTransfer 压缩黑位、抬升灰位,模拟胶片褪色的低对比高灰雾感
     svg: (intensity) => {

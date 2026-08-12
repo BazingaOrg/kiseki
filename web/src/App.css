@@ -1682,54 +1682,362 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
 .make-template-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.5rem;
+}
+
+.make-template-intro {
+  margin: -0.1rem 0 0.55rem;
+}
+
+.make-template-default,
+.make-template-card {
+  position: relative;
+  align-items: flex-start;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-media);
+  background: var(--color-background);
+  transition: transform 120ms ease-out, border-color 160ms ease, background-color 160ms ease;
+}
+
+.make-template-default {
+  width: 100%;
+  gap: 0.55rem;
+  margin-bottom: 0.55rem;
 }
 
 .make-template-card {
   flex-direction: column;
-  align-items: flex-start;
-  gap: 0.25rem;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-media);
+  gap: 0.35rem;
 }
 
-.make-template-card-visual {
+.make-template-default:has(input:checked),
+.make-template-card:has(input:checked) {
+  border-color: var(--color-secondary-text);
+  background: var(--color-surface);
+}
+
+.make-template-default:active,
+.make-template-card:active {
+  transform: scale(0.985);
+}
+
+.template-preview {
   position: relative;
-  width: 100%;
-  height: 84px;
-  overflow: hidden;
-  border-radius: 3px;
-  background: #171512;
-}
-
-.make-template-card-visual img {
   display: block;
   width: 100%;
-  height: 100%;
-  object-fit: cover;
-  opacity: 0.85;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 3px;
+  border: 1px solid rgba(55, 51, 45, 0.12);
+  background: #f5f1e8;
 }
 
-.make-template-card-caption {
+.template-preview-art {
+  --preview-sky: #d7c7aa;
+  --preview-sun: #b6744d;
+  --preview-ground: #746f54;
+  --preview-subject: #4f493f;
   position: absolute;
+  inset: 0;
+  display: block;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  background: var(--preview-sky);
+}
+
+.template-preview-art-two {
+  --preview-sky: #bcc9c3;
+  --preview-sun: #d8a85c;
+  --preview-ground: #657268;
+  --preview-subject: #4f5f5a;
+}
+
+.template-preview-art-three {
+  --preview-sky: #d6b7a7;
+  --preview-sun: #ead6a7;
+  --preview-ground: #7b635a;
+  --preview-subject: #55433d;
+}
+
+.template-preview-sky,
+.template-preview-ground,
+.template-preview-sun,
+.template-preview-subject {
+  position: absolute;
+  display: block;
+}
+
+.template-preview-sky {
+  inset: 0;
+  background: var(--preview-sky);
+}
+
+.template-preview-ground {
   left: 0;
   right: 0;
-  bottom: 8px;
-  text-align: center;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
-  white-space: nowrap;
+  bottom: 0;
+  height: 38%;
+  background: var(--preview-ground);
 }
 
-.make-template-card-chapter {
+.template-preview-sun {
+  top: 16%;
+  right: 17%;
+  width: 16%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: var(--preview-sun);
+}
+
+.template-preview-subject {
+  left: 23%;
+  bottom: 22%;
+  width: 18%;
+  height: 36%;
+  border-radius: 45% 45% 12% 12%;
+  background: var(--preview-subject);
+}
+
+.template-preview-caption {
+  position: absolute;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  bottom: 5px;
+  color: #37332d;
+  font-size: 8px;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-align: center;
+}
+
+.template-preview-scene {
+  position: absolute;
+  inset: 0;
+}
+
+.template-preview-scene-two,
+.template-preview-scene-three {
+  opacity: 0;
+}
+
+.template-preview-diary-frame,
+.template-preview-main {
+  position: absolute;
+  overflow: hidden;
+  background: #e9e3d8;
+  box-shadow: 0 5px 12px rgba(55, 51, 45, 0.18);
+}
+
+.template-preview-diary-frame {
+  inset: 8px 24px 22px;
+}
+
+.template-preview-main {
+  inset: 7px 28px 27px;
+}
+
+.template-preview-strip {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  display: grid;
+  grid-template-columns: repeat(3, 30px);
+  justify-content: center;
+  gap: 4px;
+  height: 20px;
+  padding: 3px 0;
+  background: #3e3a34;
+}
+
+.template-preview-strip > .template-preview-art {
+  position: relative;
+  inset: auto;
+}
+
+.template-preview-strip-current {
+  position: absolute;
+  top: 2px;
+  left: calc(50% - 49px);
+  width: 32px;
+  height: 16px;
+  border: 1px solid #f7f2e9;
+  border-radius: 2px;
+}
+
+.template-preview-filmstrip .template-preview-caption {
+  bottom: 21px;
+}
+
+.template-preview-polaroid-card {
   position: absolute;
   top: 8px;
-  left: 10px;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.55);
-  letter-spacing: 0.1em;
+  left: 50%;
+  width: 48%;
+  height: 68%;
+  padding: 4px 4px 10px;
+  background: #fff;
+  box-shadow: 0 5px 13px rgba(55, 51, 45, 0.22);
+  transform: translateX(-50%) rotate(-3deg);
+  transform-origin: center;
+}
+
+.template-preview-polaroid-card > .template-preview-art {
+  position: relative;
+  inset: auto;
+}
+
+.template-preview-polaroid-two {
+  opacity: 0;
+  transform: translateX(-50%) rotate(3deg);
+}
+
+.template-preview-cinema .template-preview-scene-one {
+  animation: var(--template-cinema-one, none) 4.8s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-cinema .template-preview-scene-two {
+  animation: var(--template-cinema-two, none) 4.8s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-cinema .template-preview-caption {
+  animation: var(--template-caption, none) 4.8s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-filmstrip .template-preview-scene-one {
+  animation: var(--template-filmstrip-one, none) 3.6s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-filmstrip .template-preview-scene-two {
+  animation: var(--template-filmstrip-two, none) 3.6s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-filmstrip .template-preview-scene-three {
+  animation: var(--template-filmstrip-three, none) 3.6s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-filmstrip .template-preview-strip-current {
+  animation: var(--template-filmstrip-current, none) 3.6s cubic-bezier(0.77, 0, 0.175, 1) var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-polaroid-one {
+  animation: var(--template-polaroid-one, none) 3.6s linear var(--template-preview-iterations, 1) both;
+}
+
+.template-preview-polaroid-two {
+  animation: var(--template-polaroid-two, none) 3.6s linear var(--template-preview-iterations, 1) both;
+}
+
+.make-template-card:is(:focus-within, :has(input:checked)) {
+  --template-cinema-one: template-cinema-one;
+  --template-cinema-two: template-cinema-two;
+  --template-caption: template-caption;
+  --template-filmstrip-one: template-filmstrip-one;
+  --template-filmstrip-two: template-filmstrip-two;
+  --template-filmstrip-three: template-filmstrip-three;
+  --template-filmstrip-current: template-filmstrip-current;
+  --template-polaroid-one: template-polaroid-one;
+  --template-polaroid-two: template-polaroid-two;
+}
+
+.make-template-card:has(input:checked) {
+  --template-preview-iterations: infinite;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .make-template-card:hover {
+    --template-cinema-one: template-cinema-one;
+    --template-cinema-two: template-cinema-two;
+    --template-caption: template-caption;
+    --template-filmstrip-one: template-filmstrip-one;
+    --template-filmstrip-two: template-filmstrip-two;
+    --template-filmstrip-three: template-filmstrip-three;
+    --template-filmstrip-current: template-filmstrip-current;
+    --template-polaroid-one: template-polaroid-one;
+    --template-polaroid-two: template-polaroid-two;
+  }
+}
+
+@keyframes template-cinema-one {
+  0% { opacity: 1; transform: translate(0, 0) scale(1); }
+  36% { opacity: 1; transform: translate(-1.5%, -1%) scale(1.06); }
+  48%, 72% { opacity: 0; transform: translate(-1.5%, -1%) scale(1.06); }
+  78% { opacity: 0; transform: translate(0, 0) scale(1); }
+  90%, 100% { opacity: 1; transform: translate(0, 0) scale(1); }
+}
+
+@keyframes template-cinema-two {
+  0%, 36% { opacity: 0; transform: translate(1.5%, 0) scale(1); }
+  48%, 72% { opacity: 1; transform: translate(0, -1%) scale(1.06); }
+  84%, 100% { opacity: 0; transform: translate(0, -1%) scale(1.06); }
+}
+
+@keyframes template-caption {
+  0% { opacity: 0; transform: translateY(6px); }
+  12%, 72% { opacity: 1; transform: translateY(0); }
+  84%, 100% { opacity: 0; transform: translateY(-3px); }
+}
+
+@keyframes template-filmstrip-one {
+  0%, 22% { opacity: 1; }
+  30%, 82% { opacity: 0; }
+  90%, 100% { opacity: 1; }
+}
+
+@keyframes template-filmstrip-two {
+  0%, 22% { opacity: 0; }
+  30%, 52% { opacity: 1; }
+  60%, 100% { opacity: 0; }
+}
+
+@keyframes template-filmstrip-three {
+  0%, 52% { opacity: 0; }
+  60%, 82% { opacity: 1; }
+  90%, 100% { opacity: 0; }
+}
+
+@keyframes template-filmstrip-current {
+  0%, 22% { transform: translateX(0); }
+  30%, 52% { transform: translateX(34px); }
+  60%, 82% { transform: translateX(68px); }
+  90%, 100% { transform: translateX(0); }
+}
+
+@keyframes template-polaroid-one {
+  0%, 36% { opacity: 1; transform: translateX(-50%) translateY(0) rotate(-3deg); }
+  48%, 72% { opacity: 0; transform: translateX(-50%) translateY(0) rotate(-3deg); }
+  76% { opacity: 0; transform: translateX(-50%) translateY(5px) rotate(7deg); }
+  88%, 100% { opacity: 1; transform: translateX(-50%) translateY(0) rotate(-3deg); }
+}
+
+@keyframes template-polaroid-two {
+  0%, 36% { opacity: 0; transform: translateX(-50%) translateY(5px) rotate(13deg); }
+  48%, 72% { opacity: 1; transform: translateX(-50%) translateY(0) rotate(3deg); }
+  84%, 100% { opacity: 0; transform: translateX(-50%) translateY(0) rotate(3deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .template-preview-scene,
+  .template-preview-caption,
+  .template-preview-strip-current,
+  .template-preview-polaroid-card {
+    animation: none !important;
+  }
+
+  .template-preview-scene-one,
+  .template-preview-polaroid-one {
+    opacity: 1;
+  }
+
+  .template-preview-scene-two,
+  .template-preview-scene-three,
+  .template-preview-polaroid-two {
+    opacity: 0;
+  }
 }
 
 .make-template-card-body {

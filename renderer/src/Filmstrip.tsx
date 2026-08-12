@@ -9,6 +9,7 @@
 import React from 'react';
 import {AbsoluteFill, Audio, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
+import {filmstripLayerPresentation} from './compositionTiming';
 import {Subtitle} from './Subtitle';
 import {getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
@@ -28,6 +29,7 @@ const toStatic = (src: string) => staticFile(src.replace(/^\.\//, ''));
 const MAIN_PHOTO_FACTOR = 0.92;
 // 走带高度占画布比例
 const STRIP_HEIGHT_RATIO = 0.09;
+const MAIN_CROSSFADE_DURATION = 0.6;
 
 export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const frame = useCurrentFrame();
@@ -52,9 +54,21 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const photoClips = visualClips.filter(isPhotoClip);
   const chapterClips = visualClips.filter(isChapterClip);
 
-  // 当前时刻的照片(含淡入淡出前后沿)及其在照片序列里的位置
+  const visibleMainPhotos = visualClips.flatMap((clip, index) => {
+    if (!isPhotoClip(clip)) return [];
+    const nextClip = visualClips[index + 1];
+    const presentation = filmstripLayerPresentation({
+      time: t,
+      start: clip.start,
+      end: clip.end,
+      nextPhotoStart: isPhotoClip(nextClip) ? nextClip.start : null,
+      transitionDuration: MAIN_CROSSFADE_DURATION,
+    });
+    return presentation.visible ? [{clip, opacity: presentation.opacity}] : [];
+  });
+
   const activeIndex = photoClips.findIndex(
-    (clip) => t >= clip.start - 0.2 && t <= clip.end + 0.3,
+    (clip, index) => t >= clip.start && (t < clip.end || (index === photoClips.length - 1 && t <= clip.end)),
   );
   const active = activeIndex >= 0 ? photoClips[activeIndex] : null;
   const strip = activeIndex >= 0
@@ -75,24 +89,16 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const whiteFadeStart = Math.max(0, durationInFrames - Math.round(2.5 * fps));
   const whiteFade = interpolate(frame, [whiteFadeStart, durationInFrames - 1], [0, 1], clamp);
 
-  // 主照片:淡入淡出
-  const mainOpacity = active
-    ? Math.min(
-        t < active.start ? 0 : interpolate(t, [active.start, active.start + 0.3], [0, 1], clamp),
-        t > active.end - 0.3 ? interpolate(t, [active.end - 0.3, active.end], [1, 0], clamp) : 1,
-      )
-    : 0;
-
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
       <Audio
         src={staticFile(meta.audio.replace(/^\.\//, ''))}
         volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
       />
-      {active && (
-        <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center', opacity: mainOpacity}}>
+      {visibleMainPhotos.map(({clip, opacity}) => (
+        <AbsoluteFill key={`${clip.src}-${clip.start}`} style={{justifyContent: 'center', alignItems: 'center', opacity}}>
           <img
-            src={toStatic(active.src)}
+            src={toStatic(clip.src)}
             alt=""
             style={{
               display: 'block',
@@ -104,7 +110,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
             }}
           />
         </AbsoluteFill>
-      )}
+      ))}
       {visibleSubtitles.map((l) => (
         <Subtitle
           key={`${l.start}-${l.text}`}

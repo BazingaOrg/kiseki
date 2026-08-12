@@ -9,6 +9,7 @@
 import React from 'react';
 import {AbsoluteFill, Audio, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
+import {polaroidCardPresentation} from './compositionTiming';
 import {Subtitle} from './Subtitle';
 import {hashString} from './motion';
 import {getPalette, getVisualScale} from './theme';
@@ -41,11 +42,6 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const bandCenterFromBottom = (meta.height * (1 - meta.photo_scale)) / 4;
 
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
-  // 当前时刻的照片:含淡入淡出前后沿(与 Diary 的可见窗口同语义)
-  const activeClip = visualClips.find(
-    (clip) => isPhotoClip(clip) && t >= clip.start - 0.2 && t <= clip.end + 0.3,
-  );
-  const active = isPhotoClip(activeClip) ? activeClip : null;
   const chapterClips = visualClips.filter(isChapterClip);
   const visibleSubtitles = subtitles.filter(
     (l) =>
@@ -59,16 +55,18 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const whiteFadeStart = Math.max(0, durationInFrames - Math.round(2.5 * fps));
   const whiteFade = interpolate(frame, [whiteFadeStart, durationInFrames - 1], [0, 1], clamp);
 
-  // 当前照片的卡片姿态:确定性旋转 + 入场旋转落定 + 淡入淡出
-  let card: {src: string; rotation: number; opacity: number} | null = null;
-  if (active) {
-    const rotation = (hashString(active.src) % 9) - 4;
-    const inEnd = active.start + 0.4;
-    const settle = interpolate(t, [active.start, inEnd], [rotation + 10, rotation], clamp);
-    const fadeIn = t < active.start ? 0 : interpolate(t, [active.start, active.start + 0.2], [0, 1], clamp);
-    const fadeOut = t > active.end - 0.3 ? interpolate(t, [active.end - 0.3, active.end], [1, 0], clamp) : 1;
-    card = {src: active.src, rotation: settle, opacity: Math.min(fadeIn, fadeOut)};
-  }
+  const cards = visualClips.flatMap((clip, index) => {
+    if (!isPhotoClip(clip)) return [];
+    const nextClip = visualClips[index + 1];
+    const presentation = polaroidCardPresentation({
+      time: t,
+      start: clip.start,
+      end: clip.end,
+      nextPhotoStart: isPhotoClip(nextClip) ? nextClip.start : null,
+      rotation: (hashString(clip.src) % 9) - 4,
+    });
+    return presentation.visible ? [{clip, ...presentation}] : [];
+  });
 
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
@@ -76,11 +74,11 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         src={staticFile(meta.audio.replace(/^\.\//, ''))}
         volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
       />
-      {card && (
-        <AbsoluteFill style={{justifyContent: 'center', alignItems: 'center', opacity: card.opacity}}>
+      {cards.map(({clip, rotation, opacity}) => (
+        <AbsoluteFill key={`${clip.src}-${clip.start}`} style={{justifyContent: 'center', alignItems: 'center', opacity}}>
           <div
             style={{
-              transform: `rotate(${card.rotation}deg)`,
+              transform: `rotate(${rotation}deg)`,
               background: '#fff',
               padding: Math.round(safeWidth * 0.03),
               borderRadius: Math.round(4 * scale),
@@ -88,7 +86,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
             }}
           >
             <img
-              src={toStatic(card.src)}
+              src={toStatic(clip.src)}
               alt=""
               style={{
                 display: 'block',
@@ -100,7 +98,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
             />
           </div>
         </AbsoluteFill>
-      )}
+      ))}
       {visibleSubtitles.map((l) => (
         <Subtitle
           key={`${l.start}-${l.text}`}

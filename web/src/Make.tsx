@@ -3,7 +3,7 @@ import type {ReactNode} from 'react';
 import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
 import {FILTERS, getFilter} from '../../renderer/src/filters';
-import {TEMPLATES as RENDER_TEMPLATES, type Template} from '../../renderer/src/templates';
+import {TEMPLATES as ALL_RENDER_TEMPLATES, type Template} from '../../renderer/src/templates';
 import type {Capability, Capabilities, Remedy} from './capabilities';
 import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
@@ -17,21 +17,68 @@ import {useTransitionPresence} from './useTransitionPresence';
 
 type Kind = 'render' | 'still';
 
-/** 模板卡片示意:按 1080p 基准缩放字号,让卡片里的样本字幕接近成片的相对观感 */
-const CARD_CAPTION_SCALE = 0.34;
-const SAMPLE_CAPTION = '晴天 海边 午后';
+const FEATURED_TEMPLATE_IDS = ['slow-cinema', 'filmstrip', 'polaroid'] as const;
+const RENDER_TEMPLATES = FEATURED_TEMPLATE_IDS
+  .map((id) => ALL_RENDER_TEMPLATES.find((template) => template.id === id))
+  .filter((template): template is Template => template !== undefined);
 
-const captionCardStyle = (template: Template | undefined) => ({
-  fontSize: `${(template?.captions?.fontSize ?? 36) * CARD_CAPTION_SCALE}px`,
-  fontWeight: template?.captions?.fontWeight ?? 500,
-  letterSpacing: template?.captions?.letterSpacing ?? '0.12em',
-  ...(template?.fontFamily === 'sans' ? {fontFamily: 'var(--font-sans)'} : {}),
-});
+const PreviewArtwork = ({variant, className = ''}: {variant: 'one' | 'two' | 'three'; className?: string}) => (
+  <span className={`template-preview-art template-preview-art-${variant} ${className}`.trim()}>
+    <span className="template-preview-sky" />
+    <span className="template-preview-sun" />
+    <span className="template-preview-ground" />
+    <span className="template-preview-subject" />
+  </span>
+);
 
-const chapterCardStyle = (template: Template | undefined) => ({
-  fontSize: `${(template?.chapterCard?.fontSize ?? 46) * CARD_CAPTION_SCALE}px`,
-  letterSpacing: template?.chapterCard?.letterSpacing ?? '0.1em',
-});
+const PreviewCaption = () => (
+  <span className="template-preview-caption">字幕</span>
+);
+
+const TemplatePreview = ({template}: {template: Template}) => {
+  if (template.composition === 'Filmstrip') {
+    return (
+      <span className="template-preview template-preview-filmstrip" aria-hidden="true">
+        <span className="template-preview-main">
+          <PreviewArtwork variant="one" className="template-preview-scene template-preview-scene-one" />
+          <PreviewArtwork variant="two" className="template-preview-scene template-preview-scene-two" />
+          <PreviewArtwork variant="three" className="template-preview-scene template-preview-scene-three" />
+        </span>
+        <PreviewCaption />
+        <span className="template-preview-strip">
+          <PreviewArtwork variant="one" />
+          <PreviewArtwork variant="two" />
+          <PreviewArtwork variant="three" />
+          <span className="template-preview-strip-current" />
+        </span>
+      </span>
+    );
+  }
+
+  if (template.composition === 'PolaroidWall') {
+    return (
+      <span className="template-preview template-preview-polaroid" aria-hidden="true">
+        <span className="template-preview-polaroid-card template-preview-polaroid-one">
+          <PreviewArtwork variant="one" />
+        </span>
+        <span className="template-preview-polaroid-card template-preview-polaroid-two">
+          <PreviewArtwork variant="three" />
+        </span>
+        <PreviewCaption />
+      </span>
+    );
+  }
+
+  return (
+    <span className="template-preview template-preview-cinema" aria-hidden="true">
+      <span className="template-preview-diary-frame">
+        <PreviewArtwork variant="one" className="template-preview-scene template-preview-scene-one" />
+        <PreviewArtwork variant="two" className="template-preview-scene template-preview-scene-two" />
+      </span>
+      <PreviewCaption />
+    </span>
+  );
+};
 
 const KIND_VERB: Record<Kind, string> = {render: '渲染', still: '导出'};
 
@@ -41,10 +88,9 @@ const FORMAT_LABELS: {value: JobOptions['format']; label: string}[] = [
   {value: 'square', label: '方形'},
 ];
 
-const TRIM_LABELS: {value: JobOptions['trim']; label: string}[] = [
-  {value: null, label: '默认'},
-  {value: 'auto', label: '截到重拍处'},
-  {value: 'full', label: '播完整首歌'},
+const TRIM_LABELS: {value: NonNullable<JobOptions['trim']>; label: string; hint: string}[] = [
+  {value: 'auto', label: '智能收尾（推荐）', hint: '根据照片数量，在音乐合适的节拍处结束'},
+  {value: 'full', label: '完整歌曲', hint: '始终渲染到歌曲结束，成片可能更长'},
 ];
 
 const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string; hint: string}[] = [
@@ -52,6 +98,11 @@ const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string; hin
   {value: 'balanced', label: '均衡', hint: '约一半核心'},
   {value: 'full', label: '快', hint: '几乎占满，风扇会转起来'},
 ];
+
+const FILTER_GROUPS = [
+  {id: 'camera', label: '经典相机'},
+  {id: 'film', label: '经典胶片'},
+] as const;
 
 const RENDER_DEFAULTS: JobOptions = {
   exif: false,
@@ -61,7 +112,7 @@ const RENDER_DEFAULTS: JobOptions = {
   filter: null,
   filterIntensity: null,
   draft: false,
-  trim: null,
+  trim: 'auto',
   speed: 'balanced',
   template: null,
 };
@@ -130,40 +181,29 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
     const def = FILTERS.find((item) => item.id === filterId);
     onChange({...options, filter: filterId, filterIntensity: def?.defaultIntensity ?? 0.6});
   };
+  const selectedLegacyFilter = FILTERS.find(
+    (filter) => filter.id === options.filter && filter.group === 'legacy',
+  );
+  const trim = options.trim ?? 'auto';
 
   return (
     <div className="make-form">
-      {/* 呈现层模板:只影响转场/字幕/章节卡的"长相",滤镜/暗色等素材基调选项保持独立。
-          卡片示意用注册表的真实样式值拼 CSS 预览,与滤镜预览同模式,标注示意不当承诺。 */}
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label">呈现模板</span>
+          <span className="make-field-label">成片风格</span>
+          <p className="make-field-hint make-template-intro">改变照片布局、转场和字幕样式，不影响照片内容与滤镜。</p>
+          <label className="make-radio make-template-default">
+            <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
+            <span className="make-template-card-body">
+              <strong>不套用风格</strong>
+              <em>保留素材夹的原始转场与标准排版</em>
+            </span>
+          </label>
           <div className="make-radio-group make-template-grid">
-            <label className="make-radio make-template-card">
-              <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
-              {photos[0] && (
-                <span className="make-template-card-visual">
-                  <img src={thumbUrl(photos[0], 240)} alt="" loading="lazy" />
-                  <span className="make-template-card-caption" style={captionCardStyle(undefined)}>{SAMPLE_CAPTION}</span>
-                </span>
-              )}
-              <span className="make-template-card-body">
-                <strong>默认</strong>
-                <em>跟随配置的转场与字幕</em>
-              </span>
-            </label>
             {RENDER_TEMPLATES.map((template) => (
               <label className="make-radio make-template-card" key={template.id}>
                 <input type="radio" name="render-template" checked={options.template === template.id} onChange={() => set('template', template.id)} />
-                {photos[0] && (
-                  <span className="make-template-card-visual">
-                    <img src={thumbUrl(photos[0], 240)} alt="" loading="lazy" />
-                    {template.chapterCard && (
-                      <span className="make-template-card-chapter" style={chapterCardStyle(template)}>第一天</span>
-                    )}
-                    <span className="make-template-card-caption" style={captionCardStyle(template)}>{SAMPLE_CAPTION}</span>
-                  </span>
-                )}
+                <TemplatePreview template={template} />
                 <span className="make-template-card-body">
                   <strong>{template.name}</strong>
                   <em>{template.description}</em>
@@ -171,7 +211,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
               </label>
             ))}
           </div>
-          <p className="make-field-hint">卡片为样式示意,以成片为准。</p>
+          <p className="make-field-hint">抽象图形仅说明布局与动效；点选后会持续播放，以成片为准。</p>
         </div>
       )}
 
@@ -219,20 +259,23 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
 
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label">时长裁剪</span>
+          <span className="make-field-label">成片时长</span>
           <div className="make-radio-group">
             {TRIM_LABELS.map((item) => (
               <label className="make-radio" key={item.label}>
                 <input
                   type="radio"
                   name="render-trim"
-                  checked={options.trim === item.value}
+                  checked={trim === item.value}
                   onChange={() => set('trim', item.value)}
                 />
                 {item.label}
               </label>
             ))}
           </div>
+          <p className="make-field-hint">
+            {TRIM_LABELS.find((item) => item.value === trim)?.hint}
+          </p>
         </div>
       )}
 
@@ -282,10 +325,19 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
           onChange={(e) => handleFilterChange(e.target.value)}
         >
           <option value="">无</option>
-          {FILTERS.map((filter) => (
-            <option key={filter.id} value={filter.id}>
-              {filter.label}
-            </option>
+          {selectedLegacyFilter && (
+            <optgroup label="旧项目滤镜">
+              <option value={selectedLegacyFilter.id}>{selectedLegacyFilter.label}</option>
+            </optgroup>
+          )}
+          {FILTER_GROUPS.map((group) => (
+            <optgroup key={group.id} label={group.label}>
+              {FILTERS.filter((filter) => filter.group === group.id).map((filter) => (
+                <option key={filter.id} value={filter.id}>
+                  {filter.label}
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
         {options.filter && (
@@ -299,6 +351,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
             aria-label="滤镜强度"
           />
         )}
+        <p className="make-field-hint">非品牌官方模拟，效果会受原片色彩和曝光影响。</p>
       </div>
 
       {options.filter && photos[0] && (
@@ -375,7 +428,7 @@ const ActionCard = ({
     const template = preset.options.template && RENDER_TEMPLATES.some((t) => t.id === preset.options.template)
       ? preset.options.template
       : null;
-    handleOptionsChange({...preset.options, template});
+    handleOptionsChange({...preset.options, trim: preset.options.trim ?? 'auto', template});
   };
 
   const isCurrentPreset = (preset: RenderPreset) => JSON.stringify(preset.options) === JSON.stringify(options);

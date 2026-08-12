@@ -46,3 +46,41 @@ test('material and result tabs share restrained motion styles', async () => {
   assert.match(appCss, /\.material-tab,\s*\.result-tab/);
   assert.match(appCss, /transition: color 0\.16s ease-out, border-color 0\.16s ease-out/);
 });
+
+test('featured render styles use abstract explanatory previews with motion safeguards', async () => {
+  const [appCss, make] = await Promise.all([source('App.css'), source('Make.tsx')]);
+  const preview = make.slice(make.indexOf('const PreviewArtwork'), make.indexOf('const KIND_VERB'));
+  assert.match(make, /FEATURED_TEMPLATE_IDS = \['slow-cinema', 'filmstrip', 'polaroid'\]/);
+  assert.match(make, />成片风格</);
+  assert.match(make, />不套用风格</);
+  assert.match(make, />成片时长</);
+  assert.match(make, /智能收尾（推荐）[\s\S]*完整歌曲/);
+  assert.doesNotMatch(make, /跟随素材夹/);
+  assert.match(make, /trim: 'auto'/);
+  assert.match(make, /trim: preset\.options\.trim \?\? 'auto'/);
+  assert.match(make, /根据照片数量，在音乐合适的节拍处结束/);
+  assert.match(make, /始终渲染到歌曲结束，成片可能更长/);
+  assert.doesNotMatch(make, /晴天 海边 午后|SAMPLE_CAPTION/);
+  assert.match(preview, /template-preview-caption">字幕</);
+  assert.match(preview, /variant="three" className="template-preview-scene template-preview-scene-three"/);
+  assert.doesNotMatch(preview, /<img|thumbUrl|photos\[/);
+  assert.match(appCss, /@keyframes template-cinema-one/);
+  assert.match(appCss, /@keyframes template-filmstrip-current/);
+  assert.match(appCss, /@keyframes template-filmstrip-three/);
+  assert.match(appCss, /60%, 82% \{ transform: translateX\(68px\); \}/);
+  assert.match(appCss, /@keyframes template-polaroid-one/);
+  assert.match(appCss, /\.make-template-card:has\(input:checked\) \{\s*--template-preview-iterations: infinite;/);
+  assert.match(appCss, /animation: var\(--template-cinema-one, none\)[^;]*var\(--template-preview-iterations, 1\)/);
+  assert.match(appCss, /@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*?\.make-template-card:hover/);
+  assert.match(appCss, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.template-preview-scene,[\s\S]*?animation: none !important;/);
+});
+
+test('filter picker exposes only grouped classic styles and preserves a selected legacy value', async () => {
+  const make = await source('Make.tsx');
+  assert.match(make, /\{id: 'camera', label: '经典相机'\}/);
+  assert.match(make, /\{id: 'film', label: '经典胶片'\}/);
+  assert.match(make, /filter\.id === options\.filter && filter\.group === 'legacy'/);
+  assert.match(make, /<optgroup label="旧项目滤镜">/);
+  assert.match(make, /FILTERS\.filter\(\(filter\) => filter\.group === group\.id\)/);
+  assert.match(make, /非品牌官方模拟，效果会受原片色彩和曝光影响。/);
+});

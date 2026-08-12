@@ -57,8 +57,8 @@ export interface Template {
 export const TEMPLATES: Template[] = [
   {
     id: 'filmstrip',
-    name: '走带',
-    description: '底部走带画廊、前后照片小帧预览',
+    name: '胶片带',
+    description: '主图下方保留前后照片序列',
     composition: 'Filmstrip',
     transition: 'crossfade',
     captions: {
@@ -91,7 +91,7 @@ export const TEMPLATES: Template[] = [
   {
     id: 'polaroid',
     name: '拍立得',
-    description: '白色相框、错落旋转的拍立得卡片',
+    description: '单张白框卡片、轻微旋转入场',
     composition: 'PolaroidWall',
     transition: 'cut',
     captions: {

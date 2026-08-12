@@ -4,6 +4,15 @@
  * 故在此维护一份平行的纯数据副本,只用于 CLI 校验与帮助文案.
  */
 export const FILTER_IDS = [
+  'fuji-classic-chrome',
+  'fuji-classic-neg',
+  'ricoh-positive',
+  'ricoh-negative',
+  'leica-classic',
+  'kodak-portra-400',
+  'kodak-gold-200',
+  'fuji-velvia-50',
+  'ilford-hp5',
   'faded',
   'warm',
   'cool',

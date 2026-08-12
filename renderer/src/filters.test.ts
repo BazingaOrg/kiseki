@@ -8,6 +8,26 @@ test('registry ids are unique and match FILTER_IDS', () => {
   assert.deepEqual(FILTER_IDS, ids);
 });
 
+test('visible filters are the nine ordered classic camera and film styles', () => {
+  const visible = FILTERS.filter((filter) => filter.group !== 'legacy');
+  assert.deepEqual(
+    visible.map((filter) => filter.id),
+    [
+      'fuji-classic-chrome',
+      'fuji-classic-neg',
+      'ricoh-positive',
+      'ricoh-negative',
+      'leica-classic',
+      'kodak-portra-400',
+      'kodak-gold-200',
+      'fuji-velvia-50',
+      'ilford-hp5',
+    ],
+  );
+  assert.equal(visible.filter((filter) => filter.group === 'camera').length, 5);
+  assert.equal(visible.filter((filter) => filter.group === 'film').length, 4);
+});
+
 test('every filter def has at least one implementation (css, svg, or overlay)', () => {
   for (const def of FILTERS) {
     const impls = [def.css, def.svg, def.overlay].filter(Boolean);
@@ -37,6 +57,12 @@ test('css filters are identity-equivalent at intensity 0 and defined at intensit
     const one = getFilter(def.id, 1);
     assert.ok(zero.imgStyle.filter, `${def.id} should produce a filter string`);
     assert.notEqual(zero.imgStyle.filter, one.imgStyle.filter, `${def.id} should change between intensity 0 and 1`);
+  }
+});
+
+test('classic filters change from intensity 0 to 1', () => {
+  for (const def of FILTERS.filter((filter) => filter.group !== 'legacy')) {
+    assert.notDeepEqual(getFilter(def.id, 0), getFilter(def.id, 1), `${def.id} should change between intensity 0 and 1`);
   }
 });
 
