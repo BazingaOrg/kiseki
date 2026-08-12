@@ -191,7 +191,8 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
     <div className="make-form">
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label make-field-label-with-help">成片风格 <FieldHelp label="了解成片风格">卡片使用抽象图形演示布局和动效，选中后会循环播放。只影响布局、转场和字幕，滤镜单独设置。</FieldHelp></span>
+          <span className="make-field-label make-field-label-with-help">成片风格 <FieldHelp label="了解成片风格">卡片使用抽象图形演示布局和动效，选中后会循环播放，以成片为准。</FieldHelp></span>
+          <p className="make-field-hint">只影响布局、转场和字幕；滤镜单独设置。</p>
           <label className="make-radio make-template-default">
             <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
             <span className="make-template-card-body">
@@ -281,7 +282,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
       {/* 只给渲染:still 不走 resolveRenderSettings,并发对它无效,摆在那只会误导 */}
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label make-field-label-with-help">渲染速度 <FieldHelp label="了解渲染速度">只影响电脑资源占用，不影响成片质量。省着点约占四分之一，均衡约占一半，快则尽量使用全部资源。</FieldHelp></span>
+          <span className="make-field-label make-field-label-with-help">渲染速度 <FieldHelp label="了解渲染速度">省着点约占四分之一资源，均衡约占一半，快则尽量使用全部资源。</FieldHelp></span>
           <div className="make-radio-group">
             {SPEED_LABELS.map((item) => (
               <label className="make-radio" key={item.value}>
@@ -295,6 +296,7 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
               </label>
             ))}
           </div>
+          <p className="make-field-hint">只影响电脑资源占用，不影响成片质量。</p>
         </div>
       )}
 
@@ -543,7 +545,7 @@ const ActionCard = ({
               <button className="primary-button" disabled={otherRunning} onClick={() => onStart(options)}>
                 开始{KIND_VERB[kind]}
               </button>
-              <CommandHint command={command} />
+              <CommandHint command={command} label="复制命令" />
             </div>
           </>
         )

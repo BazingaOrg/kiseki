@@ -30,6 +30,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
     if (tab === 'videos' && project.output.videos.length === 0 && project.output.stills.length > 0) setTab('photos');
   }, [project.output.stills.length, project.output.videos.length, tab]);
   const videoAssets = project.assets?.videos ?? fallbackAssetCollection('video', project.output.videos);
+  const hasVideoPlaylist = videoAssets.items.length > 1;
   const [currentVideoIndex, setCurrentVideoIndex] = useState(0);
   // 以位置而不是扫描 id 记住选择：重命名会派生新 id，刷新后仍应留在原成片。
   const currentVideo = videoAssets.items[Math.min(currentVideoIndex, Math.max(videoAssets.items.length - 1, 0))] ?? null;
@@ -59,12 +60,12 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
 
       {project.output.videos.length > 0 && <div {...videoPanelProps}>
           {capabilities.playVideo.enabled ? (
-            <div className="result-video result-video-with-playlist">
+            <div className={hasVideoPlaylist ? 'result-video result-video-with-playlist' : 'result-video result-video-single'}>
               <Player video={currentVideo?.path ?? null} />
-              <aside className="result-video-picker" aria-label="成片播放列表">
-                <div className="result-video-picker-inner">
-                  <p className="result-video-position">播放列表 · {videoAssets.items.length} 个</p>
-                  <AssetCollection collection={videoAssets} empty="" ambiguous={() => ''} busy={assetBusy} currentId={currentVideo?.id ?? null} onSelect={(item) => setCurrentVideoIndex(videoAssets.items.findIndex((candidate) => candidate.id === item.id))} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
+              <aside className={hasVideoPlaylist ? 'result-video-picker' : 'result-video-single-file'} aria-label={hasVideoPlaylist ? '成片播放列表' : '当前成片'}>
+                <div className={hasVideoPlaylist ? 'result-video-picker-inner' : undefined}>
+                  {hasVideoPlaylist && <p className="result-video-position">播放列表 · {videoAssets.items.length} 个</p>}
+                  <AssetCollection collection={videoAssets} empty="" ambiguous={() => ''} busy={assetBusy} currentId={hasVideoPlaylist ? currentVideo?.id ?? null : null} onSelect={hasVideoPlaylist ? (item) => setCurrentVideoIndex(videoAssets.items.findIndex((candidate) => candidate.id === item.id)) : undefined} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
                 </div>
               </aside>
             </div>

@@ -48,12 +48,13 @@ export const Section = ({title, meta, titleHidden = false, children}: SectionPro
   </section>
 );
 
-export const CommandHint = ({command}: {command: string}) => (
+export const CommandHint = ({command, label}: {command: string; label?: string}) => (
   <button
-    className="command-hint"
-    title="点击复制"
+    type="button"
+    className={label ? 'command-hint command-hint-compact' : 'command-hint'}
+    title={label ? '复制完整命令' : '点击复制'}
     onClick={() => navigator.clipboard?.writeText(command)}
   >
-    <code>{command}</code>
+    {label ?? <code>{command}</code>}
   </button>
 );

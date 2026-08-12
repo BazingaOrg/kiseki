@@ -11,6 +11,13 @@ test('materials panels remain mounted and results contains output panels only', 
   assert.equal((results.match(/getPanelProps\('(videos|photos)'\)/g) ?? []).length, 2);
 });
 
+test('a single video uses compact metadata while multiple videos keep the playlist', async () => {
+  const [results, css] = await Promise.all([source('Results.tsx'), source('App.css')]);
+  assert.match(results, /const hasVideoPlaylist = videoAssets\.items\.length > 1/);
+  assert.match(results, /hasVideoPlaylist \? 'result-video result-video-with-playlist' : 'result-video result-video-single'/);
+  assert.match(css, /\.result-video-single-file/);
+});
+
 test('recognized lyric preview exposes replace and clear actions only through callbacks', async () => {
   const materials = await source('Materials.tsx');
   assert.match(materials, /project\.lyricsSource === 'recognized'/);

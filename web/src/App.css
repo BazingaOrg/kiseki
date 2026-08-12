@@ -109,16 +109,39 @@
   white-space: pre;
 }
 
+.command-hint-compact {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  min-height: var(--control-height);
+  margin-top: 0;
+  padding: 0.35rem 0.25rem;
+  border: 0;
+  background: none;
+  font-family: inherit;
+  font-size: 0.82rem;
+  text-align: center;
+  text-decoration: underline;
+  text-decoration-color: var(--color-divider);
+  text-underline-offset: 3px;
+  white-space: nowrap;
+  overflow: visible;
+}
+
 /* ── 欢迎页 ───────────────────────────────────────────── */
 
 .welcome {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  justify-content: safe center;
   gap: 1.75rem;
   padding: 2rem 1.5rem 4rem;
+  overflow-y: auto;
 }
 
 .logo {
@@ -364,6 +387,25 @@
   }
 }
 
+@media (max-height: 760px) and (min-width: 641px) {
+  .welcome {
+    gap: 1rem;
+    padding-block: 1.5rem;
+  }
+
+  .logo-hero {
+    gap: 0.65rem;
+  }
+
+  .welcome-lead {
+    line-height: 1.7;
+  }
+
+  .folder-columns {
+    height: min(35vh, 260px);
+  }
+}
+
 /* ── 工作台骨架 ───────────────────────────────────────── */
 
 .workbench {
@@ -605,6 +647,7 @@
 .asset-name { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; }
 button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color 0.16s ease-out; }
 .asset-actions { display: inline-flex; flex-shrink: 0; gap: 0.55rem; }
+.asset-actions .link-button { display: inline-grid; min-width: 2rem; min-height: 2rem; place-items: center; padding-inline: 0.25rem; }
 .asset-actions .link-button:disabled { opacity: 0.4; cursor: not-allowed; }
 .asset-rename-input { flex: 1; min-width: 0; }
 
@@ -903,6 +946,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .action-cards {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  align-items: start;
   gap: 1rem;
 }
 
@@ -963,6 +1007,10 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   margin-top: 0;
   flex: 1;
   min-width: 0;
+}
+
+.action-card-footer .command-hint-compact {
+  flex: 0 0 auto;
 }
 
 .action-ready {
@@ -1315,6 +1363,12 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   border-top: 1px solid var(--color-divider);
 }
 
+@media (hover: none) and (pointer: coarse) {
+  .player-shortcuts {
+    display: none;
+  }
+}
+
 .player-media-stage {
   position: relative;
   display: grid;
@@ -1367,6 +1421,21 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .result-video-with-playlist .player {
   max-width: none;
   margin: 0;
+}
+
+.result-video-single {
+  width: 100%;
+  max-width: 760px;
+  margin-inline: auto;
+}
+
+.result-video-single-file {
+  margin-top: 0.65rem;
+}
+
+.result-video-single-file .asset-collection,
+.result-video-single-file .asset-list {
+  margin-top: 0;
 }
 
 .result-video-picker {
@@ -2196,8 +2265,23 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .photo-item { min-width: 0; }
 .photo-item-meta { display: flex; align-items: center; gap: 0.5rem; min-width: 0; margin-top: 0.5rem; color: var(--color-secondary-text); font-size: 0.78rem; }
 .photo-item-name { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.photo-item-actions { gap: 0.4rem; font-size: 0.78rem; }
+.photo-item-actions { gap: 0.2rem; font-size: 0.78rem; }
+.asset-delete:focus-visible { color: var(--color-destructive); }
 .photo-item-meta .asset-rename-input { min-height: 1.8rem; }
+
+@media (hover: hover) and (pointer: fine) {
+  .asset-delete:hover:not(:disabled) {
+    color: var(--color-destructive);
+    text-decoration-color: var(--color-destructive);
+  }
+}
+
+@media (pointer: coarse) {
+  .asset-actions .link-button {
+    min-width: 2.5rem;
+    min-height: 2.5rem;
+  }
+}
 
 .photo-card {
   display: block;
@@ -2624,9 +2708,12 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   max-width: 260px;
 }
 
-/* 速度档位下面那行解释:选了什么就说什么,不用把三条 hint 全堆出来 */
 .make-field-hint {
   margin: 0.35rem 0 0;
   font-size: 0.78rem;
   color: var(--color-secondary-text);
+}
+
+.make-field-hint + .make-template-default {
+  margin-top: 0.55rem;
 }

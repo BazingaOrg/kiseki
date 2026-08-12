@@ -126,11 +126,11 @@ const PhotoItem = ({path, asset, busy, onOpen, onRename, onDelete}: {path: strin
         {editing ? <input className="asset-rename-input" value={stem} onChange={(event) => setStem(event.target.value)} aria-label={`重命名 ${name}`} /> : <span className="photo-item-name" title={name}>{name}</span>}
         {asset && (onRename || onDelete) && <span className="asset-actions photo-item-actions">
           {editing ? <>
-            <button className="link-button" disabled={disabled || !stem.trim()} onClick={() => { onRename?.(asset, stem); setEditing(false); }}>确认</button>
-            <button className="link-button" onClick={() => { setStem(originalStem); setEditing(false); }}>取消</button>
+            <button type="button" className="link-button" disabled={disabled || !stem.trim()} onClick={() => { onRename?.(asset, stem); setEditing(false); }}>确认</button>
+            <button type="button" className="link-button" onClick={() => { setStem(originalStem); setEditing(false); }}>取消</button>
           </> : <>
-            <button className="link-button" disabled={disabled || !onRename} title={asset.actionHint ?? undefined} onClick={() => setEditing(true)}>改名</button>
-            <button className="link-button" disabled={disabled || !onDelete} title={asset.actionHint ?? undefined} onClick={() => onDelete?.(asset)}>删除</button>
+            <button type="button" className="link-button" disabled={disabled || !onRename} title={asset.actionHint ?? undefined} aria-label={`改名 ${name}`} onClick={() => setEditing(true)}>改名</button>
+            <button type="button" className="link-button asset-delete" disabled={disabled || !onDelete} title={asset.actionHint ?? undefined} aria-label={`删除 ${name}`} onClick={() => onDelete?.(asset)}>删除</button>
           </>}
         </span>}
       </div>
