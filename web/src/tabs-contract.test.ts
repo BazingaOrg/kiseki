@@ -23,6 +23,21 @@ test('recognized lyric preview exposes replace and clear actions only through ca
   assert.match(materials, /<JobPanel verb="识别"/);
 });
 
+test('lyrics empty state prioritizes online matching before local recognition', async () => {
+  const [materials, css] = await Promise.all([source('Materials.tsx'), source('App.css')]);
+  assert.match(materials, /className="fetch lyrics-empty-state"/);
+  assert.match(materials, /<h3>还没有歌词<\/h3>/);
+  assert.match(materials, /可以先在线匹配；没有合适版本时，再使用本地人声识别。/);
+  assert.match(materials, /className="lyrics-online-match"/);
+  assert.ok(materials.indexOf('className="lyrics-online-match"') < materials.indexOf('className="lyrics-local-recognition"'));
+  assert.match(materials, /className="lyrics-recognition-action"[\s\S]*?本地识别[\s\S]*?FieldHelp[\s\S]*?capabilities\.recognizeLyrics\.enabled/);
+  assert.doesNotMatch(materials, /fetch-paths|fetch-path/);
+  assert.doesNotMatch(css, /fetch-paths|fetch-path/);
+  assert.doesNotMatch(css, /lyrics-online-match > \.fetch/);
+  assert.match(materials, /<LyricsSearch project=\{project\} locked=\{locked\} onDone=\{onRefresh\} \/>/);
+  assert.match(materials, /onClick=\{\(\) => onStart\(\{kind: 'lyrics'\}\)\}/);
+});
+
 test('internal recovery retry keeps its dialog open until recovery succeeds', async () => {
   const workbench = await source('Workbench.tsx');
   assert.match(workbench, /const recoveryUndoId = result\.recoveryUndoId \?\? undoId/);

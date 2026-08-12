@@ -649,32 +649,70 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   margin-top: 0.75rem;
 }
 
-/* 缺歌词有两条路,并排;窄屏自然堆成上下两段 */
-.fetch-paths {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 1rem 1.5rem;
+.lyrics-empty-state {
+  width: min(100%, 40rem);
 }
 
-.fetch-path-label {
-  display: block;
-  font-size: 0.78rem;
+.lyrics-empty-state h3 {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+}
+
+.lyrics-empty-description {
+  margin: 0.4rem 0 0;
   color: var(--color-secondary-text);
-  margin-bottom: 0.45rem;
+  font-size: 0.85rem;
+  line-height: 1.65;
 }
 
-.fetch-path-label-with-help {
+.lyrics-online-match {
+  max-width: 36rem;
+  margin-top: 1.25rem;
+}
+
+.lyrics-empty-label {
+  display: block;
+  margin-bottom: 0.45rem;
+  color: var(--color-secondary-text);
+  font-size: 0.78rem;
+}
+
+.lyrics-empty-label-with-help {
   display: flex;
   align-items: center;
   gap: 0.3rem;
+  margin-bottom: 0;
 }
 
-.fetch-path-help {
+.lyrics-local-recognition {
+  max-width: 36rem;
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--color-divider);
+}
+
+.lyrics-local-prompt {
+  margin: 0 0 0.75rem;
+  color: var(--color-secondary-text);
+  font-size: 0.85rem;
+}
+
+.lyrics-recognition-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.field-help {
   position: relative;
   display: inline-flex;
+  flex: 0 0 auto;
+  vertical-align: middle;
 }
 
-.fetch-path-help-button {
+.field-help-button {
   display: inline-grid;
   place-items: center;
   width: 1.25rem;
@@ -687,12 +725,12 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   transition: color 0.16s ease-out;
 }
 
-.fetch-path-help-button:hover,
-.fetch-path-help-button:focus-visible {
+.field-help-button:hover,
+.field-help-button:focus-visible {
   color: var(--color-text);
 }
 
-.fetch-path-tooltip {
+.field-help-tooltip {
   position: absolute;
   z-index: 5;
   top: calc(100% + 0.4rem);
@@ -707,17 +745,30 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   font-size: 0.78rem;
   line-height: 1.65;
   opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transform: translateY(-2px);
-  transition: opacity 0.16s ease-out, transform 0.16s ease-out, visibility 0.16s;
+  transform: translateY(2px);
+  transition: opacity 160ms ease-out, transform 160ms ease-out;
 }
 
-.fetch-path-help:hover .fetch-path-tooltip,
-.fetch-path-help:focus-within .fetch-path-tooltip {
+.field-help-open .field-help-tooltip {
   opacity: 1;
-  visibility: visible;
   transform: translateY(0);
+}
+
+@media (max-width: 600px) {
+  .field-help-tooltip {
+    position: fixed;
+    top: auto;
+    right: 1rem;
+    bottom: 1rem;
+    left: 1rem;
+    width: auto;
+  }
+
+  .lyrics-recognition-action {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
 
 .fetch-search {
@@ -758,8 +809,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   opacity: 0.45;
 }
 
-.fetch .hint,
-.fetch-path .hint {
+.fetch .hint {
   margin: 0.5rem 0 0;
   font-size: 0.85rem;
   line-height: 1.7;
@@ -976,6 +1026,12 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   font-size: 0.78rem;
   color: var(--color-secondary-text);
   margin-bottom: 0.4rem;
+}
+
+.make-field-label-with-help {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
 }
 
 .make-radio-group {
@@ -1684,10 +1740,6 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 0.5rem;
-}
-
-.make-template-intro {
-  margin: -0.1rem 0 0.55rem;
 }
 
 .make-template-default,
@@ -2440,6 +2492,10 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
   .job-progress-indeterminate::after {
     display: none;
+  }
+
+  .field-help-tooltip {
+    transition: none;
   }
 }
 

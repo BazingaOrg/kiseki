@@ -1,6 +1,6 @@
 import {useRef, useState} from 'react';
 import type {FormEvent} from 'react';
-import {CircleHelp, Search} from 'lucide-react';
+import {Search} from 'lucide-react';
 
 import type {ApiResult} from './api';
 import {installLyrics, normalizeSearchQuery, searchAudio, searchLyrics, validateLyrics} from './api';
@@ -11,6 +11,7 @@ import {PhotoGrid} from './PhotoGrid';
 import {AssetCollection, fallbackAssetCollection} from './AssetCollection';
 import type {AssetItem, AudioCandidate, LyricsCandidate, LyricsValidation, ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
+import {FieldHelp} from './FieldHelp';
 import type {JobRequest} from './useJob';
 import type {useJob} from './useJob';
 import {formatTime} from './useAudioPlayer';
@@ -371,9 +372,12 @@ const LyricsFetch = ({
   }
 
   return (
-    <div className="fetch fetch-paths">
-      <div className="fetch-path">
-        <span className="fetch-path-label">在线找</span>
+    <div className="fetch lyrics-empty-state">
+      <h3>还没有歌词</h3>
+      <p className="lyrics-empty-description">可以先在线匹配；没有合适版本时，再使用本地人声识别。</p>
+
+      <div className="lyrics-online-match">
+        <span className="lyrics-empty-label">在线匹配</span>
         {capabilities.fetchLyrics.enabled ? (
           <LyricsSearch project={project} locked={locked} onDone={onRefresh} />
         ) : (
@@ -381,20 +385,14 @@ const LyricsFetch = ({
         )}
       </div>
 
-      <div className="fetch-path">
-        <span className="fetch-path-label fetch-path-label-with-help">
-          本地识别
-          <span className="fetch-path-help">
-            <button className="fetch-path-help-button" type="button" aria-label="了解本地识别" aria-describedby="recognize-lyrics-help">
-              <CircleHelp size={13} strokeWidth={1.6} aria-hidden="true" />
-            </button>
-            <span className="fetch-path-tooltip" id="recognize-lyrics-help" role="tooltip">
-              用 whisper 把人声转成带时间的歌词，几分钟。第一次还要先下模型（几百 MB，没有百分比），可以放着不管。
-            </span>
+      <div className="lyrics-local-recognition">
+        <p className="lyrics-local-prompt">没有找到合适结果？</p>
+        <div className="lyrics-recognition-action">
+          <span className="lyrics-empty-label lyrics-empty-label-with-help">
+            本地识别
+            <FieldHelp label="了解本地识别">用 whisper 把人声转成带时间的歌词，几分钟。第一次还要先下模型（几百 MB，没有百分比），可以放着不管。</FieldHelp>
           </span>
-        </span>
-        {capabilities.recognizeLyrics.enabled ? (
-          <>
+          {capabilities.recognizeLyrics.enabled && (
             <button
               className="fetch-button"
               disabled={busy || locked}
@@ -402,6 +400,10 @@ const LyricsFetch = ({
             >
               开始识别
             </button>
+          )}
+        </div>
+        {capabilities.recognizeLyrics.enabled ? (
+          <>
             {busy && <p className="hint">另一项任务正在跑，等它结束再识别。</p>}
           </>
         ) : (
