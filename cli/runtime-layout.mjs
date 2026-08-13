@@ -88,4 +88,8 @@ export const runtimeLayoutEnv = (runtime) => ({
   [RUNTIME_LAYOUT_ENV]: JSON.stringify(runtime),
 });
 
-export const sourceRuntimeLayout = createRuntimeLayout(readRuntimeOverrides());
+const sourceOverrides = readRuntimeOverrides();
+export const sourceRuntimeLayout = createRuntimeLayout({
+  ...sourceOverrides,
+  modelRoot: sourceOverrides.modelRoot ?? path.join(SOURCE_ROOT, 'models'),
+});

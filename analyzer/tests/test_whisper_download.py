@@ -37,6 +37,18 @@ def test_path_model_arg_is_trusted_even_if_odd(tmp_path):
     assert _local_model_dir("mlx", str(custom)) == custom
 
 
+def test_configured_model_root_is_shared_by_lookup_and_download(monkeypatch, tmp_path):
+    model_root = tmp_path / "Application Support" / "models"
+    local = model_root / "faster-whisper-small"
+    local.mkdir(parents=True)
+    (local / "model.bin").write_text("x")
+    (local / "config.json").write_text("{}")
+    monkeypatch.setenv("KISEKI_MODEL_ROOT", str(model_root))
+
+    assert _local_model_dir("cpu", "small") == local
+    assert whisper_backend._model_convention_dir("cpu", "small") == local
+
+
 def test_download_targets_convention_dir_with_repo_per_backend(monkeypatch, tmp_path):
     calls = []
     monkeypatch.setattr(whisper_backend, "REPO_ROOT", tmp_path)

@@ -29,7 +29,12 @@ const createResolver = ({runtime, executable, baseEnv, electron}) => {
     renderer: (args, options = {}) => command(executable, [path.join(path.dirname(runtime.cliEntry), 'render.mjs'), ...args], {...options, displayName: 'renderer', runAsNode: true}),
     analyzer: (entry, args, options = {}) => command(runtime.uv, ['run', ...(runtime.analyzerOffline ? ['--offline', '--frozen'] : []), '--project', runtime.analyzerRoot, entry, ...args], {
       ...options,
-      env: {...(runtime.analyzerOffline ? {UV_PROJECT_ENVIRONMENT: runtime.analyzerEnvRoot, UV_FIND_LINKS: runtime.wheelhouseRoot, UV_NO_INDEX: '1', UV_PYTHON: runtime.python, UV_PYTHON_DOWNLOADS: 'never'} : {}), ...options.env},
+      env: {
+        KISEKI_MODEL_ROOT: runtime.modelRoot,
+        KISEKI_FFMPEG_BIN: runtime.ffmpeg,
+        ...(runtime.analyzerOffline ? {UV_PROJECT_ENVIRONMENT: runtime.analyzerEnvRoot, UV_FIND_LINKS: runtime.wheelhouseRoot, UV_NO_INDEX: '1', UV_PYTHON: runtime.python, UV_PYTHON_DOWNLOADS: 'never'} : {}),
+        ...options.env,
+      },
       displayName: 'uv',
     }),
     tool: (name, args, options = {}) => {

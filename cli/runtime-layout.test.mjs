@@ -12,6 +12,7 @@ test('source runtime layout resolves independently of cwd', () => {
   assert.equal(path.basename(sourceRuntimeLayout.rendererRoot), 'renderer');
   assert.equal(path.basename(sourceRuntimeLayout.webDist), 'dist');
   assert.equal(sourceRuntimeLayout.ffmpeg, 'ffmpeg');
+  assert.equal(sourceRuntimeLayout.modelRoot, path.join(path.dirname(sourceRuntimeLayout.cliEntry), '..', 'models'));
 });
 
 test('runtime layout accepts explicit paths containing spaces', () => {

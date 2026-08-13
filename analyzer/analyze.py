@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import importlib.util
+import os
 import statistics
 import subprocess
 import sys
@@ -35,7 +36,8 @@ def load_audio(audio_path: Path) -> tuple[np.ndarray, int]:
             try:
                 result = subprocess.run(
                     [
-                        "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                        os.environ.get("KISEKI_FFMPEG_BIN") or "ffmpeg",
+                        "-hide_banner", "-loglevel", "error", "-y",
                         "-i", str(audio_path), "-vn", "-ac", "1",
                         "-c:a", "pcm_f32le", str(decoded),
                     ],

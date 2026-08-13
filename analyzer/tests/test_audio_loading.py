@@ -29,6 +29,32 @@ def test_load_audio_reads_wav_directly(tmp_path: Path):
     assert len(samples) == 44100
 
 
+def test_load_audio_uses_configured_ffmpeg_path(monkeypatch, tmp_path: Path):
+    source = tmp_path / "song.m4a"
+    source.touch()
+    reads = 0
+    command = []
+
+    def fake_read(_path, **_options):
+        nonlocal reads
+        reads += 1
+        if reads == 1:
+            raise sf.SoundFileError(1)
+        return np.zeros((10, 1), dtype=np.float32), 22050
+
+    def fake_run(args, **_options):
+        command.extend(args)
+        return subprocess.CompletedProcess(args, 0, "", "")
+
+    monkeypatch.setenv("KISEKI_FFMPEG_BIN", "/Tools With Spaces/ffmpeg")
+    monkeypatch.setattr(analyze.sf, "read", fake_read)
+    monkeypatch.setattr(analyze.subprocess, "run", fake_run)
+
+    analyze.load_audio(source)
+
+    assert command[0] == "/Tools With Spaces/ffmpeg"
+
+
 @pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="FFmpeg 未安装")
 def test_m4a_uses_ffmpeg_without_audioread_warnings(tmp_path: Path):
     wav = tmp_path / "tone.wav"

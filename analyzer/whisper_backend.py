@@ -23,6 +23,11 @@ import term
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
+
+def _model_root() -> Path:
+    configured = os.environ.get("KISEKI_MODEL_ROOT")
+    return Path(configured).expanduser() if configured else REPO_ROOT / "models"
+
 # 首次下载的体积预期(HF 仓库近似值),下载前提示用,不必精确
 _DOWNLOAD_SIZE_HINTS = {
     "tiny": "75 MB",
@@ -46,7 +51,7 @@ def _valid_model_dir(backend: str, directory: Path) -> bool:
 
 
 def _local_model_dir(backend: str, model: str) -> Path | None:
-    """本地模型目录查找:env 指定的路径 > 仓库 models/ 约定目录 > 无(走 HF 下载)。
+    """本地模型目录查找:env 指定的路径 > 配置的 models 约定目录 > 无(走 HF 下载)。
 
     约定目录名与 HF 仓库同名:models/whisper-<size>-mlx(mlx)、
     models/faster-whisper-<size>(CTranslate2 格式)。约定目录必须内容完整,
@@ -56,7 +61,7 @@ def _local_model_dir(backend: str, model: str) -> Path | None:
     if p.is_dir():
         return p
     name = f"whisper-{model}-mlx" if backend == "mlx" else f"faster-whisper-{model}"
-    cand = REPO_ROOT / "models" / name
+    cand = _model_root() / name
     if not cand.is_dir():
         return None
     return cand if _valid_model_dir(backend, cand) else None
@@ -68,7 +73,7 @@ def _model_repo_id(backend: str, model: str) -> str:
 
 def _model_convention_dir(backend: str, model: str) -> Path:
     name = f"whisper-{model}-mlx" if backend == "mlx" else f"faster-whisper-{model}"
-    return REPO_ROOT / "models" / name
+    return _model_root() / name
 
 
 _download_progress_tqdm = None
@@ -108,7 +113,7 @@ def _make_download_progress():
 
 
 def _download_model(backend: str, model: str) -> Path:
-    """把模型下到仓库 models/ 约定目录(与文档一致,之后可完全离线).
+    """把模型下到配置的 models 约定目录,之后可完全离线.
 
     用 snapshot_download 的 local_dir + 自定义 tqdm:失败残留 .incomplete 文件,
     下次自动续传;_local_model_dir 的完整性校验保证半成品不会冒充可用模型.
@@ -242,7 +247,7 @@ def transcribe(audio: Path) -> tuple[str, list[Segment], str]:
     desc = f"{backend} / {model}"
     term.detail(f"whisper backend: {desc}")
 
-    # 本地模型:KISEKI_WHISPER_MODEL 指向目录,或放在仓库 models/ 约定目录,
+    # 本地模型:KISEKI_WHISPER_MODEL 指向目录,或放在配置的 models/ 约定目录,
     # 均跳过联网;否则从 HF 下载(mlx:weights.npz + config.json;
     # faster-whisper:CTranslate2 格式目录)
     local_dir = _local_model_dir(backend, model)
@@ -251,7 +256,7 @@ def transcribe(audio: Path) -> tuple[str, list[Segment], str]:
         approx = _DOWNLOAD_SIZE_HINTS.get(model, "数百 MB")
         term.info(
             f"模型 {model} 本机未缓存,首次识别将自动下载(约 {approx});"
-            "提前放入仓库 models/ 目录可完全离线"
+            "提前放入 models/ 目录可完全离线"
         )
         term.start("下载模型")
         try:
@@ -259,7 +264,7 @@ def transcribe(audio: Path) -> tuple[str, list[Segment], str]:
         except Exception:
             term.error(
                 "模型下载失败:网络需要代理、磁盘空间不足或镜像不可用;"
-                "重试会从断点继续,也可把模型手动放入仓库 models/ 目录"
+                "重试会从断点继续,也可把模型手动放入 models/ 目录"
             )
             raise
         term.success(f"模型 {model} 已就绪: {local_dir}")
