@@ -49,6 +49,13 @@ export const runWeb = async (folder = null, {openBrowser = true, runtime = sourc
     root = os.homedir();
   }
 
+  const indexHtml = path.join(runtime.webDist, 'index.html');
+  if (!fs.existsSync(indexHtml) || !fs.statSync(indexHtml).isFile()) {
+    throw new CliError(
+      '前端尚未构建。先执行: ./scripts/setup.sh\n或: npm --prefix web install && npm --prefix web run build',
+    );
+  }
+
   const service = createKisekiService({rootController: createImmutableRootController(root), runtime, ...(commandResolver ? {commandResolver} : {})});
   // 渲染任务的子进程是 detached 的(为了取消时能杀掉整棵进程树),代价是它脱离了
   // 终端进程组,用户按 Ctrl+C 时收不到 SIGINT.不在这里显式收尾,关掉 kiseki web

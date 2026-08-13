@@ -9,8 +9,7 @@
 Requires [Node.js 18+](https://nodejs.org/), [uv](https://docs.astral.sh/uv/), and [FFmpeg](https://ffmpeg.org/).
 
 ```bash
-npm --prefix cli install
-npm --prefix renderer install
+./scripts/setup.sh
 node cli/kiseki.mjs doctor
 node cli/kiseki.mjs ./osaka-trip
 ```
@@ -35,7 +34,7 @@ Without arguments, kiseki opens a persistent interactive menu; each flow returns
 
 The default video is `osaka-trip/output/osaka-trip.mp4`; stills default to `output/stills/`. When `-o` is omitted, EXIF, signature, dark mode, aspect, draft, and an effective filter are appended to the default filename. An explicit `-o` path takes precedence unchanged.
 
-Build the web frontend before its first use: `npm --prefix web install && npm --prefix web run build`. The page can view and make material, and rename or delete assets. Writes are protected by the startup material root, server token, conflict and job checks; deletion first moves an item to trash and undo is available only within the running process. See [project status](docs/kiseki-status.md).
+`web` starts the local workbench; the frontend is built by `./scripts/setup.sh`. The page can view and make material, and rename or delete assets. Writes are protected by the startup material root, server token, conflict and job checks; deletion first moves an item to trash and undo is available only within the running process. See [project status](docs/kiseki-status.md).
 
 ## Architecture
 
@@ -48,6 +47,8 @@ The local workbench and CLI share one controlled task runtime; optional online p
 - [Configuration reference](docs/config.md): the strict 21-key `kiseki.toml` contract
 - [Timeline format](docs/specs/timeline-schema.md): read-only validation boundaries for `timeline.json`
 - [Project status](docs/kiseki-status.md): workbench, cache, and known limits
+
+`docs/plans/` is historical implementation notes; the three documents above are current.
 
 ## Development
 

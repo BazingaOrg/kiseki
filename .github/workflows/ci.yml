@@ -1,0 +1,23 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - uses: astral-sh/setup-uv@v9
+      - run: npm ci --prefix cli
+      - run: npm ci --prefix renderer
+      - run: npm ci --prefix web
+      - run: uv sync --project analyzer --group dev
+      - run: npm --prefix cli test
+      - run: uv run --project analyzer pytest
+      - run: npm --prefix renderer test && npm --prefix renderer run typecheck
+      - run: npm --prefix web test && npm --prefix web run typecheck && npm --prefix web run build

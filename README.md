@@ -9,8 +9,7 @@
 需要 [Node.js 18+](https://nodejs.org/)、[uv](https://docs.astral.sh/uv/) 和 [FFmpeg](https://ffmpeg.org/)。
 
 ```bash
-npm --prefix cli install
-npm --prefix renderer install
+./scripts/setup.sh
 node cli/kiseki.mjs doctor
 node cli/kiseki.mjs ./osaka-trip
 ```
@@ -36,7 +35,7 @@ node cli/kiseki.mjs help
 
 默认视频为 `osaka-trip/output/osaka-trip.mp4`，静态图默认位于 `output/stills/`。未使用 `-o` 时，EXIF、签名、暗色、画幅、草稿、模板和实际生效的滤镜会追加到默认文件名；显式 `-o` 保持原样优先。
 
-`web` 首次使用需构建前端：`npm --prefix web install && npm --prefix web run build`。网页可查看和制作素材，也可改名或删除资产；写入受启动时的素材根目录、服务 token、冲突与任务检查保护，删除先移入回收区并仅提供进程内撤销。详见[项目状态](docs/kiseki-status.md)。
+`web` 启动本地工作台，前端由 `./scripts/setup.sh` 构建。网页可查看和制作素材，也可改名或删除资产；写入受启动时的素材根目录、服务 token、冲突与任务检查保护，删除先移入回收区并仅提供进程内撤销。详见[项目状态](docs/kiseki-status.md)。
 
 ## 架构
 
@@ -49,6 +48,8 @@ node cli/kiseki.mjs help
 - [配置参考](docs/config.md)：严格的 `kiseki.toml` 21 键契约
 - [时间线格式](docs/specs/timeline-schema.md)：`timeline.json` 的只读校验边界
 - [项目状态](docs/kiseki-status.md)：工作台、缓存与已知限制
+
+`docs/plans/` 是历史实施笔记；现行说明以配置、时间线和项目状态为准。
 
 ## 开发
 

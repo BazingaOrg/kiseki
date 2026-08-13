@@ -36,10 +36,10 @@ test('rejects a symlink inside the root that points outside it', () => {
   assert.equal(resolveSafePath(root, path.join(link, 'secret.txt')), null);
 });
 
-test('returns the lexical path for a nonexistent target inside the root (caller stats it, gets 404)', () => {
+test('returns the path under the real root for a nonexistent target (caller stats it, gets 404)', () => {
   const root = makeTempRoot();
   const target = path.join(root, 'nope.txt');
-  assert.equal(resolveSafePath(root, target), target);
+  assert.equal(resolveSafePath(root, target), path.join(fs.realpathSync(root), 'nope.txt'));
 });
 
 test('rejects null bytes', () => {
@@ -57,4 +57,12 @@ test('rejects empty or non-string input', () => {
 test('accepts the root itself', () => {
   const root = makeTempRoot();
   assert.equal(resolveSafePath(root, root), fs.realpathSync(root));
+});
+
+test('accepts a lexical absolute path when the authorized root is already realpath', () => {
+  const root = makeTempRoot();
+  const realRoot = fs.realpathSync(root);
+  const missing = path.join(root, 'missing.jpg');
+  assert.equal(resolveSafePath(realRoot, missing), path.join(realRoot, 'missing.jpg'));
+  assert.equal(resolveSafePath(realRoot, root), realRoot);
 });

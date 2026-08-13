@@ -6,10 +6,22 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
+import {createRuntimeLayout} from './runtime-layout.mjs';
 import {term} from './term.mjs';
 import {runWeb} from './web.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-'));
+
+const makeWebRuntime = ({withIndex = true} = {}) => {
+  const webDist = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-dist-'));
+  if (withIndex) {
+    fs.writeFileSync(
+      path.join(webDist, 'index.html'),
+      '<!doctype html><html><body>kiseki 本地工作台</body></html>',
+    );
+  }
+  return createRuntimeLayout({webDist});
+};
 
 const closeServer = (server) => new Promise((resolve, reject) => {
   server.close((error) => error ? reject(error) : resolve());
@@ -29,20 +41,29 @@ const runWebSilently = async (...args) => {
 /** 与 web.mjs 的 START_PORT 保持一致. */
 const START_PORT = 3000;
 
-test('starts a server on a free port and serves the frontend (or placeholder if unbuilt)', async () => {
+test('starts a server on a free port and serves the frontend', async () => {
   const folder = makeTempRoot();
-  const server = await runWebSilently(folder, {openBrowser: false});
+  const runtime = makeWebRuntime();
+  const server = await runWebSilently(folder, {openBrowser: false, runtime});
   try {
     const {port} = server.address();
     assert.ok(port > 0);
     const response = await fetch(`http://localhost:${port}/`);
     assert.equal(response.status, 200);
     const text = await response.text();
-    // web/dist 存在时 serve 真实构建产物,否则回退占位页——两者皆为合法状态
     assert.match(text, /(kiseki 本地工作台|軌跡｜kiseki)/);
   } finally {
     await closeServer(server);
   }
+});
+
+test('rejects when webDist has no index.html', async () => {
+  const folder = makeTempRoot();
+  const runtime = makeWebRuntime({withIndex: false});
+  await assert.rejects(
+    () => runWeb(folder, {openBrowser: false, runtime}),
+    (error) => error instanceof CliError && /setup\.sh/.test(error.message),
+  );
 });
 
 test('rejects a folder argument that does not exist', async () => {
@@ -72,7 +93,8 @@ test('picks the next free port when the first one is occupied', async () => {
   const release = await occupyStartPort();
   try {
     const folder = makeTempRoot();
-    const server = await runWebSilently(folder, {openBrowser: false});
+    const runtime = makeWebRuntime();
+    const server = await runWebSilently(folder, {openBrowser: false, runtime});
     try {
       assert.notEqual(server.address().port, START_PORT);
     } finally {
