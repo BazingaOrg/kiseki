@@ -683,6 +683,11 @@
   min-width: 0;
 }
 
+.material-song-lyrics {
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--color-divider);
+}
+
 .material-song-label {
   margin: 0 0 0.55rem;
   color: var(--color-secondary-text);
@@ -705,15 +710,6 @@
 
 .material-song .fetch {
   margin-top: 0;
-}
-
-@media (min-width: 760px) {
-  .material-song {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr);
-    gap: 1.75rem;
-    align-items: start;
-  }
 }
 
 /* ── 单文件操作 ───────────────────────────────────────── */
