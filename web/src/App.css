@@ -40,6 +40,10 @@
 }
 
 .primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
   background: var(--color-text);
   color: var(--color-background);
   border: none;
@@ -185,6 +189,17 @@
 
 .welcome .folder-picker {
   width: min(840px, 100%);
+  text-align: center;
+}
+
+.desktop-shell .welcome {
+  -webkit-app-region: drag;
+  padding-top: 3.25rem;
+}
+
+.desktop-shell .welcome button,
+.desktop-shell .welcome input {
+  -webkit-app-region: no-drag;
 }
 
 /* ── 选文件夹 ─────────────────────────────────────────── */
@@ -426,6 +441,18 @@
   background: var(--color-background);
   z-index: 5;
   flex: 0 0 auto;
+}
+
+.desktop-shell .topbar {
+  min-height: 4.5rem;
+  padding-left: 5.75rem;
+  -webkit-app-region: drag;
+}
+
+.desktop-shell .topbar button,
+.desktop-shell .topbar input,
+.desktop-shell .topbar a {
+  -webkit-app-region: no-drag;
 }
 
 .folder-switch {
@@ -2401,6 +2428,14 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   backdrop-filter: blur(12px);
 }
 
+.kiseki-lightbox .yarl__navigation_prev {
+  left: max(24px, env(safe-area-inset-left));
+}
+
+.kiseki-lightbox .yarl__navigation_next {
+  right: max(24px, env(safe-area-inset-right));
+}
+
 .kiseki-lightbox .yarl__slide_image {
   width: auto;
   height: auto;
@@ -2424,6 +2459,15 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   font-variant-numeric: tabular-nums;
   line-height: 1;
   backdrop-filter: blur(14px);
+}
+
+.desktop-shell .kiseki-lightbox .yarl__toolbar {
+  top: max(48px, env(safe-area-inset-top));
+}
+
+.desktop-shell .kiseki-lightbox .yarl__counter {
+  top: max(48px, env(safe-area-inset-top));
+  left: max(24px, env(safe-area-inset-left));
 }
 
 /* EXIF 是图片外的低干扰信息条,不再用渐变压住照片。 */
