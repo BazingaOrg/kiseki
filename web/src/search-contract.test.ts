@@ -53,3 +53,8 @@ test('Materials keeps raw input and discards stale search results without writin
   assert.match(lyricsSearch, /placeholder="留空自动匹配，也可输入歌名 歌手"/);
   assert.match(lyricsSearch, /normalizeSearchQuery\(query\) \? '手动关键词' : '自动匹配'/);
 });
+
+test('native folder picker releases its busy state when the dialog is cancelled', async () => {
+  const folderPicker = await source('FolderPicker.tsx');
+  assert.match(folderPicker, /const selected = await window\.kisekiDesktop\?\.openProject\(\);\s*if \(!selected\) \{ setSelecting\(false\); return; \}/);
+});

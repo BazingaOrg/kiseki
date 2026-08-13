@@ -106,7 +106,8 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
     setSelecting(true); setError(null);
     try {
       const selected = await window.kisekiDesktop?.openProject();
-      if (selected) handleSelectFolder(selected.path);
+      if (!selected) { setSelecting(false); return; }
+      handleSelectFolder(selected.path);
     } catch { setError('无法打开这个项目。'); setSelecting(false); }
   };
 
