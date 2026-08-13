@@ -1,0 +1,9 @@
+{
+  "name": "kiseki-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/main.mjs",
+  "scripts": {"start": "electron-forge start", "stage": "node scripts/stage-runtime.mjs && node scripts/verify-staging.mjs", "package": "npm run stage && electron-forge package --arch=arm64", "make": "npm run stage && electron-forge make --arch=arm64", "test": "node --test"},
+  "devDependencies": {"@electron-forge/cli": "^7.8.1", "@electron-forge/maker-zip": "^7.8.1", "electron": "^37.2.6"}
+}

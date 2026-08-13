@@ -1,0 +1,8 @@
+{
+  "architecture": "arm64",
+  "ffmpeg": {"requiredForSelfContainedBuild": true, "path": "bin/ffmpeg", "licenseReviewRequired": true},
+  "ffprobe": {"requiredForSelfContainedBuild": true, "path": "bin/ffprobe", "licenseReviewRequired": true},
+  "ytDlp": {"optional": true, "bundled": false},
+  "analyzer": {"strategy": "bundled-uv-python-wheelhouse", "modelsLocation": "userData/models", "partialInstallForbidden": true},
+  "renderer": {"nodeModulesRequired": true, "chromium": "bundled-distribution", "cacheLocation": "user-cache"}
+}

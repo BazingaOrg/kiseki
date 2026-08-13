@@ -102,6 +102,14 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
       });
   };
 
+  const handleNativeOpen = async () => {
+    setSelecting(true); setError(null);
+    try {
+      const selected = await window.kisekiDesktop?.openProject();
+      if (selected) handleSelectFolder(selected.path);
+    } catch { setError('无法打开这个项目。'); setSelecting(false); }
+  };
+
   const root = columns[0]?.root;
   const visibleRecentFolders = root
     ? recentFolders.filter((folder) => folder.path === root || folder.path.startsWith(root + pathSeparator(root)))
@@ -130,7 +138,16 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
   };
 
   return (
-    <div className="folder-picker">
+    <div className="folder-picker" onDragOver={(event) => { if (window.kisekiDesktop) event.preventDefault(); }} onDrop={async (event) => {
+      if (!window.kisekiDesktop) return;
+      event.preventDefault();
+      const file = event.dataTransfer.files[0];
+      if (!file) return;
+      setSelecting(true); setError(null);
+      try { const selected = await window.kisekiDesktop.openDroppedProject(file); handleSelectFolder(selected.path); }
+      catch { setError('无法打开拖入的项目文件夹。'); setSelecting(false); }
+    }}>
+      {window.kisekiDesktop && <button className="primary-button" disabled={selecting} onClick={handleNativeOpen}><Folder size={16} />打开项目</button>}
       {error && <p className="hint hint-error" role="alert">{error}</p>}
 
       {visibleRecentFolders.length > 0 && (
