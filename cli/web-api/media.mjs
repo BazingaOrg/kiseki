@@ -27,6 +27,16 @@ const CONTENT_TYPES = {
 
 const contentTypeFor = (filePath) => CONTENT_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
 
+const matchesIfNoneMatch = (raw, etag) => {
+  if (!raw) return false;
+  return raw.split(',').some((part) => {
+    const candidate = part.trim();
+    return candidate === '*' || candidate.replace(/^W\//i, '') === etag;
+  });
+};
+
+export const etagForMedia = (stat) => `"media-${stat.size}-${stat.ino ?? ''}-${stat.mtimeMs ?? ''}"`;
+
 const parseRange = (rangeHeader, size) => {
   const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader ?? '');
   if (!match) return null;
@@ -46,8 +56,9 @@ const parseRange = (rangeHeader, size) => {
  * @param {string} root 允许访问的根目录
  * @param {string} requestedPath 客户端传入的文件路径
  * @param {string|undefined} rangeHeader 请求的 Range 头
+ * @param {string|undefined} ifNoneMatch 请求的 If-None-Match 头
  */
-export const resolveMedia = (root, requestedPath, rangeHeader) => {
+export const resolveMedia = (root, requestedPath, rangeHeader, ifNoneMatch) => {
   const safePath = resolveSafePath(root, requestedPath);
   if (!safePath) return {status: 403, headers: {}, body: '路径越界或无效'};
   let stat;
@@ -59,7 +70,12 @@ export const resolveMedia = (root, requestedPath, rangeHeader) => {
   if (!stat.isFile()) return {status: 403, headers: {}, body: '不是文件'};
 
   const contentType = contentTypeFor(safePath);
+  const etag = etagForMedia(stat);
+  const cacheHeaders = {ETag: etag, 'Cache-Control': 'private, no-cache'};
   const range = parseRange(rangeHeader, stat.size);
+  if (!range && matchesIfNoneMatch(ifNoneMatch, etag)) {
+    return {status: 304, headers: cacheHeaders};
+  }
   if (range) {
     return {
       status: 206,
@@ -68,6 +84,7 @@ export const resolveMedia = (root, requestedPath, rangeHeader) => {
         'Content-Length': String(range.end - range.start + 1),
         'Content-Range': `bytes ${range.start}-${range.end}/${stat.size}`,
         'Accept-Ranges': 'bytes',
+        ...cacheHeaders,
       },
       streamPath: safePath,
       streamOptions: {start: range.start, end: range.end},
@@ -79,6 +96,7 @@ export const resolveMedia = (root, requestedPath, rangeHeader) => {
       'Content-Type': contentType,
       'Content-Length': String(stat.size),
       'Accept-Ranges': 'bytes',
+      ...cacheHeaders,
     },
     streamPath: safePath,
     streamOptions: {},

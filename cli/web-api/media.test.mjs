@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import {resolveMedia} from './media.mjs';
+import {etagForMedia, resolveMedia} from './media.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-media-'));
 
@@ -89,4 +89,54 @@ test('rejects an invalid range by falling back to a full response', () => {
   fs.writeFileSync(file, Buffer.from('z'.repeat(10)));
   const result = resolveMedia(root, file, 'bytes=5000-6000');
   assert.equal(result.status, 200);
+});
+
+test('full and range responses carry a strong ETag and revalidate cache control', () => {
+  const root = makeTempRoot();
+  const file = path.join(root, 'photo.jpg');
+  fs.writeFileSync(file, Buffer.from('x'.repeat(40)));
+  const full = resolveMedia(root, file);
+  const ranged = resolveMedia(root, file, 'bytes=0-9');
+  const expected = etagForMedia(fs.statSync(file));
+  assert.equal(full.headers.ETag, expected);
+  assert.equal(full.headers['Cache-Control'], 'private, no-cache');
+  assert.equal(ranged.status, 206);
+  assert.equal(ranged.headers.ETag, expected);
+  assert.equal(ranged.headers['Cache-Control'], 'private, no-cache');
+});
+
+test('matching If-None-Match on a full GET returns 304 without a body stream', () => {
+  const root = makeTempRoot();
+  const file = path.join(root, 'photo.jpg');
+  fs.writeFileSync(file, Buffer.from('x'.repeat(40)));
+  const first = resolveMedia(root, file);
+  const again = resolveMedia(root, file, undefined, first.headers.ETag);
+  assert.equal(again.status, 304);
+  assert.equal(again.headers.ETag, first.headers.ETag);
+  assert.equal(again.headers['Cache-Control'], 'private, no-cache');
+  assert.equal(again.streamPath, undefined);
+});
+
+test('Range requests are not collapsed to 304 so audio and video seeking still stream', () => {
+  const root = makeTempRoot();
+  const file = path.join(root, 'clip.mp4');
+  fs.writeFileSync(file, Buffer.from('y'.repeat(1000)));
+  const first = resolveMedia(root, file);
+  const ranged = resolveMedia(root, file, 'bytes=100-199', first.headers.ETag);
+  assert.equal(ranged.status, 206);
+  assert.equal(ranged.headers['Content-Range'], 'bytes 100-199/1000');
+  assert.equal(ranged.streamPath, first.streamPath);
+});
+
+test('replacing a file changes the ETag so the next GET is 200', () => {
+  const root = makeTempRoot();
+  const file = path.join(root, 'photo.jpg');
+  fs.writeFileSync(file, Buffer.from('old'));
+  const before = resolveMedia(root, file);
+  const later = Date.now() + 10_000;
+  fs.writeFileSync(file, Buffer.from('new!'));
+  fs.utimesSync(file, later / 1000, later / 1000);
+  const after = resolveMedia(root, file, undefined, before.headers.ETag);
+  assert.equal(after.status, 200);
+  assert.notEqual(after.headers.ETag, before.headers.ETag);
 });

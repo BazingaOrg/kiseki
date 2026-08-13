@@ -7,9 +7,10 @@
  * 模板的 transition 字段对本 composition 无意义——卡片有自己的入场动效。
  */
 import React from 'react';
-import {AbsoluteFill, Audio, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
 import {polaroidCardPresentation} from './compositionTiming';
+import {ensureFonts} from './fonts';
 import {Subtitle} from './Subtitle';
 import {hashString} from './motion';
 import {getPalette, getVisualScale} from './theme';
@@ -36,6 +37,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const palette = getPalette(meta.background);
   const scale = getVisualScale(width, height);
   const template = resolveTemplatePresentation(meta.templateId);
+  ensureFonts(template.fontFamily);
 
   const safeWidth = meta.width * meta.photo_scale;
   const safeHeight = meta.height * meta.photo_scale;
@@ -85,9 +87,8 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
               boxShadow: '0 14px 36px rgba(10, 12, 16, 0.26)',
             }}
           >
-            <img
+            <Img
               src={toStatic(clip.src)}
-              alt=""
               style={{
                 display: 'block',
                 maxWidth: safeWidth * 0.9,

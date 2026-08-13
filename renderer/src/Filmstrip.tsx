@@ -7,9 +7,10 @@
  * 相邻帧就是 timeline 里的前后照片。
  */
 import React from 'react';
-import {AbsoluteFill, Audio, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
 import {filmstripLayerPresentation} from './compositionTiming';
+import {ensureFonts} from './fonts';
 import {Subtitle} from './Subtitle';
 import {getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
@@ -38,6 +39,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const palette = getPalette(meta.background);
   const scale = getVisualScale(width, height);
   const template = resolveTemplatePresentation(meta.templateId);
+  ensureFonts(template.fontFamily);
 
   const mainScale = meta.photo_scale * MAIN_PHOTO_FACTOR;
   const mainSafeWidth = meta.width * mainScale;
@@ -97,9 +99,8 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       />
       {visibleMainPhotos.map(({clip, opacity}) => (
         <AbsoluteFill key={`${clip.src}-${clip.start}`} style={{justifyContent: 'center', alignItems: 'center', opacity}}>
-          <img
+          <Img
             src={toStatic(clip.src)}
-            alt=""
             style={{
               display: 'block',
               maxWidth: mainSafeWidth,
@@ -143,10 +144,9 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         {strip.map((clip, index) => {
           const isCurrent = clip === active;
           return (
-            <img
+            <Img
               key={`${clip.src}-${index}`}
               src={toStatic(clip.src)}
-              alt=""
               style={{
                 display: 'block',
                 height: stripHeight * 0.72,

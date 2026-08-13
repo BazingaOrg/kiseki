@@ -131,12 +131,11 @@ export const INTRO = {
 } as const;
 
 export const OUTRO = {
-  // 片尾谢幕语:淡场过半后居中浮现,持续到最后一帧;沿用字幕的题签样式
+  // 片尾谢幕语:淡场过半后居中浮现,持续到最后一帧;字族随模板走 FONT_FAMILY
   text: 'Thanks for watching :)',
   fontSize: 36,
   fontWeight: 500,
   letterSpacing: '0.12em',
-  fontFamily: `'Noto Serif', serif`, // 与英文字幕同字体
   fadeRange: [0.5, 0.85] as const, // 随白场进度淡入的区间
   riseDistance: 6,
 } as const;

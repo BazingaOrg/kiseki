@@ -1,6 +1,6 @@
 import React from 'react';
 import {Signature, type SignatureData} from './Signature';
-import {STILL, type Palette} from './theme';
+import {FONT_FAMILY, STILL, type FontFamily, type Palette} from './theme';
 
 export type StillExif = {
   camera?: string;
@@ -9,20 +9,22 @@ export type StillExif = {
   datetime?: string;
 };
 
-export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number; sign: boolean; signature: SignatureData | null; palette: Palette}> = ({
+export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number; sign: boolean; signature: SignatureData | null; palette: Palette; fontFamily?: FontFamily}> = ({
   exif,
   scale,
   width,
   sign,
   signature,
   palette,
+  fontFamily = 'serif',
 }) => {
   const t = STILL.typography;
+  const face = FONT_FAMILY[fontFamily].mixed;
   const line = (text: string | undefined, fontSize: number, color: string, weight = 500) =>
     text ? (
       <div
         style={{
-          fontFamily: t.fontFamily,
+          fontFamily: face,
           fontSize: fontSize * scale,
           fontWeight: weight,
           letterSpacing: t.letterSpacing,
@@ -54,7 +56,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
         <>
           <div style={{width: `${t.dividerWidth * 100}%`, height: scale, background: palette.divider, marginBottom: t.groupGap * scale}} />
           {exif.params.map((param) => (
-            <div key={param} style={{fontFamily: t.fontFamily, fontSize: t.paramsFontSize * scale, fontWeight: 500, letterSpacing: t.letterSpacing, color: palette.text, lineHeight: 1.2, marginBottom: t.paramsLineGap * scale}}>{param}</div>
+            <div key={param} style={{fontFamily: face, fontSize: t.paramsFontSize * scale, fontWeight: 500, letterSpacing: t.letterSpacing, color: palette.text, lineHeight: 1.2, marginBottom: t.paramsLineGap * scale}}>{param}</div>
           ))}
         </>
       ) : null}

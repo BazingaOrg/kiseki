@@ -5,14 +5,27 @@ import notoSerif from './fonts/NotoSerif-VF.ttf';
 import notoSansJP from './fonts/NotoSansJP-VF.woff2';
 import notoSansSC from './fonts/NotoSansSC-VF.woff2';
 import notoSans from './fonts/NotoSans-VF.woff2';
+import {FONT_LOAD_PLAN} from './fontLoadPlan';
+import type {FontFamily} from './theme';
 
-// 字体随 bundle 打包(webpack asset/resource),不走 public dir——
-// CLI 渲染时 public dir 指向用户素材文件夹,不能依赖它存放字体。
-// 黑体用 woff2(比 TTF 小一半);serif 保持既有 TTF 不变。
+const FONT_URLS = {
+  'Noto Serif JP': notoSerifJP,
+  'Noto Serif SC': notoSerifSC,
+  'Noto Serif': notoSerif,
+  'Noto Sans JP': notoSansJP,
+  'Noto Sans SC': notoSansSC,
+  'Noto Sans': notoSans,
+} as const;
+
+export const fontsForFamily = (family: FontFamily) =>
+  FONT_LOAD_PLAN[family].map((spec) => ({
+    ...spec,
+    url: FONT_URLS[spec.family],
+    descriptors: {weight: '200 900'} as FontFaceDescriptors,
+  }));
 
 const loadFont = (family: string, url: string, descriptors?: FontFaceDescriptors, format = 'truetype-variations') => {
   if (typeof document === 'undefined') return;
-  // CJK 变量字体 13–25MB,渲染多页并发时解析可能远超默认 30s 超时
   const handle = delayRender(`loading font ${family}`, {
     timeoutInMilliseconds: 180_000,
     retries: 2,
@@ -21,16 +34,18 @@ const loadFont = (family: string, url: string, descriptors?: FontFaceDescriptors
   face
     .load()
     .then(() => {
-      // 部分 TS lib.dom 版本缺 FontFaceSet.add 定义,运行时存在
       (document.fonts as unknown as {add(f: FontFace): void}).add(face);
       continueRender(handle);
     })
     .catch((err) => cancelRender(err));
 };
 
-loadFont('Noto Serif JP', notoSerifJP, {weight: '200 900'});
-loadFont('Noto Serif SC', notoSerifSC, {weight: '200 900'});
-loadFont('Noto Serif', notoSerif, {weight: '200 900'});
-loadFont('Noto Sans JP', notoSansJP, {weight: '200 900'}, 'woff2-variations');
-loadFont('Noto Sans SC', notoSansSC, {weight: '200 900'}, 'woff2-variations');
-loadFont('Noto Sans', notoSans, {weight: '200 900'}, 'woff2-variations');
+const loaded = new Set<FontFamily>();
+
+export const ensureFonts = (family: FontFamily = 'serif') => {
+  if (loaded.has(family)) return;
+  loaded.add(family);
+  for (const spec of fontsForFamily(family)) {
+    loadFont(spec.family, spec.url, spec.descriptors, spec.format);
+  }
+};

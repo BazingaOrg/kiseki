@@ -1,20 +1,9 @@
-import {useEffect, useRef, useState} from 'react';
-import {ChevronLeft, ChevronRight, RotateCcw, X, ZoomIn, ZoomOut} from 'lucide-react';
-import Lightbox from 'yet-another-react-lightbox';
-import Counter from 'yet-another-react-lightbox/plugins/counter';
-import Zoom from 'yet-another-react-lightbox/plugins/zoom';
-import 'yet-another-react-lightbox/styles.css';
-import 'yet-another-react-lightbox/plugins/counter.css';
+import {lazy, Suspense, useEffect, useRef, useState} from 'react';
 
-import {basename, mediaUrl, thumbUrl} from './media';
-import type {AssetItem, ExifResponse, ProjectResponse} from './types';
+import {basename, thumbUrl} from './media';
+import type {AssetItem, ProjectResponse} from './types';
 
-// Lightbox 会同时挂载相邻幻灯片，路径必须来自当前 slide，不能读共享 index。
-declare module 'yet-another-react-lightbox' {
-  interface GenericSlide {
-    photoPath?: string;
-  }
-}
+const PhotoLightbox = lazy(() => import('./PhotoLightbox'));
 
 export interface PhotoGroup {
   key: string;
@@ -30,75 +19,6 @@ interface OpenState {
   groupKey: string;
   index: number;
 }
-
-interface LightboxZoomRef {
-  zoom: number;
-  minZoom: number;
-  maxZoom: number;
-  disabled: boolean;
-  zoomIn: () => void;
-  zoomOut: () => void;
-  changeZoom: (targetZoom: number, rapid?: boolean) => void;
-}
-
-const LightboxZoomControls = ({zoomRef}: {zoomRef: LightboxZoomRef}) => {
-  const canZoomOut = !zoomRef.disabled && zoomRef.zoom > zoomRef.minZoom;
-  const canZoomIn = !zoomRef.disabled && zoomRef.zoom < zoomRef.maxZoom;
-
-  return (
-    <div className="kiseki-lightbox-zoom-controls" aria-label="图片缩放工具">
-      <button type="button" className="kiseki-lightbox-tool" title="缩小" aria-label="缩小" onClick={zoomRef.zoomOut} disabled={!canZoomOut}>
-        <ZoomOut aria-hidden="true" />
-      </button>
-      <button
-        type="button"
-        className="kiseki-lightbox-tool"
-        title="复位缩放"
-        aria-label="复位缩放"
-        onClick={() => zoomRef.changeZoom(zoomRef.minZoom)}
-        disabled={!canZoomOut}
-      >
-        <RotateCcw aria-hidden="true" />
-      </button>
-      <button type="button" className="kiseki-lightbox-tool" title="放大" aria-label="放大" onClick={zoomRef.zoomIn} disabled={!canZoomIn}>
-        <ZoomIn aria-hidden="true" />
-      </button>
-    </div>
-  );
-};
-
-const ExifTag = ({path}: {path: string}) => {
-  const [exif, setExif] = useState<ExifResponse | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setExif(null);
-    fetch(`/api/exif?path=${encodeURIComponent(path)}`, {signal: controller.signal})
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data: ExifResponse | null) => {
-        if (!controller.signal.aborted) setExif(data);
-      })
-      .catch((error: unknown) => {
-        if (!(error instanceof DOMException && error.name === 'AbortError')) return undefined;
-      });
-    return () => {
-      controller.abort();
-    };
-  }, [path]);
-
-  // 没有 EXIF 的照片(截图、导出图)是常态,不占位、不报错,安静地什么都不显示
-  if (!exif?.displayable || !exif.exif) return null;
-  const {camera, lens, params, datetime} = exif.exif;
-
-  return (
-    <figcaption className="exif-tag">
-      {camera && <span>{camera}</span>}
-      {lens && <span>{lens}</span>}
-      {params && params.length > 0 && <span>{params.join(' · ')}</span>}
-      {datetime && <span className="exif-tag-time">{datetime}</span>}
-    </figcaption>
-  );
-};
 
 interface PhotoGridProps {
   project: ProjectResponse;
@@ -239,42 +159,14 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRena
       })}
 
       {activeGroup && open && (
-        <Lightbox
-          className="kiseki-lightbox"
-          open
-          index={open.index}
-          close={() => setOpen(null)}
-          slides={activeGroup.paths.map((photoPath) => ({src: mediaUrl(photoPath), photoPath}))}
-          plugins={[Counter, Zoom]}
-          labels={{Previous: '上一张', Next: '下一张', Close: '关闭', 'Zoom in': '放大', 'Zoom out': '缩小'}}
-          // 单张时不渲染左右翻页,避免出现点了没反应的箭头
-          carousel={{finite: activeGroup.paths.length <= 1, imageFit: 'contain', padding: 0}}
-          controller={{closeOnBackdropClick: false}}
-          zoom={{zoomInMultiplier: 1.5, maxZoomPixelRatio: 1, scrollToZoom: false}}
-          animation={{
-            fade: 180,
-            swipe: 230,
-            navigation: 0,
-            zoom: 160,
-            easing: {
-              fade: 'cubic-bezier(0.23, 1, 0.32, 1)',
-              swipe: 'cubic-bezier(0.22, 1, 0.36, 1)',
-              navigation: 'linear',
-            },
-          }}
-          on={{view: ({index}) => setOpen({groupKey: activeGroup.key, index})}}
-          render={{
-            iconPrev: () => <ChevronLeft aria-hidden="true" />,
-            iconNext: () => <ChevronRight aria-hidden="true" />,
-            iconClose: () => <X aria-hidden="true" />,
-            buttonPrev: activeGroup.paths.length <= 1 ? () => null : undefined,
-            buttonNext: activeGroup.paths.length <= 1 ? () => null : undefined,
-            buttonZoom: (zoomRef) => <LightboxZoomControls zoomRef={zoomRef} />,
-            slideFooter: ({slide}) =>
-              slide.photoPath ? <ExifTag path={slide.photoPath} /> : null,
-          }}
-          styles={{container: {backgroundColor: 'rgba(12, 12, 14, 0.94)'}}}
-        />
+        <Suspense fallback={null}>
+          <PhotoLightbox
+            paths={activeGroup.paths}
+            index={open.index}
+            onIndexChange={(index) => setOpen({groupKey: activeGroup.key, index})}
+            onClose={() => setOpen(null)}
+          />
+        </Suspense>
       )}
     </div>
   );

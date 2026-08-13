@@ -9,5 +9,12 @@ export const mediaUrl = (absolutePath: string): string =>
 export const thumbUrl = (absolutePath: string, width: number): string =>
   `/api/thumb?path=${encodeURIComponent(absolutePath)}&w=${width}`;
 
+export const LIGHTBOX_PREVIEW_WIDTH = 1024;
+
+export const lightboxSlide = (photoPath: string) => ({
+  src: thumbUrl(photoPath, LIGHTBOX_PREVIEW_WIDTH),
+  photoPath,
+});
+
 export const basename = (absolutePath: string): string =>
   absolutePath.split(/[\\/]/).pop() ?? absolutePath;

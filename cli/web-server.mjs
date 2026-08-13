@@ -470,7 +470,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     if (url.pathname === '/media') {
-      sendMedia(res, resolveMedia(root, url.searchParams.get('path'), req.headers.range), createReadStream);
+      sendMedia(res, resolveMedia(root, url.searchParams.get('path'), req.headers.range, req.headers['if-none-match']), createReadStream);
       return;
     }
     if (url.pathname === '/api/thumb') {

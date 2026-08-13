@@ -3,7 +3,7 @@ import {AbsoluteFill, interpolate, staticFile, useCurrentFrame, useVideoConfig} 
 import {ExifPanel} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
 import {Signature, getSignatureDisplayWidth, type SignatureData} from './Signature';
-import {STILL, getExifLayout, getVisualScale, type Palette} from './theme';
+import {STILL, getExifLayout, getVisualScale, type FontFamily, type Palette} from './theme';
 import {getFadeDuration} from './transition';
 import {motionTransform} from './motion';
 import type {TemplateMotion} from './templates';
@@ -33,7 +33,8 @@ export const Photo: React.FC<{
   filter?: {id: string; intensity?: number} | null;
   /** 模板注入的照片运镜;缺省保持静态 */
   motion?: TemplateMotion;
-}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion}) => {
+  fontFamily?: FontFamily;
+}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion, fontFamily = 'serif'}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
@@ -101,7 +102,7 @@ export const Photo: React.FC<{
             maxWidth={layout.photoMaxWidth}
             maxHeight={layout.photoMaxHeight}
             />
-          <ExifPanel exif={clip.exif!} scale={renderScale} width={layout.panelWidth} sign={sign} signature={signature ?? null} palette={palette} />
+          <ExifPanel exif={clip.exif!} scale={renderScale} width={layout.panelWidth} sign={sign} signature={signature ?? null} palette={palette} fontFamily={fontFamily} />
         </div>
       </AbsoluteFill>
     );

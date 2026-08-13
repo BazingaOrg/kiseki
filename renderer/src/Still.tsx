@@ -1,6 +1,6 @@
 import React from 'react';
 import {AbsoluteFill, staticFile} from 'remotion';
-import './fonts';
+import {ensureFonts} from './fonts';
 import {ExifPanel, type StillExif} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
 import {Signature, useSignatureData} from './Signature';
@@ -36,6 +36,7 @@ export const Still: React.FC<StillProps> = ({
   signatureSrc,
   filter,
 }) => {
+  ensureFonts('serif');
   const scale = getVisualScale(width, height);
   const palette = getPalette(background);
   const signature = useSignatureData(sign ? signatureSrc : undefined);

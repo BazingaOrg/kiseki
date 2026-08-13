@@ -14,5 +14,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src", "remotion.config.ts"],
-  "exclude": ["src/filters.test.ts", "src/motion.test.ts", "src/subtitle.test.ts", "src/templates.test.ts"]
+  "exclude": ["src/filters.test.ts", "src/fontLoadPlan.test.ts", "src/motion.test.ts", "src/subtitle.test.ts", "src/templates.test.ts"]
 }

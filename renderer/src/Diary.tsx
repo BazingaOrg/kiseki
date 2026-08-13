@@ -7,7 +7,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from 'remotion';
-import './fonts';
+import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
 import {Outro} from './Outro';
 import {Photo, hasDisplayableExif} from './Photo';
@@ -37,6 +37,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const palette = getPalette(meta.background);
   // 呈现层模板:只覆盖照片转场与字幕/章节卡长相;缺省(无 templateId)全部回落现有常量
   const template = resolveTemplatePresentation(meta.templateId);
+  ensureFonts(template.fontFamily);
 
   // 视觉规格以 1080p 为基准,非 1080p 输出等比缩放
   const scale = getVisualScale(width, height);
@@ -134,6 +135,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           signature={meta.sign ? photoSignature : undefined}
           filter={clip.filter ?? meta.filter}
           motion={template.motion}
+          fontFamily={template.fontFamily}
         />
       ))}
       {visibleSubtitles.map((l) => (
@@ -153,7 +155,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} />
       ) : null}
       {/* 谢幕语:白场过半后浮现,持续到最后一帧;空串隐藏 */}
-      <Outro text={outroText} scale={scale} opacity={outroOpacity} palette={palette} />
+      <Outro text={outroText} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
       {/* 片头写签名:盖在一切之上,淡出后露出已在播放的第一页。
           按帧比较,避免浮点求和导致收尾帧(opacity 归零帧)被提前跳过 */}
       {showIntro && frame <= Math.round(introDuration * fps) ? (
