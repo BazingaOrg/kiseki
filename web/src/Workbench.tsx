@@ -316,7 +316,7 @@ export const Workbench = ({
           {locked ? (
             <span className="folder-switch folder-switch-locked" title={`${project.path}\n启动时已锁定这个素材夹`}>
               <FolderOpen size={15} strokeWidth={1.5} />
-              <span className="folder-switch-name">{project.path}</span>
+              <span className="folder-switch-name">{project.name}</span>
             </span>
           ) : (
             <button
@@ -327,7 +327,7 @@ export const Workbench = ({
               aria-describedby={jobBusy ? 'folder-switch-busy' : undefined}
             >
               <FolderOpen size={15} strokeWidth={1.5} />
-              <span className="folder-switch-name">{project.path}</span>
+              <span className="folder-switch-name">{project.name}</span>
             </button>
           )}
           <DoctorPanel

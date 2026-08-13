@@ -1,7 +1,7 @@
 /** 项目风格的原生视频控制层；解码与媒体语义仍由 HTMLVideoElement 提供。 */
 import {useEffect, useRef, useState} from 'react';
 import type {CSSProperties, ReactNode, SyntheticEvent} from 'react';
-import {Maximize, Pause, PictureInPicture, Play, RotateCcw, RotateCw, Volume2, VolumeX} from 'lucide-react';
+import {Maximize, Minimize, Pause, PictureInPicture, Play, RotateCcw, RotateCw, Volume2, VolumeX} from 'lucide-react';
 
 import {mediaUrl} from './media';
 import {MediaTimeline} from './MediaTimeline';
@@ -27,11 +27,24 @@ export const Player = ({video}: {video: string | null}) => {
   const [pictureInPictureAvailable, setPictureInPictureAvailable] = useState(false);
   const [isPictureInPicture, setIsPictureInPicture] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const controlsTimerRef = useRef<number | null>(null);
   const {mediaRef, mediaProps, state, toggle, seekTo, seekBy, setVolume, toggleMute} = useMediaPlayer<HTMLVideoElement>(video ? mediaUrl(video) : null, 'auto');
 
   useEffect(() => {
     setCustomControlsReady(true);
   }, []);
+
+  useEffect(() => {
+    if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current);
+    setControlsVisible(true);
+    if (isFullscreen && state.playing) {
+      controlsTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2800);
+    }
+    return () => {
+      if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current);
+    };
+  }, [isFullscreen, state.playing]);
 
   useEffect(() => {
     const media = mediaRef.current;
@@ -90,15 +103,26 @@ export const Player = ({video}: {video: string | null}) => {
     else media?.webkitEnterFullscreen?.();
   };
 
+  const revealControls = () => {
+    setControlsVisible(true);
+    if (controlsTimerRef.current !== null) window.clearTimeout(controlsTimerRef.current);
+    if (isFullscreen && state.playing) {
+      controlsTimerRef.current = window.setTimeout(() => setControlsVisible(false), 2800);
+    }
+  };
+
   return (
     <div
       ref={wrapperRef}
-      className="player"
+      className={controlsVisible ? 'player' : 'player player-controls-hidden'}
       style={playerStyle}
       tabIndex={0}
       aria-label="成片播放器"
+      onPointerMove={revealControls}
+      onPointerDown={revealControls}
       onKeyDown={(event) => {
         if (isEditableTarget(event.target)) return;
+        revealControls();
         if (event.key === ' ' || event.key.toLowerCase() === 'k') {
           event.preventDefault();
           toggle();
@@ -131,20 +155,21 @@ export const Player = ({video}: {video: string | null}) => {
         {!mediaReady && <span className="media-loading" role="status">正在加载视频</span>}
       </div>
       <div className="video-controls" aria-label="成片控制">
-        <ControlButton label={state.playing ? '暂停' : '播放'} onClick={toggle}>
+        <ControlButton label={state.playing ? '暂停（空格 / K）' : '播放（空格 / K）'} onClick={toggle}>
           {state.playing ? <Pause aria-hidden="true" size={18} /> : <Play aria-hidden="true" size={18} />}
         </ControlButton>
-        <ControlButton label="后退 5 秒" onClick={() => seekBy(-5)}><RotateCcw aria-hidden="true" size={17} /></ControlButton>
-        <ControlButton label="前进 5 秒" onClick={() => seekBy(5)}><RotateCw aria-hidden="true" size={17} /></ControlButton>
+        <ControlButton label="后退 5 秒（←）" onClick={() => seekBy(-5)}><RotateCcw aria-hidden="true" size={17} /></ControlButton>
+        <ControlButton label="前进 5 秒（→）" onClick={() => seekBy(5)}><RotateCw aria-hidden="true" size={17} /></ControlButton>
         <MediaTimeline currentTime={state.currentTime} duration={state.duration} buffered={state.buffered} onSeek={seekTo} />
-        <ControlButton label={state.muted || state.volume === 0 ? '取消静音' : '静音'} onClick={toggleMute}>
+        <ControlButton label={state.muted || state.volume === 0 ? '取消静音（M）' : '静音（M）'} onClick={toggleMute}>
           {state.muted || state.volume === 0 ? <VolumeX aria-hidden="true" size={17} /> : <Volume2 aria-hidden="true" size={17} />}
         </ControlButton>
         <input className="media-volume" type="range" min={0} max={1} step={0.05} value={state.muted ? 0 : state.volume} onChange={(event) => setVolume(Number(event.target.value))} aria-label="音量" aria-valuetext={`${Math.round((state.muted ? 0 : state.volume) * 100)}%`} />
         {pictureInPictureAvailable && <ControlButton label={isPictureInPicture ? '退出画中画' : '画中画'} onClick={togglePictureInPicture}><PictureInPicture aria-hidden="true" size={17} /></ControlButton>}
-        <ControlButton label={isFullscreen ? '退出全屏' : '全屏'} onClick={toggleFullscreen}><Maximize aria-hidden="true" size={17} /></ControlButton>
+        <ControlButton label={isFullscreen ? '退出全屏（F）' : '全屏（F）'} onClick={toggleFullscreen}>
+          {isFullscreen ? <Minimize aria-hidden="true" size={17} /> : <Maximize aria-hidden="true" size={17} />}
+        </ControlButton>
       </div>
-      <p className="player-shortcuts">键盘:空格/k 播放暂停 · ←/→ 快退快进 · M 静音 · F 全屏</p>
       {state.status === 'buffering' && <span className="media-buffering" role="status">正在缓冲</span>}
       {state.error && <p className="media-error" role="alert">{state.error}</p>}
     </div>

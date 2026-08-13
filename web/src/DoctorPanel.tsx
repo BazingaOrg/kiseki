@@ -39,9 +39,9 @@ export const DoctorPanel = ({doctor, open, onToggle, onRecheck}: DoctorPanelProp
 
   return (
     <div className="doctor">
-      <button className="doctor-trigger" onClick={onToggle} aria-expanded={open} title="环境依赖">
+      <button className="doctor-trigger" onClick={onToggle} aria-expanded={open} title={label} aria-label={`环境依赖：${label}`}>
         <span className={`doctor-dot doctor-dot-${status}`} />
-        {label}
+        <span className="doctor-trigger-label">{label}</span>
       </button>
 
       {panelPresence.present && (

@@ -75,3 +75,18 @@ test('video waits for a decoded frame and keeps the media stage at the source as
   assert.match(css, /\.player-video\s*\{[^}]*background: transparent;[^}]*opacity: 0;/s);
   assert.match(css, /\.player-video-ready\s*\{[^}]*opacity: 1;/s);
 });
+
+test('desktop chrome keeps safe drag regions and fullscreen media controls clear of window edges', async () => {
+  const [main, player, css] = await Promise.all([source('main.tsx'), source('Player.tsx'), source('App.css')]);
+  assert.match(main, /document\.documentElement\.classList\.add\('desktop-shell'\)/);
+  assert.match(css, /\.desktop-shell \.topbar\s*\{[^}]*padding-left: 5\.75rem;[^}]*-webkit-app-region: drag;/s);
+  assert.match(css, /\.desktop-shell \.welcome\s*\{[^}]*-webkit-app-region: drag;/s);
+  assert.match(css, /\.desktop-shell \.kiseki-lightbox \.yarl__toolbar\s*\{[^}]*top: max\(48px,/s);
+  assert.match(css, /\.kiseki-lightbox \.yarl__navigation_prev\s*\{[^}]*left: max\(24px,/s);
+  assert.match(player, /controlsTimerRef/);
+  assert.match(player, /onPointerMove=\{revealControls\}/);
+  assert.match(player, /isFullscreen \? <Minimize/);
+  assert.doesNotMatch(player, /className="player-shortcuts"/);
+  assert.match(css, /\.player:fullscreen\.player-controls-hidden \.video-controls/);
+  assert.match(css, /background: rgba\(250, 248, 243, 0\.88\)/);
+});

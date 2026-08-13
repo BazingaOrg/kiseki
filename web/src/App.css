@@ -1380,6 +1380,38 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   background: #000;
 }
 
+.player:fullscreen .video-controls {
+  position: absolute;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  left: 1.25rem;
+  z-index: 2;
+  color: #2f2924;
+  border: 1px solid rgba(255, 253, 248, 0.5);
+  border-radius: var(--radius-control);
+  background: rgba(250, 248, 243, 0.88);
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.24);
+  backdrop-filter: blur(18px) saturate(125%);
+  transition: opacity 160ms ease-out, transform 160ms ease-out;
+}
+
+.player:fullscreen .media-control-button:hover:not(:disabled) {
+  background: rgba(47, 41, 36, 0.1);
+}
+
+.player:fullscreen.player-controls-hidden {
+  cursor: none;
+}
+
+.player:fullscreen.player-controls-hidden .video-controls {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.player:fullscreen.player-controls-hidden .video-controls {
+  transform: translateY(0.5rem);
+}
+
 .player-shortcuts {
   margin: 0;
   padding: 0.3rem 0.55rem 0.45rem;
@@ -2695,6 +2727,17 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
     max-width: none;
     min-width: 0;
     flex: 1 1 0;
+  }
+
+  .doctor-trigger {
+    width: var(--control-height);
+    height: var(--control-height);
+    justify-content: center;
+    padding: 0;
+  }
+
+  .doctor-trigger-label {
+    display: none;
   }
 
   .folder-switch > svg,
