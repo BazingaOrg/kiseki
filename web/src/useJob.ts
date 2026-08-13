@@ -4,8 +4,30 @@ import {getToken} from './api';
 import {clearLastJobRecord, writeLastJobRecord} from './lastJob';
 
 export type JobEvent =
-  | {kind: 'start' | 'info' | 'success' | 'warn' | 'error' | 'detail'; text: string}
+  | {kind: 'start' | 'info' | 'success' | 'warn' | 'error' | 'detail'; text: string; stage?: string; durationMs?: number; path?: string}
   | {kind: 'progress'; label: string; percent: number};
+
+const TEXT_EVENT_KINDS = new Set(['start', 'info', 'success', 'warn', 'error', 'detail']);
+
+export const parseJobEvent = (raw: unknown): JobEvent | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  if (data.kind === 'progress') {
+    if (typeof data.label !== 'string' || typeof data.percent !== 'number') return null;
+    return {kind: 'progress', label: data.label, percent: data.percent};
+  }
+  if (typeof data.kind !== 'string' || !TEXT_EVENT_KINDS.has(data.kind) || typeof data.text !== 'string') {
+    return null;
+  }
+  const event: Extract<JobEvent, {text: string}> = {
+    kind: data.kind as Extract<JobEvent, {text: string}>['kind'],
+    text: data.text,
+  };
+  if (typeof data.stage === 'string') event.stage = data.stage;
+  if (typeof data.durationMs === 'number' && Number.isFinite(data.durationMs)) event.durationMs = data.durationMs;
+  if (typeof data.path === 'string') event.path = data.path;
+  return event;
+};
 
 export type JobStatus = 'idle' | 'running' | 'done' | 'failed' | 'cancelled';
 
@@ -94,7 +116,13 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
 
       source.onmessage = (event) => {
         if (!mountedRef.current || run !== runRef.current || sourceRef.current !== source) return;
-        const parsed = JSON.parse(event.data) as JobEvent;
+        let parsed: JobEvent | null = null;
+        try {
+          parsed = parseJobEvent(JSON.parse(event.data));
+        } catch {
+          parsed = null;
+        }
+        if (!parsed) return;
         // progress 是高频、可替代的当前快照；保留它只会让长任务的 React 队列和
         // 日志不断膨胀。开始、详情、完成、警告与错误则是不可替代的任务语义，按
         // 到达顺序完整留下。服务端重放同样遵循这份契约，双层收口防止旧服务积压。

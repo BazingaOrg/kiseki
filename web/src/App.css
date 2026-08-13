@@ -1339,6 +1339,15 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   color: var(--color-status-error);
 }
 
+.job-path {
+  color: #0e7490;
+}
+
+.job-elapsed {
+  font-variant-numeric: tabular-nums;
+  color: var(--color-secondary-text);
+}
+
 .job-actions {
   margin-top: 0.7rem;
 }
