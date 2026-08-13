@@ -7,6 +7,7 @@
  * 仅接受调用方的 refresh 标记以绕过已完成缓存,不碰文件系统沙箱.
  */
 import {collectWebDoctorChecks} from '../doctor.mjs';
+import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 
 const TTL_MS = 5000;
 
@@ -26,7 +27,8 @@ const responseFor = (checks) => ({
 });
 
 /** 每个 web server 应有自己的一份缓存与 single-flight 状态. */
-export const createDoctorService = ({collect = collectWebDoctorChecks, now = Date.now, ttlMs = TTL_MS} = {}) => {
+export const createDoctorService = ({collect, runtime = sourceRuntimeLayout, now = Date.now, ttlMs = TTL_MS} = {}) => {
+  collect ??= () => collectWebDoctorChecks({runtime});
   let cached = null;
   let inFlight = null;
 

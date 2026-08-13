@@ -3,21 +3,20 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {listDirs} from './web-api/dirs.mjs';
 import {createDoctorService} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
-import {searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
+import {resetFetchState, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
-import {AssetMutationError, clearRecognizedLyrics, mutateAsset, undoAssetDelete} from './web-api/assets.mjs';
+import {AssetMutationError, clearRecognizedLyrics, mutateAsset, resetAssetMutationState, undoAssetDelete} from './web-api/assets.mjs';
 import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
 import {resolveSafePath} from './web-api/sandbox.mjs';
 import {resolveThumb} from './web-api/thumb.mjs';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {createImmutableRootController, createWriteActivityGate} from './root-controller.mjs';
 
-const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const STATIC_DIR = path.join(REPO, 'web', 'dist');
 
 const STATIC_MIME_TYPES = {
   '.html': 'text/html; charset=utf-8',
@@ -64,20 +63,20 @@ const sendMedia = (res, result, createReadStream = fs.createReadStream) => {
   stream.pipe(res);
 };
 
-const INDEX_HTML = path.join(STATIC_DIR, 'index.html');
-const isDistBuilt = () => fs.existsSync(INDEX_HTML) && fs.statSync(INDEX_HTML).isFile();
-
-const ASSETS_DIR = path.join(STATIC_DIR, 'assets');
+const isDistBuilt = (staticDir) => {
+  const indexHtml = path.join(staticDir, 'index.html');
+  return fs.existsSync(indexHtml) && fs.statSync(indexHtml).isFile();
+};
 
 const staticEtag = (filePath) => {
   const {size, mtimeNs} = fs.statSync(filePath, {bigint: true});
   return `"${size}-${mtimeNs}"`;
 };
 
-const serveFile = (req, res, filePath) => {
+const serveFile = (req, res, filePath, assetsDir) => {
   const contentType = STATIC_MIME_TYPES[path.extname(filePath).toLowerCase()] ?? 'application/octet-stream';
   const headers = {'Content-Type': contentType};
-  if (filePath.startsWith(ASSETS_DIR + path.sep)) {
+  if (filePath.startsWith(assetsDir + path.sep)) {
     headers['Cache-Control'] = 'public, max-age=31536000, immutable';
   } else {
     headers['Cache-Control'] = 'private, no-cache';
@@ -100,33 +99,35 @@ const serveFile = (req, res, filePath) => {
  * index.html 需要在返回前注入任务 API 用的 token，因此不能直接流式返回。
  * HTML 不缓存:token 每次启动都换,且它引用的哈希资源必须能立刻切换到新版本.
  */
-const serveIndexHtml = (res, token) => {
-  const html = fs.readFileSync(INDEX_HTML, 'utf8');
+const serveIndexHtml = (res, token, indexHtml) => {
+  const html = fs.readFileSync(indexHtml, 'utf8');
   const escapedToken = token.replaceAll('"', '&quot;');
   const withToken = html.replace('</head>', `<meta name="kiseki-token" content="${escapedToken}">\n</head>`);
   res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'private, no-cache'});
   res.end(withToken);
 };
 
-const serveStatic = (req, res, token) => {
+const serveStatic = (req, res, token, staticDir) => {
+  const indexHtml = path.join(staticDir, 'index.html');
+  const assetsDir = path.join(staticDir, 'assets');
   const urlPath = req.url === '/' ? '/index.html' : req.url.split('?')[0];
-  const filePath = path.join(STATIC_DIR, urlPath);
-  if (!filePath.startsWith(STATIC_DIR + path.sep) && filePath !== STATIC_DIR) {
+  const filePath = path.join(staticDir, urlPath);
+  if (!filePath.startsWith(staticDir + path.sep) && filePath !== staticDir) {
     res.writeHead(403);
     res.end();
     return;
   }
-  if (!isDistBuilt()) {
+  if (!isDistBuilt(staticDir)) {
     res.writeHead(200, {'Content-Type': 'text/html; charset=utf-8'});
     res.end(PLACEHOLDER_HTML);
     return;
   }
   if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
-    if (filePath === INDEX_HTML) {
-      serveIndexHtml(res, token);
+    if (filePath === indexHtml) {
+      serveIndexHtml(res, token, indexHtml);
       return;
     }
-    serveFile(req, res, filePath);
+    serveFile(req, res, filePath, assetsDir);
     return;
   }
   if (path.extname(urlPath) && STATIC_MIME_TYPES[path.extname(urlPath).toLowerCase()]) {
@@ -134,7 +135,7 @@ const serveStatic = (req, res, token) => {
     res.end();
     return;
   }
-  serveIndexHtml(res, token);
+  serveIndexHtml(res, token, indexHtml);
 };
 
 /**
@@ -172,11 +173,14 @@ const isAllowedPostRoute = (method, pathname) =>
  *   生产环境两个都不传.
  * @returns {{server: import('node:http').Server, token: string}}
  */
-export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps} = {}) => {
-  const fetchDeps = runImpl ? {run: runImpl} : {};
-  const requestDoctor = doctorGet ?? createDoctorService().getDoctor;
+export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps, runtime = sourceRuntimeLayout, commandResolver} = {}) => {
+  const rootController = typeof root === 'string' ? createImmutableRootController(root) : root;
+  const writeGate = createWriteActivityGate();
+  let closing = false;
+  const fetchDeps = {...(runImpl ? {run: runImpl} : {}), runtime};
+  const requestDoctor = doctorGet ?? createDoctorService({runtime}).getDoctor;
   const token = crypto.randomBytes(32).toString('hex');
-  const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {})});
+  const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {}), runtime, ...(commandResolver ? {commandResolver} : {})});
 
   const checkToken = (req, res) => {
     if (req.headers['x-kiseki-token'] !== token) {
@@ -203,13 +207,23 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     const url = new URL(req.url, 'http://localhost');
+    if (closing && (req.method !== 'GET' || url.pathname.startsWith('/api/'))) { sendJson(res, {status: 503, body: {error: '服务正在关闭'}}); return; }
     if (req.method !== 'GET' && !isAllowedPostRoute(req.method, url.pathname)) {
       res.writeHead(405);
       res.end();
       return;
     }
+    const rootlessRoute = req.method === 'GET' && (url.pathname === '/api/doctor' || (!url.pathname.startsWith('/api/') && url.pathname !== '/media'));
+    let root = null;
+    if (!rootlessRoute) {
+      try { root = rootController.getSnapshot().path; } catch {
+        sendJson(res, {status: 409, body: {error: '项目根目录不可用'}});
+        return;
+      }
+    }
     if (req.method === 'POST' && url.pathname === '/api/jobs') {
       if (!checkToken(req, res)) return;
+      const releaseWrite = writeGate.enter();
       readBody(req)
         .then(async (raw) => {
           let body;
@@ -252,11 +266,13 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
             throw error;
           }
         })
-        .catch(() => sendJson(res, {status: 500, body: {error: '创建任务失败'}}));
+        .catch(() => sendJson(res, {status: 500, body: {error: '创建任务失败'}}))
+        .finally(releaseWrite);
       return;
     }
     if (req.method === 'POST' && url.pathname === '/api/fetch/lyrics') {
       if (!checkToken(req, res)) return;
+      const releaseWrite = writeGate.enter();
       readBody(req)
         .then((raw) => {
           let body;
@@ -269,7 +285,8 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
           // folder 的沙箱校验在 saveLyrics 内部统一做(与 GET 端点同一条路径).
           return saveLyrics(root, body, {...fetchDeps, isJobRunning: jobManager.hasRunningJob}).then((result) => sendJson(res, result));
         })
-        .catch(() => sendJson(res, {status: 500, body: {error: '保存歌词失败'}}));
+        .catch(() => sendJson(res, {status: 500, body: {error: '保存歌词失败'}}))
+        .finally(releaseWrite);
       return;
     }
     if (req.method === 'POST' && url.pathname === VALIDATE_LYRICS_PATH) {
@@ -288,6 +305,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     }
     if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname))) {
       if (!checkToken(req, res)) return;
+      const releaseWrite = writeGate.enter();
       readBody(req)
         .then((raw) => {
           let body;
@@ -323,7 +341,8 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
             sendJson(res, {status: 500, body: {error: '文件操作失败'}});
           }
         })
-        .catch(() => sendJson(res, {status: 500, body: {error: '文件操作失败'}}));
+        .catch(() => sendJson(res, {status: 500, body: {error: '文件操作失败'}}))
+        .finally(releaseWrite);
       return;
     }
     if (req.method === 'POST' && JOB_CANCEL_RE.test(url.pathname)) {
@@ -426,7 +445,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     if (url.pathname === '/api/thumb') {
-      resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'), req.headers['if-none-match'], thumbDeps)
+      resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'), req.headers['if-none-match'], {...thumbDeps, runtime})
         .then((result) => sendMedia(res, result, createReadStream))
         .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}, createReadStream));
       return;
@@ -438,9 +457,14 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       res.end();
       return;
     }
-    serveStatic(req, res, token);
+    serveStatic(req, res, token, runtime.webDist);
   });
   // killAll 交给调用方在进程退出时收尾:子进程是 detached 的,收不到终端的
   // Ctrl+C,不显式杀掉就会变成孤儿继续跑(见 jobs.mjs 的说明).
-  return {server, token, killAll: jobManager.killAll};
+  return {server, token, killAll: jobManager.killAll, jobManager, rootController, writeGate, beginClosing: () => { closing = true; server.closeAllConnections?.(); }, resetRootState: () => {
+    if (!resetAssetMutationState()) return false;
+    jobManager.resetIdleState();
+    resetFetchState();
+    return true;
+  }};
 };

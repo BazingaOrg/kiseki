@@ -1,9 +1,7 @@
 /** 在线素材端点。外部命令使用异步 spawn，解析规则复用 CLI 纯函数。 */
 import {spawn as spawnActual} from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {FIXES} from '../dependencies.mjs';
 import {
@@ -25,13 +23,14 @@ import {resolveSafePath} from './sandbox.mjs';
 import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
+import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
 const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 const DEFAULT_TIMEOUT_MS = 20000;
-const ANALYZER_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../analyzer');
 const validationRecognitionCache = new Map();
+export const resetFetchState = () => validationRecognitionCache.clear();
 
 /**
  * 异步跑一个外部命令,把结果整理成 spawnSync 那样的 {status, stdout, stderr},
@@ -81,15 +80,15 @@ export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnIm
   });
 
 /** 复用 checkYtDlp 的判定(它的 spawn 参数可注入),只是把结果换成异步取的. */
-export const checkYtDlpAsync = async (run = runProcess) => {
-  const result = await run('yt-dlp', ['--version'], {timeout: 5000});
+export const checkYtDlpAsync = async (run = runProcess, runtime = sourceRuntimeLayout) => {
+  const result = await run(runtime.ytDlp, ['--version'], {timeout: 5000});
   return checkYtDlp(() => result);
 };
 
 /** 复用 parseSearchLine 的行解析,搜索参数与 cli/ytdlp.mjs 的 searchYtDlp 一致. */
-export const searchYtDlpAsync = async (query, run = runProcess) => {
+export const searchYtDlpAsync = async (query, run = runProcess, runtime = sourceRuntimeLayout) => {
   const normalized = normalizeSearchQuery(query);
-  const result = await run('yt-dlp', [
+  const result = await run(runtime.ytDlp, [
     `ytsearch${AUDIO_PROVIDER_LIMIT}:${normalized}`,
     '--flat-playlist',
     '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
@@ -132,9 +131,9 @@ export const rankWebLyricsCandidates = (records, {audioDuration, title, artist})
 };
 
 /** 复用 probeAudio 的 tag/时长解析(同样靠注入 spawn 把同步调用换成异步取值). */
-export const probeAudioAsync = async (file, run = runProcess) => {
+export const probeAudioAsync = async (file, run = runProcess, runtime = sourceRuntimeLayout) => {
   const result = await run(
-    'ffprobe',
+    runtime.ffprobe,
     ['-v', 'error', '-show_entries', 'format=duration:format_tags=title,artist', '-of', 'json', file],
     {timeout: 10000},
   );
@@ -149,12 +148,12 @@ const identityFromFilename = (audio) => {
     : {title: base.trim(), artist: null};
 };
 
-const recognizeForValidation = async (audioPath, run = runProcess) => {
-  const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-lyrics-validation-'));
+const recognizeForValidation = async (audioPath, run = runProcess, runtime = sourceRuntimeLayout) => {
+  const temporary = fs.mkdtempSync(path.join(runtime.tempRoot, 'kiseki-lyrics-validation-'));
   const output = path.join(temporary, 'recognized.json');
   try {
-    const result = await run('uv', [
-      'run', '--project', ANALYZER_DIR, 'kiseki-analyze', audioPath,
+    const result = await run(runtime.uv, [
+      'run', '--project', runtime.analyzerRoot, 'kiseki-analyze', audioPath,
       '--lyrics-only', '--lyrics-output', output,
     ], {timeout: 180000});
     if (result.status !== 0 || !fs.existsSync(output)) throw new Error('本地识别未完成');
@@ -170,12 +169,12 @@ const recognizeForValidation = async (audioPath, run = runProcess) => {
  * 响应解析复用 parseCurlResponse.签名与 cli/fetch.mjs 的 lrclibFetch 相同,
  * 可以直接作为 searchLyricsRecords 的 fetcher 传入.
  */
-export const createLrclibFetch = (run = runProcess) => async (pathname, params = {}) => {
+export const createLrclibFetch = (run = runProcess, runtime = sourceRuntimeLayout) => async (pathname, params = {}) => {
   const url = new URL(`${LRCLIB_BASE}${pathname}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== null && value !== undefined) url.searchParams.set(key, value);
   }
-  const result = await run('curl', [
+  const result = await run(runtime.curl, [
     '-sS', '--max-time', '20', '-H', `User-Agent: ${LRCLIB_UA}`, '-w', '\n%{http_code}', url.toString(),
   ]);
   const parsed = parseCurlResponse(result.stdout);
@@ -233,12 +232,12 @@ const resolveAudioFolder = (root, folderParam) => {
  * q 是必要的补救路径:文件名乱七八糟时自动推断必然猜错,CLI 里也允许重新输关键词
  * 再搜一次,没有它用户就只能去改文件名.
  */
-export const searchLyricsCandidates = async (root, folderParam, {run = runProcess, fetcher, query: queryOverride} = {}) => {
+export const searchLyricsCandidates = async (root, folderParam, {run = runProcess, fetcher, query: queryOverride, runtime = sourceRuntimeLayout} = {}) => {
   const resolved = resolveAudioFolder(root, folderParam);
   if (resolved.error) return resolved.error;
   const {folder, audio} = resolved;
 
-  const probe = await probeAudioAsync(path.join(folder, audio), run);
+  const probe = await probeAudioAsync(path.join(folder, audio), run, runtime);
   const inferred = identityFromFilename(audio);
   const expectedTitle = probe.title || inferred.title;
   const expectedArtist = probe.artist || inferred.artist;
@@ -252,7 +251,7 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
       // tag 写错(标题是专辑名、翻唱版本)恰恰是用户要手动改词的主要场景,
       // 不传这个标志的话"再找一次"永远返回同一批错结果.
       {query, title: probe.title, artist: probe.artist, duration: probe.duration, customized: Boolean(override), requireValidId: true},
-      fetcher ?? createLrclibFetch(run),
+      fetcher ?? createLrclibFetch(run, runtime),
     );
   } catch (error) {
     // 网络/代理问题是这个端点最常见的失败,原文透给前端比一句"失败了"有用.
@@ -281,7 +280,7 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
 };
 
 /** POST /api/fetch/lyrics-validate {folder,id}:保存前用本地人声锚点验证候选版本。 */
-export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, recognize, isJobRunning} = {}) => {
+export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, recognize, isJobRunning, runtime = sourceRuntimeLayout} = {}) => {
   const requestedId = canonicalLyricsId(body?.id);
   if (requestedId === null) return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
   const resolved = resolveAudioFolder(root, body?.folder);
@@ -289,7 +288,7 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
   if (isJobRunning?.()) return {status: 409, body: {error: '任务运行中，暂不校验歌词'}};
   let record;
   try {
-    record = await (fetcher ?? createLrclibFetch(run))(`/get/${requestedId}`, {});
+    record = await (fetcher ?? createLrclibFetch(run, runtime))(`/get/${requestedId}`, {});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
@@ -302,7 +301,7 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
       const cacheKey = `${resolved.folder}:${resolved.audioIdentity}`;
       let recognition = validationRecognitionCache.get(cacheKey);
       if (!recognition) {
-        recognition = recognizeForValidation(path.join(resolved.folder, resolved.audio), run);
+        recognition = recognizeForValidation(path.join(resolved.folder, resolved.audio), run, runtime);
         validationRecognitionCache.set(cacheKey, recognition);
         recognition.catch(() => validationRecognitionCache.delete(cacheKey));
       }
@@ -320,7 +319,7 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
  * id 是 LRCLIB 记录 id,按 id 重新取一次歌词正文(不在服务端缓存搜索结果),
  * 与 CLI 一样做繁转简,最后复用 installDownloadedLyrics 落到 audio/.
  */
-export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRunning, leaseManager = createTaskLeaseManager()} = {}) => {
+export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRunning, leaseManager = createTaskLeaseManager(), runtime = sourceRuntimeLayout} = {}) => {
   const id = body?.id;
   const requestedId = canonicalLyricsId(id);
   if (requestedId === null) {
@@ -332,7 +331,7 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
 
   let record;
   try {
-    record = await (fetcher ?? createLrclibFetch(run))(`/get/${requestedId}`, {});
+    record = await (fetcher ?? createLrclibFetch(run, runtime))(`/get/${requestedId}`, {});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
@@ -386,18 +385,18 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
 };
 
 /** GET /api/fetch/audio-search?q=<关键词> */
-export const searchAudioCandidates = async (query, {run = runProcess} = {}) => {
+export const searchAudioCandidates = async (query, {run = runProcess, runtime = sourceRuntimeLayout} = {}) => {
   const normalized = typeof query === 'string' ? normalizeSearchQuery(query) : '';
   if (!normalized) {
     return {status: 400, body: {error: 'q 不能为空', field: 'q'}};
   }
-  const ytdlp = await checkYtDlpAsync(run);
+  const ytdlp = await checkYtDlpAsync(run, runtime);
   if (!ytdlp.ok) {
     // 503 而不是 500:这不是服务出错,是缺一个用户自装的可选依赖,前端要能直接
     // 把 fix 文案显示成"怎么补".
     return {status: 503, body: {error: '未找到 yt-dlp(下载音频需要它,由你自行安装)', fix: FIXES['yt-dlp']}};
   }
-  const result = await searchYtDlpAsync(normalized, run);
+  const result = await searchYtDlpAsync(normalized, run, runtime);
   if (!result.ok) {
     return {
       status: 502,

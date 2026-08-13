@@ -34,34 +34,37 @@ import {runStill} from './still.mjs';
 import {runWeb} from './web.mjs';
 import {term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
-import {runCommand} from './run-command.mjs';
+import {runCommandSpec} from './run-command.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
 import {TEMPLATES} from './templates.mjs';
 import {resolveRenderOutputPath} from './output-naming.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
-
-const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {createNodeCommandResolver} from './command-resolver.mjs';
 
 export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
   validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
 
 export const runCommandFromArgv = async (
   argv,
-  {trimInteractive, trimPromptRunner, runCommandImpl = runCommand, offerFetchImpl = offerFetch, runLyricsImpl = runLyrics} = {},
+  {trimInteractive, trimPromptRunner, runCommandImpl, runCommandSpecImpl = runCommandSpec, offerFetchImpl = offerFetch, runLyricsImpl = runLyrics, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {},
 ) => {
+  const runResolvedCommand = (stage, spec) => runCommandImpl
+    ? runCommandImpl(stage, spec.executable, spec.args, {env: spec.env})
+    : runCommandSpecImpl(stage, spec);
   const parsed = parseArgs(argv);
   if (parsed.command === 'help') {
     console.log(USAGE);
     return 0;
   }
-  if (parsed.command === 'doctor') return runDoctor();
+  if (parsed.command === 'doctor') return runDoctor({runtime});
   if (parsed.command === 'templates') {
     for (const template of TEMPLATES) {
       console.log(`${template.id.padEnd(12)} ${template.name} — ${template.description}`);
     }
     return 0;
   }
-  if (parsed.command === 'fetch') return runFetch(parsed.folder);
+  if (parsed.command === 'fetch') return runFetch(parsed.folder, {runtime});
   if (parsed.command === 'lyrics') {
     const lyricsFolder = path.resolve(parsed.folder);
     const inherited = [
@@ -72,14 +75,14 @@ export const runCommandFromArgv = async (
     // A lyrics web job owns its own lease and must not turn into an implicit
     // fetch child. Direct interactive use keeps the existing convenience flow.
     if (!parsed.replace && !inherited && fs.existsSync(lyricsFolder) && fs.statSync(lyricsFolder).isDirectory()) {
-      await offerFetchImpl(lyricsFolder);
+      await offerFetchImpl(lyricsFolder, {runtime});
     }
-    return runLyricsImpl(parsed.folder, {replace: parsed.replace});
+    return runLyricsImpl(parsed.folder, {replace: parsed.replace, runtime, commandResolver});
   }
-  if (parsed.command === 'still') return runStill(parsed);
+  if (parsed.command === 'still') return runStill(parsed, {runtime});
   if (parsed.command === 'web') {
     // server 保持监听,进程靠它挂起,不在这里等待——不返回一个永远不 resolve 的 Promise
-    await runWeb(parsed.folder);
+    await runWeb(parsed.folder, {runtime, commandResolver});
     return 0;
   }
 
@@ -117,7 +120,7 @@ export const runCommandFromArgv = async (
   let succeeded = false;
   try {
   // 交互终端下缺音频/歌词先给下载与在线搜索的机会;备齐或非交互时不打扰
-  await offerFetch(folder, {task});
+  await offerFetch(folder, {task, runtime});
   const {photos, audio, lyrics, videos} = scanFolder(folder);
   if (videos.length > 0) {
     term.warn(`发现视频文件,kiseki 目前只处理照片,已忽略: ${videos.join(', ')}`);
@@ -140,9 +143,9 @@ export const runCommandFromArgv = async (
   };
   let hash = computeInputHash(folder, inputFiles());
 
-  const analyzer = path.join(REPO, 'analyzer');
+  const analyzer = runtime.analyzerRoot;
   const timelinePath = project.timelinePath;
-  const runtimeFingerprint = readAnalysisFingerprint(analyzer);
+  const runtimeFingerprint = readAnalysisFingerprint(analyzer, undefined, runtime);
   const audioHash = computeAnalysisHash(folder, {audio, lyrics, runtimeFingerprint});
   const skipAnalyze = hasValidAnalysisCache({
     analysisPath: project.analysisPath,
@@ -162,12 +165,13 @@ export const runCommandFromArgv = async (
     }
     term.start('分析音频');
     const analyzeArgs = [
-      'run', '--project', analyzer, 'kiseki-analyze', path.join(folder, audio),
+      path.join(folder, audio),
       '-o', project.beatsPath,
       '--lyrics-output', project.lyricsPath,
     ];
     if (lyrics) analyzeArgs.push('--lyrics-file', path.join(folder, lyrics));
-    const code = runCommandImpl('分析音频', 'uv', analyzeArgs);
+    const analyzeCommand = commandResolver.analyzer('kiseki-analyze', analyzeArgs);
+    const code = runResolvedCommand('分析音频', analyzeCommand);
     if (code !== 0) return code;
     writeAnalysisManifest({
       analysisPath: project.analysisPath,
@@ -183,9 +187,9 @@ export const runCommandFromArgv = async (
   // 原样保留,没被动过就悄悄升级到最新分配算法(见 plan.py _content_checksum)
   term.start('规划照片时间线');
   const runPlan = (inputHash, trimOverride = effectiveTrim) => {
-    const statusPath = path.join(os.tmpdir(), `kiseki-plan-${randomUUID()}.json`);
+    const statusPath = path.join(runtime.tempRoot, `kiseki-plan-${randomUUID()}.json`);
     const args = [
-      'run', '--project', analyzer, 'kiseki-plan', folder,
+      folder,
       '--beats', project.beatsPath,
       '--lyrics', project.lyricsPath,
       '--input-hash', inputHash,
@@ -194,7 +198,8 @@ export const runCommandFromArgv = async (
     ];
     if (trimOverride !== null) args.push('--trim', trimOverride);
     try {
-      const code = runCommandImpl('规划照片时间线', 'uv', args);
+      const planCommand = commandResolver.analyzer('kiseki-plan', args);
+      const code = runResolvedCommand('规划照片时间线', planCommand);
       let outcome = null;
       if (fs.existsSync(statusPath)) {
         outcome = JSON.parse(fs.readFileSync(statusPath, 'utf8')).outcome ?? null;
@@ -230,12 +235,11 @@ export const runCommandFromArgv = async (
   );
 
   const outPath = project.outputPath;
-  const rendererPackage = path.join(REPO, 'renderer', 'node_modules', '@remotion', 'renderer');
+  const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
   if (!fs.existsSync(rendererPackage)) throw new CliError('渲染器依赖未安装,先执行: cd renderer && npm install');
 
   term.start(`渲染视频${exif ? ', EXIF' : ''}${sign ? ', 签名' : ''}${dark ? ', 暗色' : ''}${draft ? ', 草稿' : ''}`);
-  const renderCode = runCommandImpl('渲染视频', process.execPath, [
-    path.join(REPO, 'cli', 'render.mjs'),
+  const renderCommand = commandResolver.renderer([
     timelinePath,
     outPath,
     folder,
@@ -249,6 +253,7 @@ export const runCommandFromArgv = async (
     ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
     ...(template ? ['--template', template] : []),
   ]);
+  const renderCode = runResolvedCommand('渲染视频', renderCommand);
   if (renderCode !== 0) return renderCode;
   term.success('视频渲染完成');
 

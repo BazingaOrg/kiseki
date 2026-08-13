@@ -1,12 +1,13 @@
 /** 执行 Web 任务，并把不同进度源归一为 SSE 事件。 */
 import {spawn as spawnActual, spawnSync} from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import readline from 'node:readline';
 
 import {buildJobSpec, parseYtDlpProgress} from './job-spec.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 import {executorIdentity, executorLiveness, freezeExecutorTree, resumeFrozenExecutorTree, signalExecutorGroupOrRoot, signalExecutorTree, terminateExecutorTree} from '../runtime-lifecycle.mjs';
+import {sourceRuntimeLayout} from '../runtime-layout.mjs';
+import {createNodeCommandResolver} from '../command-resolver.mjs';
 
 export {JobValidationError, buildJobArgv, buildJobEnv, buildJobInvocation} from '../job-argv.mjs';
 
@@ -91,7 +92,9 @@ const defaultTaskkill = (pid, force) => new Promise((resolve, reject) => {
 export const createJobManager =({
   spawnImpl = spawnActual,
   killImpl = process.kill,
-  tempParent = os.tmpdir(),
+  tempParent,
+  runtime = sourceRuntimeLayout,
+  commandResolver = createNodeCommandResolver({runtime}),
   readProcessTable = defaultReadProcessTable,
   now = () => Date.now(),
   stallTimeoutMs = STALL_TIMEOUT_MS,
@@ -102,6 +105,7 @@ export const createJobManager =({
   executorLivenessImpl = executorLiveness,
   leaseManager = createTaskLeaseManager({terminateExecutor: terminateExecutorTree, executorLiveness}),
 } = {}) => {
+  tempParent ??= runtime.tempRoot;
   /** @type {Map<string, object>} */
   const jobs = new Map();
   let runningJobId = null;
@@ -171,11 +175,11 @@ export const createJobManager =({
     try {
       // Validate/specify outputs before claiming so two projects cannot write the
       // same explicit -o destination. fetch's staging is rebuilt under taskRoot.
-      spec = buildJobSpec({kind, folder, options, tempParent});
+      spec = buildJobSpec({kind, folder, options, tempParent, runtime, commandResolver});
       lease = leaseManager.acquire({kind, resources: [folder], outputPaths: spec.outputPaths});
       if (kind === 'fetch-audio') {
         fs.rmSync(spec.tempDir, {recursive: true, force: true});
-        spec = buildJobSpec({kind, folder, options, tempParent: lease.taskRoot});
+        spec = buildJobSpec({kind, folder, options, tempParent: lease.taskRoot, runtime, commandResolver});
       }
     } catch (error) {
       if (lease) leaseManager.release(lease);
@@ -189,7 +193,7 @@ export const createJobManager =({
     let child;
     try {
       leaseManager.markSpawnIntent(lease);
-      child = spawnImpl(spec.command, spec.args, {
+      child = spawnImpl(spec.executable, spec.args, {
         stdio: spec.stdio,
         detached: true,
         env: {
@@ -711,6 +715,15 @@ export const createJobManager =({
     const job = jobs.get(runningJobId);
     return {id: job.id, kind: job.kind, folder: job.folder};
   };
+  const resetIdleState = () => {
+    if (runningJobId !== null) throw new Error('任务运行中');
+    for (const job of jobs.values()) job.listeners.clear();
+    jobs.clear();
+  };
+  const resumeAfterSleep = () => {
+    const job = runningJobId === null ? null : jobs.get(runningJobId);
+    if (job) job.lastActivityAt = now();
+  };
 
-  return {createJob, getJob, subscribeEvents, cancelJob, killAll, hasRunningJob, getRunningJob, _debugListenerCount};
+  return {createJob, getJob, subscribeEvents, cancelJob, killAll, hasRunningJob, getRunningJob, resetIdleState, resumeAfterSleep, _debugListenerCount};
 };

@@ -5,11 +5,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import {createRequire} from 'node:module';
-import {fileURLToPath} from 'node:url';
 
-const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-export const RENDERER = path.join(REPO, 'renderer');
-const requireRenderer = createRequire(path.join(RENDERER, 'package.json'));
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
+
+export const RENDERER = sourceRuntimeLayout.rendererRoot;
 
 /**
  * @param {string} publicDir
@@ -17,12 +16,14 @@ const requireRenderer = createRequire(path.join(RENDERER, 'package.json'));
  * @returns {Promise<{serveUrl: string, bundleDir: string | null, cleanup: () => void}>}
  */
 export const bundleRenderer = async (publicDir, opts = {}) => {
+  const rendererRoot = opts.runtime?.rendererRoot ?? RENDERER;
+  const requireRenderer = createRequire(path.join(rendererRoot, 'package.json'));
   const {bundle} = requireRenderer('@remotion/bundler');
   let bundleDir = null;
   const serveUrl = await bundle({
-    entryPoint: path.join(RENDERER, 'src/index.ts'),
+    entryPoint: path.join(rendererRoot, 'src/index.ts'),
     publicDir,
-    rootDir: RENDERER,
+    rootDir: rendererRoot,
     symlinkPublicDir: true,
     onDirectoryCreated: (directory) => {
       bundleDir = directory;
@@ -48,4 +49,5 @@ export const bundleRenderer = async (publicDir, opts = {}) => {
   };
 };
 
-export const loadRemotionRenderer = () => requireRenderer('@remotion/renderer');
+export const loadRemotionRenderer = (runtime = sourceRuntimeLayout) =>
+  createRequire(path.join(runtime.rendererRoot, 'package.json'))('@remotion/renderer');

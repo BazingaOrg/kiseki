@@ -13,6 +13,11 @@ const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const STEM_RE = /^[^/\\\0]+$/;
 const locks = new Set();
 const undoRecords = new Map();
+export const resetAssetMutationState = () => {
+  if (locks.size > 0 || [...undoRecords.values()].some((record) => record.recoveryLease)) return false;
+  undoRecords.clear();
+  return true;
+};
 
 export class AssetMutationError extends Error {
   constructor(status, message, details = null, cause = null) { super(message, cause ? {cause} : undefined); this.status = status; this.details = details; }

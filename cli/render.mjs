@@ -14,6 +14,7 @@ import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {resolveTemplateComposition} from './templates.mjs';
 import {term} from './term.mjs';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
 
 export const detectParallelism = (osModule = os) =>
@@ -59,10 +60,11 @@ export const formatRenderDiagnostics = ({draft, composition, renderSettings, spe
 
 const TARGET_LUFS = -14;
 const TARGET_TP = -1.5;
-const ffmpegQuiet = (args) => spawnSync('ffmpeg', ['-hide_banner', '-nostats', ...args], {encoding: 'utf8'});
+const ffmpegQuiet = (args, runtime = sourceRuntimeLayout) =>
+  spawnSync(runtime.ffmpeg, ['-hide_banner', '-nostats', ...args], {encoding: 'utf8'});
 
-const normalizeLoudness = (file) => {
-  const probe = ffmpegQuiet(['-i', file, '-map', 'a:0', '-af', `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:print_format=json`, '-f', 'null', '-']);
+const normalizeLoudness = (file, runtime = sourceRuntimeLayout) => {
+  const probe = ffmpegQuiet(['-i', file, '-map', 'a:0', '-af', `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:print_format=json`, '-f', 'null', '-'], runtime);
   const match = probe.stderr?.match(/\{[\s\S]*?\}/);
   if (probe.error?.code === 'ENOENT') {
     term.warn('找不到命令 ffmpeg,已跳过响度检查');
@@ -87,7 +89,7 @@ const normalizeLoudness = (file) => {
   }
   const tmp = `${file}.loudnorm.mp4`;
   const af = `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:linear=true:measured_I=${measuredInfo.input_i}:measured_TP=${measuredInfo.input_tp}:measured_LRA=${measuredInfo.input_lra}:measured_thresh=${measuredInfo.input_thresh}:offset=${measuredInfo.target_offset}`;
-  const enc = ffmpegQuiet(['-y', '-i', file, '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '256k', tmp]);
+  const enc = ffmpegQuiet(['-y', '-i', file, '-c:v', 'copy', '-af', af, '-c:a', 'aac', '-b:a', '256k', tmp], runtime);
   if (enc.error || enc.status !== 0 || !fs.existsSync(tmp)) {
     fs.rmSync(tmp, {force: true});
     term.warn('响度归一失败,保留原始响度');
@@ -221,6 +223,7 @@ const main = async () => {
       id: resolveTemplateComposition(flags.template),
       inputProps,
       logLevel: 'error',
+      browserExecutable: sourceRuntimeLayout.chromium,
     });
     const totalFrames = composition.durationInFrames;
     // 这里已拿到最终 composition;紧邻 renderMedia 输出,CLI 和 Web fd3 日志看见
@@ -245,6 +248,7 @@ const main = async () => {
       outputLocation: partialOutputPath,
       overwrite: true,
       logLevel: 'error',
+      browserExecutable: sourceRuntimeLayout.chromium,
       // 接管浏览器控制台输出:不再与进行中的进度行挤在同一行
       onBrowserLog: ({type, text, stackTrace}) => {
         if (type !== 'error' && type !== 'warning') return;

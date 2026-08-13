@@ -18,6 +18,7 @@ import {
 } from './jobs.mjs';
 import {JobValidationError as JobSpecValidationError} from './job-spec.mjs';
 import {outputArtifactPaths} from '../atomic-output.mjs';
+import {createRuntimeLayout} from '../runtime-layout.mjs';
 
 test('job-spec 与 jobs 复用同一个 JobValidationError 类身份', () => {
   assert.equal(JobSpecValidationError, JobValidationError);
@@ -758,12 +759,19 @@ test('buildJobArgv:未知 kind 仍然抛 JobValidationError', () => {
 
 test('buildJobSpec:lyrics 走 CLI + fd3', () => {
   const spec = buildJobSpec({kind: 'lyrics', folder: '/f'});
-  assert.equal(spec.command, process.execPath);
+  assert.equal(spec.executable, process.execPath);
   assert.equal(spec.progressSource, 'fd3');
   assert.deepEqual(spec.args.slice(-2), ['lyrics', '/f']);
   assert.equal(spec.env.KISEKI_JSON_PROGRESS, '1');
   // stdin 必须是 ignore,否则 offerFetch 会卡在一个看不见的终端提问上
   assert.equal(spec.stdio[0], 'ignore');
+});
+
+test('buildJobSpec passes the selected runtime layout to the child process', () => {
+  const runtime = createRuntimeLayout({sourceRoot: path.join(os.tmpdir(), 'runtime with spaces')});
+  const spec = buildJobSpec({kind: 'lyrics', folder: '/f', runtime});
+  assert.equal(spec.args[0], runtime.cliEntry);
+  assert.deepEqual(JSON.parse(spec.env.KISEKI_RUNTIME_LAYOUT), runtime);
 });
 
 test('buildJobSpec:render/still 的命令组装不回归', () => {
@@ -801,7 +809,7 @@ test('buildJobSpec:fetch-audio 直接跑 yt-dlp,下载到素材夹外的临时�
     options: {id: 'dQw4w9WgXcQ', title: 'Song', artist: 'Artist'},
     tempParent,
   });
-  assert.equal(spec.command, 'yt-dlp');
+  assert.equal(spec.executable, 'yt-dlp');
   assert.equal(spec.progressSource, 'ytdlp-stdout');
   assert.ok(spec.args.includes('--newline'), '不加 --newline 就一行进度都读不到');
   assert.ok(spec.args.includes('https://www.youtube.com/watch?v=dQw4w9WgXcQ'));
@@ -1022,7 +1030,7 @@ test('CLI 入口路径必须真实存在', () => {
   // 前端只看到一句"失败了"——从网页起任务这个功能整个是坏的.
   for (const kind of ['render', 'still', 'lyrics']) {
     const spec = buildJobSpec({kind, folder: STILL_FIXTURE, options: {}});
-    assert.equal(spec.command, process.execPath);
+    assert.equal(spec.executable, process.execPath);
     assert.ok(fs.existsSync(spec.args[0]), `${kind} 的入口不存在: ${spec.args[0]}`);
     assert.ok(spec.args[0].endsWith(path.join('cli', 'kiseki.mjs')), `路径可疑: ${spec.args[0]}`);
   }

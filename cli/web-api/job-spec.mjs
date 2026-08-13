@@ -5,9 +5,7 @@
  * 从 job-argv.mjs 导入,确保 HTTP 层的 instanceof 判断保持同一类身份.
  */
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {buildAudioFilename, installDownloadedAudio, sanitizeFilePart} from '../fetch.mjs';
 import {FIXES} from '../dependencies.mjs';
@@ -16,11 +14,11 @@ import {resolveJobs} from '../still.mjs';
 import {resolveRenderOutputPath} from '../output-naming.mjs';
 import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
 import {parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from '../ytdlp.mjs';
+import {sourceRuntimeLayout} from '../runtime-layout.mjs';
+import {createNodeCommandResolver} from '../command-resolver.mjs';
 
 export {JobValidationError} from '../job-argv.mjs';
 
-const CLI_DIR = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
-const KISEKI_ENTRY = path.join(CLI_DIR, 'kiseki.mjs');
 const YTDLP_ID_RE = /^[A-Za-z0-9_-]{5,64}$/;
 
 /** yt-dlp 下载进度事件的标签. */
@@ -39,7 +37,7 @@ const normalizeFetchAudioMetadata = (options) => {
   return {title, artist};
 };
 
-const buildFetchAudioSpec = ({folder, options, tempParent}) => {
+const buildFetchAudioSpec = ({folder, options, tempParent, commandResolver}) => {
   const id = options?.id;
   if (typeof id !== 'string' || !YTDLP_ID_RE.test(id)) {
     throw new JobValidationError('id', 'id 必须是 yt-dlp 视频 id(字母、数字、- 和 _)');
@@ -48,15 +46,12 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
   const tempDir = fs.mkdtempSync(path.join(tempParent, 'kiseki-fetch-'));
   const finalFilename = buildAudioFilename({title, artist, ext: '.m4a'});
   return {
-    command: 'yt-dlp',
-    tempDir,
-    args: [
+    ...commandResolver.tool('ytDlp', [
       '-x', '--audio-format', 'm4a', '--no-playlist', '--newline', '--no-color',
       '-o', path.join(tempDir, '%(title)s.%(ext)s'),
       `https://www.youtube.com/watch?v=${id}`,
-    ],
-    stdio: ['ignore', 'pipe', 'pipe'],
-    env: process.env,
+    ], {stdio: ['ignore', 'pipe', 'pipe']}),
+    tempDir,
     progressSource: 'ytdlp-stdout',
     outputPaths: [path.join(folder, 'audio', finalFilename)],
     finalize: (code, {stderrTail = [], spawnFailed = false, task = null} = {}) => {
@@ -93,19 +88,19 @@ const buildFetchAudioSpec = ({folder, options, tempParent}) => {
  * 按 kind 分派出命令、参数和进度来源.
  * @param {{kind: string, folder: string, options?: object, tempParent?: string}} params
  */
-export const buildJobSpec = ({kind, folder, options = {}, tempParent = os.tmpdir()}) => {
-  if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent});
+export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})}) => {
+  tempParent ??= runtime.tempRoot;
+  if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent, commandResolver});
 
   const {argv, env} = buildJobInvocation({kind, folder, options});
   return {
-    command: process.execPath,
-    args: [KISEKI_ENTRY, ...argv],
-    stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
-    env: {
-      ...process.env,
+    ...commandResolver.cli(argv, {
+      stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+      env: {
       KISEKI_JSON_PROGRESS: '1',
       ...env,
-    },
+      },
+    }),
     progressSource: 'fd3',
     finalize: null,
     // Job leases always claim the project itself. Keep output paths explicit in

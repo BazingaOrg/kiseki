@@ -1,11 +1,11 @@
 import {spawn, spawnSync} from 'node:child_process';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import readline from 'node:readline';
 
 import {createPercentProgress} from './progress.mjs';
 import {scanFolderLoose} from './project.mjs';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
 
 export const AUDIO_PROVIDER_LIMIT = 20;
 export const AUDIO_SEARCH_LIMIT = 10;
@@ -49,16 +49,16 @@ export const parseSearchCandidates = (stdout) => {
     .slice(0, AUDIO_SEARCH_LIMIT);
 };
 
-export const checkYtDlp = (spawn = spawnSync) => {
-  const r = spawn('yt-dlp', ['--version'], {encoding: 'utf8'});
+export const checkYtDlp = (spawn = spawnSync, runtime = sourceRuntimeLayout) => {
+  const r = spawn(runtime.ytDlp, ['--version'], {encoding: 'utf8'});
   if (r.error || r.status !== 0) return {ok: false};
   return {ok: true, version: (r.stdout ?? '').trim()};
 };
 
-export const searchYtDlp = (query, {spawn = spawnSync} = {}) => {
+export const searchYtDlp = (query, {spawn = spawnSync, runtime = sourceRuntimeLayout} = {}) => {
   const normalized = normalizeSearchQuery(query);
   const r = spawn(
-    'yt-dlp',
+    runtime.ytDlp,
     [
       `ytsearch${AUDIO_PROVIDER_LIMIT}:${normalized}`,
       '--flat-playlist',
@@ -79,11 +79,12 @@ export const searchYtDlp = (query, {spawn = spawnSync} = {}) => {
  */
 export const downloadWithYtDlp = (
   url,
-  {spawn = spawnSync, tempParent = os.tmpdir(), stdio = 'inherit'} = {},
+  {spawn = spawnSync, tempParent, stdio = 'inherit', runtime = sourceRuntimeLayout} = {},
 ) => {
+  tempParent ??= runtime.tempRoot;
   const tempDir = fs.mkdtempSync(path.join(tempParent, 'kiseki-fetch-'));
   const r = spawn(
-    'yt-dlp',
+    runtime.ytDlp,
     ['-x', '--audio-format', 'm4a', '--no-playlist', '-o', path.join(tempDir, '%(title)s.%(ext)s'), url],
     {stdio},
   );
@@ -113,10 +114,12 @@ export const downloadWithYtDlpProgress = (
   url,
   {
     spawnImpl = spawn,
-    tempParent = os.tmpdir(),
+    tempParent,
+    runtime = sourceRuntimeLayout,
     progress = createPercentProgress(),
   } = {},
 ) => new Promise((resolve) => {
+  tempParent ??= runtime.tempRoot;
   const tempDir = fs.mkdtempSync(path.join(tempParent, 'kiseki-fetch-'));
   let settled = false;
   const stderr = [];
@@ -130,7 +133,7 @@ export const downloadWithYtDlpProgress = (
   let child;
   try {
     child = spawnImpl(
-      'yt-dlp',
+      runtime.ytDlp,
       [
         '-x', '--audio-format', 'm4a', '--no-playlist', '--newline', '--no-color',
         '-o', path.join(tempDir, '%(title)s.%(ext)s'), url,

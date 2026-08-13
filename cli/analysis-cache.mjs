@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
 
 export const ANALYSIS_CACHE_VERSION = 2;
 
@@ -31,9 +32,9 @@ const parseRuntimeFingerprint = (fingerprint) => {
   }
 };
 
-export const readAnalysisFingerprint = (analyzer, spawn = spawnSync) => {
+export const readAnalysisFingerprint = (analyzer, spawn = spawnSync, runtime = sourceRuntimeLayout) => {
   const result = spawn(
-    'uv',
+    runtime.uv,
     ['run', '--project', analyzer, 'kiseki-analysis-fingerprint'],
     {encoding: 'utf8'},
   );

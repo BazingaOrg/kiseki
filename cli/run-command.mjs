@@ -39,3 +39,26 @@ export const runCommand = (stage, cmd, args, opts = {}, spawn = spawnSync, env =
   }
   return 0;
 };
+
+export const runCommandSpec = (stage, spec, spawn = spawnSync) => {
+  const logicalName = spec.displayName ?? spec.executable;
+  const stdio = spec.stdio === 'inherit' ? stdioFor(spec.env) : spec.stdio;
+  const result = spawn(spec.executable, spec.args, {stdio, env: spec.env});
+  if (result.error) {
+    if (result.error.code === 'ENOENT') {
+      term.error(`${stage}失败: 找不到命令 ${logicalName}(未安装或不在 PATH)`);
+      if (FIXES[logicalName]) term.detail(FIXES[logicalName]);
+      term.detail('运行 kiseki doctor 可一次检查全部依赖');
+    } else {
+      term.error(`${stage}失败: 无法执行 ${logicalName}: ${result.error.message}`);
+    }
+    return 1;
+  }
+  if (result.status !== 0) {
+    const code = result.status ?? 1;
+    term.error(`${stage}失败(退出码 ${code})`);
+    if (STAGE_DETAILS[stage]) term.detail(STAGE_DETAILS[stage]);
+    return code;
+  }
+  return 0;
+};

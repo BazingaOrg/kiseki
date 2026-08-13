@@ -2,13 +2,13 @@
 import {spawn} from 'node:child_process';
 import crypto from 'node:crypto';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 
 import {resolveSafePath} from './sandbox.mjs';
+import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const CACHE_DIR = path.join(os.tmpdir(), `kiseki-thumbs-${process.getuid?.() ?? 'user'}`);
+const defaultCacheDir = (runtime) => runtime.thumbCacheRoot;
 const DEFAULT_WIDTH = 400;
 const MAX_WIDTH = 1024;
 
@@ -52,7 +52,7 @@ export const matchesIfNoneMatch = (raw, etag) => {
 export const MAX_CACHE_ENTRIES = 2000;
 const CACHE_ENTRY_RE = /^[a-f0-9]{40}\.jpg$/;
 
-export const pruneCache = (dir = CACHE_DIR, limit = MAX_CACHE_ENTRIES) => {
+export const pruneCache = (dir = defaultCacheDir(sourceRuntimeLayout), limit = MAX_CACHE_ENTRIES) => {
   let entries;
   try {
     // 只处理本服务以 SHA-1 cache key 命名的产物,绝不顺手删目录里的其他文件.
@@ -132,9 +132,9 @@ const ffmpegArgs = (source, destination, width) => [
  * @param {{spawn?: Function, timeoutMs?: number}} [options] 测试注入用;超时
  * 兜底 kill 掉卡死的 ffmpeg 返回 false,调用方回源图,不让请求无限挂着.
  */
-export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn, timeoutMs = THUMB_TIMEOUT_MS} = {}) =>
+export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn, timeoutMs = THUMB_TIMEOUT_MS, runtime = sourceRuntimeLayout} = {}) =>
   withFfmpegSlot(() => new Promise((resolve) => {
-    const child = spawnImpl('ffmpeg', ffmpegArgs(source, destination, width), {stdio: 'ignore'});
+    const child = spawnImpl(runtime.ffmpeg, ffmpegArgs(source, destination, width), {stdio: 'ignore'});
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
       resolve(false);
@@ -175,8 +175,9 @@ export const resolveThumb = async (root, requestedPath, rawWidth, ifNoneMatch, d
   const mkdirSync = deps.mkdirSync ?? fs.mkdirSync;
   const rmSync = deps.rmSync ?? fs.rmSync;
   const renameSync = deps.renameSync ?? fs.renameSync;
-  const cacheDir = deps.cacheDir ?? CACHE_DIR;
-  const generate = deps.generator ?? runFfmpeg;
+  const runtime = deps.runtime ?? sourceRuntimeLayout;
+  const cacheDir = deps.cacheDir ?? defaultCacheDir(runtime);
+  const generate = deps.generator ?? ((...args) => runFfmpeg(...args, {runtime}));
   const sourceStat = readSourceStat(statSync, safePath);
   if (!sourceStat) return {status: 404, body: '路径不存在'};
   if (!sourceStat.isFile()) return {status: 400, body: '不是文件'};

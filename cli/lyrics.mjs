@@ -7,17 +7,16 @@
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import path from 'node:path';
-import {fileURLToPath} from 'node:url';
 
 import {CliError} from './options.mjs';
 import {copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, resolveProjectPaths, scanFolder, scanFolderLoose} from './project.mjs';
 import {term} from './term.mjs';
-import {runCommand} from './run-command.mjs';
+import {runCommandSpec} from './run-command.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 import {installAtomicOutputs, outputArtifactPaths} from './atomic-output.mjs';
 import {hasUsableRecognizedLyricsPayload, isRecognizedLyricsManageable} from './recognized-lyrics.mjs';
-
-const REPO = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {createNodeCommandResolver} from './command-resolver.mjs';
 
 // 与 renderer/src/theme.ts 的 SUBTITLE.confidenceThreshold 保持一致:
 // 低于这个置信度的段落,渲染时不会显示字幕.
@@ -161,7 +160,7 @@ const replaceRecognizedLyrics = ({project, stagedPath, task, identity, beforeMar
 
 export const runLyrics = (
   folderArg,
-  {replace = false, runCommandImpl = runCommand, beforeMarkCommitting, leaseManager = createTaskLeaseManager()} = {},
+  {replace = false, runCommandImpl, runCommandSpecImpl = runCommandSpec, beforeMarkCommitting, leaseManager = createTaskLeaseManager(), runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {},
 ) => {
   const folder = path.resolve(folderArg);
   const inheritedTask = [
@@ -202,7 +201,6 @@ export const runLyrics = (
     throw new CliError('已有可用的本地识别歌词;如要替换,请使用 kiseki lyrics <folder> --replace');
   }
 
-  const analyzer = path.join(REPO, 'analyzer');
   stagedPath = replace ? path.join(task.lease.taskRoot, 'tmp', 'recognized-lyrics.json') : project.lyricsPath;
   if (replace) {
     if (regularOrMissing(stagedPath)) throw new CliError('识别 staging 文件已存在,任务状态不安全');
@@ -212,12 +210,15 @@ export const runLyrics = (
   const oldRecognizedIdentity = replace ? {lyrics: recognizedIdentity(project.lyricsPath), timeline: fileIdentityOrAbsent(project.timelinePath)} : null;
   term.start('识别歌词');
   const analyzeArgs = [
-    'run', '--project', analyzer, 'kiseki-analyze', path.join(folder, audio),
+    path.join(folder, audio),
     '--lyrics-only',
     '--lyrics-output', stagedPath,
   ];
   if (lyrics) analyzeArgs.push('--lyrics-file', path.join(folder, lyrics));
-  const code = runCommandImpl('识别歌词', 'uv', analyzeArgs);
+  const analyzeCommand = commandResolver.analyzer('kiseki-analyze', analyzeArgs);
+  const code = runCommandImpl
+    ? runCommandImpl('识别歌词', analyzeCommand.executable, analyzeCommand.args, {env: analyzeCommand.env})
+    : runCommandSpecImpl('识别歌词', analyzeCommand);
   if (code !== 0) { if (replace) fs.rmSync(stagedPath, {force: true}); outcome = code; return code; }
   if (replace) {
     assertRecognizedIdentity({lyricsPath: project.lyricsPath, lrcFiles: scanFolderLoose(folder).lyrics, identity: oldRecognizedIdentity.lyrics});

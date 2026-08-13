@@ -20,6 +20,7 @@ import {term} from './term.mjs';
 import {checkYtDlp, downloadWithYtDlpProgress, searchYtDlp} from './ytdlp.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 import {installAtomicOutputs} from './atomic-output.mjs';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent
@@ -157,9 +158,9 @@ export const installDownloadedLyrics = ({lyrics, ...options}) =>
   installFetchedFile({...options, contents: lyrics});
 
 /** 读音频 tag 与时长;ffprobe 失败不致命,返回空对象走文件名兜底. */
-export const probeAudio = (file, spawn = spawnSync) => {
+export const probeAudio = (file, spawn = spawnSync, runtime = sourceRuntimeLayout) => {
   const r = spawn(
-    'ffprobe',
+    runtime.ffprobe,
     ['-v', 'error', '-show_entries', 'format=duration:format_tags=title,artist', '-of', 'json', file],
     {encoding: 'utf8'},
   );
@@ -181,13 +182,13 @@ export const probeAudio = (file, spawn = spawnSync) => {
 
 // 用 curl 而非 Node fetch:curl 跟随系统代理环境变量(http_proxy 等),
 // 且与本项目 spawnSync 外部命令的风格一致;macOS 与 Windows 10+ 均自带.
-const lrclibFetch = (pathname, params) => {
+const createLrclibFetch = (runtime = sourceRuntimeLayout) => (pathname, params) => {
   const url = new URL(`${LRCLIB_BASE}${pathname}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== null && value !== undefined) url.searchParams.set(key, value);
   }
   const r = spawnSync(
-    'curl',
+    runtime.curl,
     ['-sS', '--max-time', '20', '-H', `User-Agent: ${LRCLIB_UA}`, '-w', '\n%{http_code}', url.toString()],
     {encoding: 'utf8'},
   );
@@ -200,6 +201,7 @@ const lrclibFetch = (pathname, params) => {
   if (parsed.status < 200 || parsed.status >= 300) throw new Error(`LRCLIB 返回 ${parsed.status}`);
   return JSON.parse(parsed.body);
 };
+const lrclibFetch = createLrclibFetch();
 
 /** 精确记录必须真的含同步歌词;否则继续用关键词宽松搜索. */
 export const searchLyricsRecords = async (
@@ -225,8 +227,8 @@ const NETWORK_HINT = '检查网络是否可达 lrclib.net(请求经 curl 发出,
 // ---------------------------------------------------------------------------
 
 /** 音频下载子流程;成功时返回用户确认的文件名/歌曲信息. */
-const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
-  const ytdlp = checkYtDlp();
+const audioFlow = async (ask, folder, {existing = null, task = null, runtime = sourceRuntimeLayout} = {}) => {
+  const ytdlp = checkYtDlp(undefined, runtime);
   if (!ytdlp.ok) {
     term.error('未找到 yt-dlp(下载音频需要它,由你自行安装)');
     term.detail(FIXES['yt-dlp']);
@@ -242,7 +244,7 @@ const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
       url = input;
     } else {
       term.start(`搜索「${input}」`);
-      const search = searchYtDlp(input);
+      const search = searchYtDlp(input, {runtime});
       if (!search.ok) {
         term.error('搜索失败');
         if (search.stderr) term.detail(search.stderr.split('\n').slice(-3).join('\n'));
@@ -268,7 +270,7 @@ const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
     }
 
     term.start('下载音频');
-    const result = await downloadWithYtDlpProgress(url, {tempParent: task?.lease.taskRoot});
+    const result = await downloadWithYtDlpProgress(url, {tempParent: task?.lease.taskRoot, runtime});
     if (!result.ok) {
       term.error('下载失败');
       if (result.stderr) term.detail(result.stderr);
@@ -282,7 +284,7 @@ const audioFlow = async (ask, folder, {existing = null, task = null} = {}) => {
     try {
       for (const warning of result.warnings) term.warn(warning);
       term.info(`下载文件: ${result.audio}`);
-      const probe = probeAudio(result.source);
+      const probe = probeAudio(result.source, undefined, runtime);
       const sourceTitle = sanitizeFilePart(
         probe.title || path.basename(result.audio, path.extname(result.audio)),
       );
@@ -340,9 +342,11 @@ export const lyricsFlow = async (
     confirmedArtist = null,
     fetcher = lrclibFetch,
     task = null,
+    runtime = sourceRuntimeLayout,
   } = {},
 ) => {
-  const probe = probeAudio(path.join(folder, audio));
+  const probe = probeAudio(path.join(folder, audio), undefined, runtime);
+  if (fetcher === lrclibFetch && runtime !== sourceRuntimeLayout) fetcher = createLrclibFetch(runtime);
   const title = confirmedTitle || probe.title;
   const artist = confirmedArtist ?? probe.artist;
   const defaultQuery = buildLyricsQuery({title, artist, audioFile: audio});
@@ -475,7 +479,7 @@ export const chooseSingleAudio = async (ask, folder, audios) => {
 /** `kiseki fetch <folder>`:显式备料入口,任何状态可进,覆盖需确认. */
 export const runFetch = async (
   folderArg,
-  {input = process.stdin, output = process.stdout, leaseManager = createTaskLeaseManager()} = {},
+  {input = process.stdin, output = process.stdout, leaseManager = createTaskLeaseManager(), runtime = sourceRuntimeLayout} = {},
 ) => {
   if (input === process.stdin && (!process.stdin.isTTY || !process.stdout.isTTY)) {
     throw new CliError('fetch 是交互命令,需要在交互终端中运行');
@@ -509,7 +513,7 @@ export const runFetch = async (
       if (await ask.confirm(`已有 ${audios[0]},重新下载并替换?`, {
         defaultValue: false, defaultLabel: '保留', alternateKey: 'r', alternateLabel: '重新下载',
       })) {
-        downloadedInfo = await audioFlow(ask, folder, {existing: audios[0], task});
+        downloadedInfo = await audioFlow(ask, folder, {existing: audios[0], task, runtime});
         if (downloadedInfo && lyrics.length > 0) {
           term.warn('音频已更换,现有 .lrc 时间轴可能不再匹配,建议重新搜索歌词');
         }
@@ -518,7 +522,7 @@ export const runFetch = async (
       // 显式 fetch 入口默认执行主路径;自动兜底 offerFetch 仍默认跳过(有意不对称)
       defaultValue: true, defaultLabel: '下载', alternateKey: 's', alternateLabel: '跳过',
     })) {
-      downloadedInfo = await audioFlow(ask, folder, {task});
+      downloadedInfo = await audioFlow(ask, folder, {task, runtime});
     }
 
     ({audios, lyrics} = scanFolderLoose(folder));
@@ -535,6 +539,7 @@ export const runFetch = async (
           confirmedTitle: downloadedInfo?.title,
           confirmedArtist: downloadedInfo?.artist,
           task,
+          runtime,
         });
       }
     } else if (await ask.confirm('没有 .lrc,在线搜索同步歌词?', {
@@ -544,6 +549,7 @@ export const runFetch = async (
         confirmedTitle: downloadedInfo?.title,
         confirmedArtist: downloadedInfo?.artist,
         task,
+        runtime,
       });
       if (!saved) term.info('未保存歌词;渲染时会在本机识别人声并生成字幕,不会上传音频');
     }
@@ -564,7 +570,7 @@ export const runFetch = async (
  * 渲染 / lyrics 主流程兜底:交互终端下缺什么补什么,备齐则一句话不问.
  * 用户拒绝或失败后直接返回,由随后的 scanFolder 给出既有的清晰报错.
  */
-export const offerFetch = async (folder, {input = process.stdin, output = process.stdout, task: existingTask = null} = {}) => {
+export const offerFetch = async (folder, {input = process.stdin, output = process.stdout, task: existingTask = null, runtime = sourceRuntimeLayout} = {}) => {
   if (input === process.stdin && (!process.stdin.isTTY || !process.stdout.isTTY)) return;
   // Render's web child authenticates before scanning the project. A direct
   // interactive invocation keeps the short fetch lease lazy when nothing is
@@ -613,7 +619,7 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
         term.info(`之后可运行 ${formatEquivalentCommand(['fetch', folder])} 补齐`);
         return;
       }
-      downloadedInfo = await audioFlow(ask, folder, {task});
+      downloadedInfo = await audioFlow(ask, folder, {task, runtime});
       if (!downloadedInfo) return;
     }
     const {audios, lyrics} = scanFolderLoose(folder);
@@ -626,6 +632,7 @@ export const offerFetch = async (folder, {input = process.stdin, output = proces
           confirmedTitle: downloadedInfo?.title,
           confirmedArtist: downloadedInfo?.artist,
           task,
+          runtime,
         });
         if (!saved) term.info('未保存歌词;后续渲染会在本机识别人声并生成字幕');
       }

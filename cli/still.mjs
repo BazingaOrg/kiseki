@@ -10,7 +10,8 @@ import {fileURLToPath} from 'node:url';
 import {extractFormattedExif} from './exif.mjs';
 import {loadProjectConfig} from './config.mjs';
 import {CliError} from './options.mjs';
-import {bundleRenderer, loadRemotionRenderer, RENDERER} from './bundle.mjs';
+import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
@@ -160,8 +161,8 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
 /**
  * @param {{target: string, output: string | null, exif: boolean, sign: boolean, dark: boolean, skipExisting: boolean, scale: number, filter?: {id: string, intensity?: number} | null}} opts
  */
-export const runStill = async (opts) => {
-  const rendererPackage = path.join(RENDERER, 'node_modules', '@remotion', 'renderer');
+export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
+  const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
   if (!fs.existsSync(rendererPackage)) {
     throw new CliError('渲染器依赖未安装,先执行: cd renderer && npm install');
   }
@@ -194,7 +195,7 @@ export const runStill = async (opts) => {
     if (opts.dark) canvas.background = '#000000';
     if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
     if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
-    const {openBrowser, renderStill, selectComposition} = loadRemotionRenderer();
+    const {openBrowser, renderStill, selectComposition} = loadRemotionRenderer(runtime);
     progress = createPercentProgress();
     const taskId = resolveAtomicTaskId();
     const stillProgressLabel = (index) =>
@@ -202,6 +203,7 @@ export const runStill = async (opts) => {
 
     term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 暗色' : ''})`);
     const bundled = await bundleRenderer(resolved.publicDir, {
+      runtime,
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
@@ -210,7 +212,7 @@ export const runStill = async (opts) => {
 
     // 复用同一个 Chromium 渲染全部照片:每张冷启动一次浏览器是批量导出
     // 的最大开销.selectComposition 与 renderStill 都吃同一个 puppeteerInstance.
-    const browser = await openBrowser('chrome', {logLevel: 'error'});
+    const browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable: runtime.chromium});
     cleanup = () => {
       Promise.resolve(browser.close({silent: true})).catch(() => {});
       bundled.cleanup();
