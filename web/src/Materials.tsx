@@ -122,7 +122,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
       </form>
 
       {result && !result.ok && <Failure message={result.message} fix={result.fix} />}
-      {candidates?.length === 0 && <p className="hint">没搜到，换个说法试试。</p>}
+      {candidates?.length === 0 && <p className="hint">没搜到，换个说法试试 ：）</p>}
 
       {candidates && candidates.length > 0 && (
         <ul className="fetch-candidates">
@@ -507,7 +507,7 @@ export const Materials = ({
         {photos.length > 0 ? (
           <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showHeader: false}]} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
         ) : (
-          <p className="material-empty">把照片放进这个文件夹就行，jpg / png / webp 都可以。</p>
+          <p className="material-empty">把照片放进这个文件夹就行，jpg / png / webp 都可以 ：）</p>
         )}
       </div>
 

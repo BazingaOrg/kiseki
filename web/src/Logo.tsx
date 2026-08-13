@@ -19,7 +19,7 @@ export const Mark = ({size = 24}: MarkProps) => (
       strokeLinecap="round"
       strokeLinejoin="round"
     />
-    <circle cx="25.5" cy="16" r="2.1" fill="#E2B667" />
+    <circle className="logo-mark-dot" cx="25.5" cy="16" r="2.1" fill="#E2B667" />
   </svg>
 );
 

@@ -111,7 +111,7 @@ const App = () => {
         <Logo size={56} variant="hero" />
         <p className="welcome-lead">
           先挑一个素材夹。<br />
-          里面放着照片、一首歌，剩下的交给 kiseki。
+          里面放着照片、一首歌，剩下的交给 <span className="welcome-signoff">kiseki ：）</span>
         </p>
         {runtime && <FolderPicker runtime={runtime} onProjectSelected={selectProject} onInteractionStart={() => setProjectLoadError(null)} />}
         {!runtime && !runtimeUnavailable && <p className="hint">正在准备项目选择…</p>}

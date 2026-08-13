@@ -135,14 +135,14 @@ export const JobPanel = ({
     status === 'running'
       ? `正在${verb}…`
       : status === 'done'
-        ? '完成了。'
+        ? '完成了 ：）'
         : status === 'cancelled'
           ? '已取消。'
           : '失败了。';
 
   return (
     <div className="job-panel">
-      <div className="job-status" role="status" aria-live="polite">
+      <div className={status === 'done' ? 'job-status job-status-done' : 'job-status'} role="status" aria-live="polite">
         {status === 'running' && <Loader2 size={15} className="job-spinner" aria-hidden="true" />}
         <span>{statusLabel}</span>
         {status === 'running' && <span className="job-elapsed">{formatElapsedClock(elapsedMs)}</span>}

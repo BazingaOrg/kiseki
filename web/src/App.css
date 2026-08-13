@@ -161,6 +161,13 @@
 .logo-hero {
   flex-direction: column;
   gap: 1rem;
+  animation: welcome-in 420ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+.logo-hero .logo-mark-dot {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: logo-dot-in 380ms cubic-bezier(0.23, 1, 0.32, 1) 160ms both;
 }
 
 .logo-hero .logo-word {
@@ -184,6 +191,25 @@
   text-align: center;
   color: var(--color-secondary-text);
   margin: 0;
+  animation: welcome-in 400ms cubic-bezier(0.23, 1, 0.32, 1) 70ms both;
+}
+
+@keyframes welcome-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes logo-dot-in {
+  from {
+    opacity: 0;
+    transform: scale(0.7);
+  }
+}
+
+.welcome-signoff {
+  white-space: nowrap;
 }
 
 .welcome .folder-picker {
@@ -1261,6 +1287,17 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   align-items: center;
   gap: 0.5rem;
   font-size: 0.85rem;
+}
+
+.job-status-done {
+  animation: job-done-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
+}
+
+@keyframes job-done-in {
+  from {
+    opacity: 0.45;
+    transform: translateY(2px);
+  }
 }
 
 .job-spinner {
@@ -2712,6 +2749,13 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 
   .job-progress-indeterminate::after {
     display: none;
+  }
+
+  .logo-hero,
+  .logo-hero .logo-mark-dot,
+  .welcome-lead,
+  .job-status-done {
+    animation: none;
   }
 
   .field-help-tooltip {

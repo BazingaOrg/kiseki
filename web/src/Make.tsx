@@ -480,7 +480,7 @@ const ActionCard = ({
         ) : (
           <>
             <div className="action-card-content">
-              <p className="action-ready">素材齐了，可以开工。</p>
+              <p className="action-ready">素材齐了，可以开工 ：）</p>
               <button className="make-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
                 <SlidersHorizontal size={13} />
                 参数

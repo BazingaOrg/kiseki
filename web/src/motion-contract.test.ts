@@ -21,6 +21,11 @@ test('motion uses component-level reduced-motion rules and keeps panel exits mou
   assert.match(reducedPresence, /\.doctor-panel\.transition-presence,\s*\.make-form-presence\.transition-presence\s*\{[\s\S]*transform: none;[\s\S]*transition-property: opacity;[\s\S]*transition-duration: 120ms;[\s\S]*transition-timing-function: ease-out;[\s\S]*transition-delay: 0;/);
   assert.doesNotMatch(reducedPresence, /transition-duration: 150ms/);
   assert.ok(!appCss.includes('job-status-pulse'));
+  assert.match(appCss, /@keyframes welcome-in/);
+  assert.match(appCss, /@keyframes logo-dot-in/);
+  assert.match(appCss, /@keyframes job-done-in/);
+  assert.match(appCss, /\.logo-hero \{\s*flex-direction: column;[\s\S]*animation: welcome-in 420ms/);
+  assert.match(reducedMotion, /\.logo-hero,\s*\.logo-hero \.logo-mark-dot,\s*\.welcome-lead,\s*\.job-status-done\s*\{[\s\S]*animation: none;/);
   assert.ok(presence.includes("event.currentTarget !== event.target || event.propertyName !== 'opacity' || desiredOpen.current"));
   assert.ok(presence.includes('const [generation, setGeneration] = useState(0);'));
   assert.ok(presence.includes('window.setTimeout'));
