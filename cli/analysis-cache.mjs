@@ -3,6 +3,7 @@ import {spawnSync} from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {createNodeCommandResolver} from './command-resolver.mjs';
 
 export const ANALYSIS_CACHE_VERSION = 2;
 
@@ -32,11 +33,12 @@ const parseRuntimeFingerprint = (fingerprint) => {
   }
 };
 
-export const readAnalysisFingerprint = (analyzer, spawn = spawnSync, runtime = sourceRuntimeLayout) => {
+export const readAnalysisFingerprint = (analyzer, spawn = spawnSync, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime: {...runtime, analyzerRoot: analyzer}})) => {
+  const command = commandResolver.analyzer('kiseki-analysis-fingerprint', [], {stdio: ['ignore', 'pipe', 'pipe']});
   const result = spawn(
-    runtime.uv,
-    ['run', '--project', analyzer, 'kiseki-analysis-fingerprint'],
-    {encoding: 'utf8'},
+    command.executable,
+    command.args,
+    {encoding: 'utf8', env: command.env, stdio: command.stdio},
   );
   if (result.error || result.status !== 0) return null;
   const value = parseRuntimeFingerprint(result.stdout);

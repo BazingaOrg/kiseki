@@ -73,6 +73,23 @@ test('runProcess 只解析一次结果(超时与退出竞争时不会重复 reso
   assert.equal((await promise).status, 0);
 });
 
+test('runProcess 只在显式提供时向子进程传递 resolver env', async () => {
+  const options = [];
+  const spawnImpl = (_command, _args, received) => {
+    options.push(received);
+    const child = new EventEmitter();
+    child.stdout = new PassThrough();
+    child.stderr = new PassThrough();
+    child.kill = () => {};
+    queueMicrotask(() => child.emit('close', 0));
+    return child;
+  };
+  await runProcess('x', [], {spawnImpl, env: {ONLY: 'resolver'}});
+  await runProcess('x', [], {spawnImpl});
+  assert.deepEqual(options[0].env, {ONLY: 'resolver'});
+  assert.equal(Object.hasOwn(options[1], 'env'), false);
+});
+
 // ---- 复用 cli/ 的解析逻辑 ---------------------------------------------------
 
 test('checkYtDlpAsync 复用 checkYtDlp 的判定', async () => {
@@ -258,6 +275,35 @@ test('lyrics validation distinguishes stable offset from version drift', async (
     ],
   });
   assert.equal(mismatch.body.status, 'mismatch');
+});
+
+test('lyrics validation executes the resolver analyzer spec with its offline environment', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  let invocation;
+  const commandResolver = {
+    runtime: {tempRoot: root},
+    analyzer: (_entry, args) => ({
+      executable: '/bundled/uv',
+      args: ['run', '--offline', '--frozen', 'kiseki-analyze', ...args],
+      env: {UV_NO_INDEX: '1', KISEKI_MODEL_ROOT: '/user/models'},
+    }),
+  };
+  const result = await validateLyricsCandidate(root, {folder, id: 42}, {
+    fetcher: async () => SYNCED_RECORD,
+    commandResolver,
+    run: async (command, args, options) => {
+      invocation = {command, args, options};
+      const output = args[args.indexOf('--lyrics-output') + 1];
+      fs.writeFileSync(output, JSON.stringify({segments: [{start: 1, text: 'hello'}]}));
+      return {status: 0, stdout: '', stderr: ''};
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(invocation.command, '/bundled/uv');
+  assert.deepEqual(invocation.args.slice(0, 3), ['run', '--offline', '--frozen']);
+  assert.deepEqual(invocation.options.env, {UV_NO_INDEX: '1', KISEKI_MODEL_ROOT: '/user/models'});
+  fs.rmSync(root, {recursive: true, force: true});
 });
 
 test('lyrics-search:LRCLIB 出错 → 502 且带上原因', async () => {

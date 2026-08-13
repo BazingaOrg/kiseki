@@ -529,6 +529,36 @@ test('POST /api/fetch/lyrics:带正确 token 但 folder 越界 → 403', async (
   }
 });
 
+test('POST /api/fetch/lyrics-validate uses the service analyzer resolver', async () => {
+  const root = fs.realpathSync(makeTempRoot());
+  fs.writeFileSync(path.join(root, 'Song - Artist.m4a'), 'audio');
+  let analyzerInvocation;
+  const commandResolver = {
+    runtime: {tempRoot: root},
+    analyzer: (_entry, args) => ({executable: '/bundled/uv', args: ['run', '--offline', ...args], env: {UV_NO_INDEX: '1'}}),
+  };
+  const runImpl = async (command, args, options) => {
+    if (command === '/bundled/uv') {
+      analyzerInvocation = {command, args, options};
+      const output = args[args.indexOf('--lyrics-output') + 1];
+      fs.writeFileSync(output, JSON.stringify({segments: [{start: 1, text: 'hello'}]}));
+      return {status: 0, stdout: '', stderr: ''};
+    }
+    return {status: 0, stdout: `${JSON.stringify({id: 42, trackName: 'Song', artistName: 'Artist', duration: 180, syncedLyrics: '[00:01.00]hello\n'})}\n200`, stderr: ''};
+  };
+  const {server, token} = createTestGalleryServer(root, {runImpl, commandResolver});
+  const port = await listen(server);
+  try {
+    const response = await postJson(port, '/api/fetch/lyrics-validate', {folder: root, id: 42}, {'X-Kiseki-Token': token});
+    assert.equal(response.status, 200);
+    assert.equal(analyzerInvocation.command, '/bundled/uv');
+    assert.equal(analyzerInvocation.options.env.UV_NO_INDEX, '1');
+  } finally {
+    server.close();
+    fs.rmSync(root, {recursive: true, force: true});
+  }
+});
+
 test('GET /api/fetch/lyrics 不是 SPA 路由,回 405 而不是页面', async () => {
   const root = makeTempRoot();
   const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild, runImpl: missingYtDlpRun});

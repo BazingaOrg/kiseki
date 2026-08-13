@@ -12,6 +12,7 @@ import {
   readDemucsSetting,
   writeAnalysisManifest,
 } from './analysis-cache.mjs';
+import {sourceRuntimeLayout} from './runtime-layout.mjs';
 
 const runtime = ({backend = 'mlx', model = 'medium', demucsAvailable = false, beatFeaturesVersion = 1} = {}) => JSON.stringify({
   version: 1,
@@ -145,14 +146,21 @@ test('null audio hash preserves an existing valid manifest for later recovery', 
 });
 
 test('runtime fingerprint accepts only a complete analyzer response', () => {
-  const spawn = (_cmd, _args, _opts) => ({
+  let invocation;
+  const spawn = (cmd, args, opts) => {
+    invocation = {cmd, args, opts};
+    return {
     status: 0,
     stdout: '{"version":1,"beat_features_version":1,"backend":"cpu","model":"small","demucs_available":true}\n',
-  });
+    };
+  };
   assert.equal(
     readAnalysisFingerprint('/analyzer', spawn),
     '{"version":1,"beat_features_version":1,"backend":"cpu","model":"small","demucs_available":true}',
   );
+  assert.equal(invocation.args.at(-1), 'kiseki-analysis-fingerprint');
+  assert.equal(invocation.opts.env.KISEKI_MODEL_ROOT, sourceRuntimeLayout.modelRoot);
+  assert.deepEqual(invocation.opts.stdio, ['ignore', 'pipe', 'pipe']);
   assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 1, stdout: ''})), null);
   assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 0, stdout: '{}'})), null);
   assert.equal(readAnalysisFingerprint('/analyzer', () => ({status: 0, stdout: '{"version":1,"backend":"cpu","model":"small","demucs_available":true}'})), null);

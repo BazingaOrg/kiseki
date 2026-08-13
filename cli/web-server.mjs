@@ -177,7 +177,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
   const rootController = typeof root === 'string' ? createImmutableRootController(root) : root;
   const writeGate = createWriteActivityGate();
   let closing = false;
-  const fetchDeps = {...(runImpl ? {run: runImpl} : {}), runtime};
+  const fetchDeps = {...(runImpl ? {run: runImpl} : {}), runtime, ...(commandResolver ? {commandResolver} : {})};
   const requestDoctor = doctorGet ?? createDoctorService({runtime}).getDoctor;
   const token = crypto.randomBytes(32).toString('hex');
   const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {}), runtime, ...(commandResolver ? {commandResolver} : {})});

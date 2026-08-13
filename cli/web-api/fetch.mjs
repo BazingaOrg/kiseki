@@ -24,6 +24,7 @@ import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
+import {createNodeCommandResolver} from '../command-resolver.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
@@ -38,11 +39,11 @@ export const resetFetchState = () => validationRecognitionCache.clear();
  * 任何失败(命令不存在、超时、被杀)一律归一成 status: null,调用方只看 status.
  * @returns {Promise<{status: number|null, stdout: string, stderr: string}>}
  */
-export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnImpl = spawnActual} = {}) =>
+export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnImpl = spawnActual, env} = {}) =>
   new Promise((resolve) => {
     let child;
     try {
-      child = spawnImpl(command, args, {stdio: ['ignore', 'pipe', 'pipe']});
+      child = spawnImpl(command, args, {stdio: ['ignore', 'pipe', 'pipe'], ...(env ? {env} : {})});
     } catch {
       resolve({status: null, stdout: '', stderr: ''});
       return;
@@ -148,14 +149,15 @@ const identityFromFilename = (audio) => {
     : {title: base.trim(), artist: null};
 };
 
-const recognizeForValidation = async (audioPath, run = runProcess, runtime = sourceRuntimeLayout) => {
-  const temporary = fs.mkdtempSync(path.join(runtime.tempRoot, 'kiseki-lyrics-validation-'));
+const recognizeForValidation = async (audioPath, run = runProcess, commandResolver = createNodeCommandResolver()) => {
+  const temporary = fs.mkdtempSync(path.join(commandResolver.runtime.tempRoot, 'kiseki-lyrics-validation-'));
   const output = path.join(temporary, 'recognized.json');
   try {
-    const result = await run(runtime.uv, [
-      'run', '--project', runtime.analyzerRoot, 'kiseki-analyze', audioPath,
+    const command = commandResolver.analyzer('kiseki-analyze', [
+      audioPath,
       '--lyrics-only', '--lyrics-output', output,
-    ], {timeout: 180000});
+    ]);
+    const result = await run(command.executable, command.args, {timeout: 180000, env: command.env});
     if (result.status !== 0 || !fs.existsSync(output)) throw new Error('本地识别未完成');
     const parsed = JSON.parse(fs.readFileSync(output, 'utf8'));
     return Array.isArray(parsed?.segments) ? parsed.segments : [];
@@ -280,7 +282,7 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
 };
 
 /** POST /api/fetch/lyrics-validate {folder,id}:保存前用本地人声锚点验证候选版本。 */
-export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, recognize, isJobRunning, runtime = sourceRuntimeLayout} = {}) => {
+export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, recognize, isJobRunning, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {}) => {
   const requestedId = canonicalLyricsId(body?.id);
   if (requestedId === null) return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
   const resolved = resolveAudioFolder(root, body?.folder);
@@ -301,7 +303,7 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
       const cacheKey = `${resolved.folder}:${resolved.audioIdentity}`;
       let recognition = validationRecognitionCache.get(cacheKey);
       if (!recognition) {
-        recognition = recognizeForValidation(path.join(resolved.folder, resolved.audio), run, runtime);
+        recognition = recognizeForValidation(path.join(resolved.folder, resolved.audio), run, commandResolver);
         validationRecognitionCache.set(cacheKey, recognition);
         recognition.catch(() => validationRecognitionCache.delete(cacheKey));
       }

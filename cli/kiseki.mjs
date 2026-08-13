@@ -145,7 +145,7 @@ export const runCommandFromArgv = async (
 
   const analyzer = runtime.analyzerRoot;
   const timelinePath = project.timelinePath;
-  const runtimeFingerprint = readAnalysisFingerprint(analyzer, undefined, runtime);
+  const runtimeFingerprint = readAnalysisFingerprint(analyzer, undefined, runtime, commandResolver);
   const audioHash = computeAnalysisHash(folder, {audio, lyrics, runtimeFingerprint});
   const skipAnalyze = hasValidAnalysisCache({
     analysisPath: project.analysisPath,
