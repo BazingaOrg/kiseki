@@ -16,14 +16,14 @@ let dockTimer;
 const recentFile = () => path.join(app.getPath('userData'), 'recent-projects.json');
 const persistRecentProjects = () => fs.writeFileSync(recentFile(), `${JSON.stringify(recentProjects.slice(0, 10), null, 2)}\n`, {mode: 0o600});
 
-const authorizeProject = (candidate, {reload = false} = {}) => {
+const authorizeProject = (candidate, {notify = false} = {}) => {
   const snapshot = service.switchRoot(candidate);
   const existing = recentProjects.indexOf(snapshot.path);
   if (existing >= 0) recentProjects.splice(existing, 1);
   recentProjects.unshift(snapshot.path);
   persistRecentProjects();
   Menu.setApplicationMenu(menu());
-  if (reload && window && !window.isDestroyed()) window.webContents.reload();
+  if (notify && window && !window.isDestroyed()) window.webContents.send('kiseki:project-changed', snapshot.path);
   return snapshot;
 };
 
@@ -54,7 +54,7 @@ const initializeService = async () => {
   const runtime = createDesktopRuntime({resourcesPath: process.resourcesPath, userData, cache, packaged: app.isPackaged, createRuntimeLayout: modules.createRuntimeLayout});
   if (app.isPackaged) prepareAnalyzerRuntime(runtime);
   const rootController = modules.createMutableRootController();
-  service = modules.createKisekiService({rootController, runtime, commandResolver: modules.createElectronCommandResolver({runtime, executable: process.execPath})});
+  service = modules.createKisekiService({rootController, runtime, projectSelection: 'native', commandResolver: modules.createElectronCommandResolver({runtime, executable: process.execPath})});
   serviceUrl = (await service.start()).url;
   dockTimer = setInterval(() => {
     if (!window || window.isDestroyed()) return;
@@ -76,8 +76,8 @@ const createWindow = async () => {
 
 const menu = () => Menu.buildFromTemplate([
   {role: 'appMenu', submenu: [
-    {label: '打开项目…', accelerator: 'CmdOrCtrl+O', click: async () => { const result = await dialog.showOpenDialog(window, {properties: ['openDirectory', 'createDirectory']}); if (!result.canceled) authorizeProject(result.filePaths[0], {reload: true}); }},
-    {label: '最近项目', submenu: recentProjects.length > 0 ? recentProjects.map((candidate) => ({label: path.basename(candidate), sublabel: candidate, click: () => authorizeProject(candidate, {reload: true})})) : [{label: '无', enabled: false}]},
+    {label: '打开项目…', accelerator: 'CmdOrCtrl+O', click: async () => { const result = await dialog.showOpenDialog(window, {properties: ['openDirectory', 'createDirectory']}); if (!result.canceled) authorizeProject(result.filePaths[0], {notify: true}); }},
+    {label: '最近项目', submenu: recentProjects.length > 0 ? recentProjects.map((candidate) => ({label: path.basename(candidate), sublabel: candidate, click: () => authorizeProject(candidate, {notify: true})})) : [{label: '无', enabled: false}]},
     {label: '显示输出目录', click: () => shell.openPath(path.join(service.getRoot().path, 'output'))},
     {label: '取消当前任务', click: () => service.cancelCurrentJob()},
     {label: '设置…', accelerator: 'CmdOrCtrl+,', enabled: false},
@@ -106,11 +106,12 @@ app.whenReady().then(async () => {
 }).catch((error) => { dialog.showErrorBox('Kiseki 无法启动', error.message); app.exit(1); });
 }
 app.on('before-quit', (event) => {
-  if (app.isQuitting) return;
+  if (app.isQuitting) { event.preventDefault(); return; }
   event.preventDefault();
   if (service?.getRunningJob() && dialog.showMessageBoxSync(window, {type: 'warning', buttons: ['继续渲染', '退出并取消任务'], defaultId: 0, cancelId: 0, message: '任务仍在进行，确定退出吗？'}) === 0) return;
   app.isQuitting = true;
   clearInterval(dockTimer);
-  void Promise.resolve(service?.shutdown()).finally(() => app.quit());
+  void Promise.resolve(service?.shutdown({deadlineMs: 8000}) ?? {clean: true})
+    .then((result) => app.exit(result.clean ? 0 : 1), () => app.exit(1));
 });
 app.on('window-all-closed', () => {});
