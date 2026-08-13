@@ -25,6 +25,7 @@ import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createNodeCommandResolver} from '../command-resolver.mjs';
+import {createProcessCompletion} from './process-lifecycle.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
@@ -39,11 +40,20 @@ export const resetFetchState = () => validationRecognitionCache.clear();
  * 任何失败(命令不存在、超时、被杀)一律归一成 status: null,调用方只看 status.
  * @returns {Promise<{status: number|null, stdout: string, stderr: string}>}
  */
-export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnImpl = spawnActual, env} = {}) =>
+export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnImpl = spawnActual, env, signal, lifecycle, platform} = {}) =>
   new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve({status: null, stdout: '', stderr: ''});
+      return;
+    }
     let child;
     try {
-      child = spawnImpl(command, args, {stdio: ['ignore', 'pipe', 'pipe'], ...(env ? {env} : {})});
+      child = spawnImpl(command, args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        detached: true,
+        ...(process.platform === 'win32' ? {windowsHide: true} : {}),
+        ...(env ? {env} : {}),
+      });
     } catch {
       resolve({status: null, stdout: '', stderr: ''});
       return;
@@ -51,23 +61,29 @@ export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnIm
     let stdout = '';
     let stderr = '';
     let settled = false;
+    let timer;
+    const completion = createProcessCompletion({
+      pid: child.pid,
+      platform,
+      lifecycle,
+      settle: () => done({status: null, stdout, stderr}),
+    });
+    const abort = () => completion.requestTermination();
     const done = (result) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
       resolve(result);
     };
     // 没有超时兜底的话,一个卡住的 yt-dlp/curl 会让这个请求永远挂着,
     // 浏览器那边就是一个转不完的圈.
-    const timer = setTimeout(() => {
-      try {
-        child.kill('SIGKILL');
-      } catch {
-        // 已经退出了,忽略
-      }
-      done({status: null, stdout, stderr});
+    timer = setTimeout(() => {
+      completion.requestTermination();
     }, timeout);
     timer.unref?.();
+    signal?.addEventListener('abort', abort, {once: true});
+    if (signal?.aborted) abort();
     child.stdout?.setEncoding('utf8');
     child.stderr?.setEncoding('utf8');
     child.stdout?.on('data', (chunk) => {
@@ -76,8 +92,12 @@ export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnIm
     child.stderr?.on('data', (chunk) => {
       stderr += chunk;
     });
-    child.on('error', () => done({status: null, stdout, stderr}));
-    child.on('close', (code) => done({status: code, stdout, stderr}));
+    child.on('error', () => {
+      if (!child.pid) done({status: null, stdout, stderr});
+    });
+    child.on('close', (code) => {
+      if (!completion.close()) done({status: code, stdout, stderr});
+    });
   });
 
 /** 复用 checkYtDlp 的判定(它的 spawn 参数可注入),只是把结果换成异步取的. */

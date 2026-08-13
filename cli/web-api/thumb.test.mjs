@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -7,6 +8,22 @@ import test from 'node:test';
 import {cacheKey, createPruner, etagFor, matchesIfNoneMatch, normalizeWidth, pruneCache, resolveThumb, runFfmpeg, THUMB_CONCURRENCY} from './thumb.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-thumb-'));
+
+const processLifecycle = (state) => ({
+  identity: (pid) => ({pid, start: 'started'}),
+  snapshot: () => ({known: true, descendants: []}),
+  freeze: () => ({confirmed: state.freezeConfirmed ?? true, descendants: [], frozen: []}),
+  resume: () => { state.resumed = (state.resumed ?? 0) + 1; },
+  signalGroup: () => { state.signals += 1; return state.killOk; },
+  signalTree: () => false,
+  absent: () => state.absent,
+  terminateWindows: async () => state.killOk,
+});
+
+const staysPending = async (promise) => assert.equal(await Promise.race([
+  promise.then(() => 'settled'),
+  new Promise((resolve) => setTimeout(() => resolve('pending'), 20)),
+]), 'pending');
 
 test('width snaps to a fixed ladder so the cache does not explode', () => {
   assert.equal(normalizeWidth('44'), 128);
@@ -233,15 +250,23 @@ test('ffmpeg 并发被限制在上限内,超出的排队等空位', async () => 
   assert.ok(maxActive <= THUMB_CONCURRENCY, `并发峰值 ${maxActive} 超过上限 ${THUMB_CONCURRENCY}`);
 });
 
-test('卡死的 ffmpeg 超时后被 SIGKILL 并以失败返回', async () => {
-  const kills = [];
-  const fakeSpawn = () => ({
-    on: () => {},
-    kill: (signal) => { kills.push(signal); },
+test('卡死的 ffmpeg 超时后等待 close 与树消失再失败返回', async () => {
+  const child = new EventEmitter();
+  child.pid = 321;
+  const state = {signals: 0, killOk: true, absent: false};
+  const pending = runFfmpeg('/src.jpg', '/dst.jpg', 400, {
+    spawn: () => child,
+    timeoutMs: 20,
+    lifecycle: processLifecycle(state),
   });
-  const ok = await runFfmpeg('/src.jpg', '/dst.jpg', 400, {spawn: fakeSpawn, timeoutMs: 30});
+  await staysPending(pending);
+  child.emit('close', null);
+  await staysPending(pending);
+  state.absent = true;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  const ok = await pending;
   assert.equal(ok, false);
-  assert.deepEqual(kills, ['SIGKILL']);
+  assert.equal(state.signals, 1);
 });
 
 test('pruner 冷启动校准真实数量,之后只在计数超限时才扫盘修剪', () => {

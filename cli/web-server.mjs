@@ -7,7 +7,7 @@ import path from 'node:path';
 import {listDirs} from './web-api/dirs.mjs';
 import {createDoctorService} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
-import {resetFetchState, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
+import {resetFetchState, runProcess, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
 import {AssetMutationError, clearRecognizedLyrics, mutateAsset, resetAssetMutationState, undoAssetDelete} from './web-api/assets.mjs';
 import {getProject} from './web-api/project.mjs';
@@ -173,11 +173,15 @@ const isAllowedPostRoute = (method, pathname) =>
  *   生产环境两个都不传.
  * @returns {{server: import('node:http').Server, token: string}}
  */
-export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps, runtime = sourceRuntimeLayout, commandResolver} = {}) => {
+export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps, runtime = sourceRuntimeLayout, commandResolver, projectSelection = 'sandbox'} = {}) => {
   const rootController = typeof root === 'string' ? createImmutableRootController(root) : root;
+  if (projectSelection !== 'sandbox' && projectSelection !== 'native') throw new TypeError('projectSelection 必须是 sandbox 或 native');
   const writeGate = createWriteActivityGate();
+  const requestGate = createWriteActivityGate();
   let closing = false;
-  const fetchDeps = {...(runImpl ? {run: runImpl} : {}), runtime, ...(commandResolver ? {commandResolver} : {})};
+  const asyncController = new AbortController();
+  const baseRun = runImpl ?? runProcess;
+  const fetchDeps = {run: (command, args, options = {}) => baseRun(command, args, {...options, signal: asyncController.signal}), runtime, ...(commandResolver ? {commandResolver} : {})};
   const requestDoctor = doctorGet ?? createDoctorService({runtime}).getDoctor;
   const token = crypto.randomBytes(32).toString('hex');
   const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {}), runtime, ...(commandResolver ? {commandResolver} : {})});
@@ -199,6 +203,15 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       req.on('error', reject);
     });
 
+  const handleAsync = (operation, onSuccess, onFailure) => {
+    const release = requestGate.enter();
+    Promise.resolve()
+      .then(operation)
+      .then(onSuccess)
+      .catch(onFailure)
+      .finally(release);
+  };
+
   const server = http.createServer((req, res) => {
     const port = req.socket.localPort;
     if (!isAllowedHost(req.headers.host, port)) {
@@ -213,7 +226,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       res.end();
       return;
     }
-    const rootlessRoute = req.method === 'GET' && (url.pathname === '/api/doctor' || (!url.pathname.startsWith('/api/') && url.pathname !== '/media'));
+    const rootlessRoute = req.method === 'GET' && (url.pathname === '/api/runtime' || url.pathname === '/api/doctor' || (!url.pathname.startsWith('/api/') && url.pathname !== '/media'));
     let root = null;
     if (!rootlessRoute) {
       try { root = rootController.getSnapshot().path; } catch {
@@ -291,6 +304,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     }
     if (req.method === 'POST' && url.pathname === VALIDATE_LYRICS_PATH) {
       if (!checkToken(req, res)) return;
+      const releaseRequest = requestGate.enter();
       readBody(req)
         .then((raw) => {
           let body;
@@ -300,7 +314,8 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
           }
           return validateLyricsCandidate(root, body, {...fetchDeps, isJobRunning: jobManager.hasRunningJob}).then((result) => sendJson(res, result));
         })
-        .catch(() => sendJson(res, {status: 500, body: {error: '时间轴校验失败'}}));
+        .catch(() => sendJson(res, {status: 500, body: {error: '时间轴校验失败'}}))
+        .finally(releaseRequest);
       return;
     }
     if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname))) {
@@ -398,6 +413,12 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       sendJson(res, job ? {status: 200, body: job} : {status: 404, body: {error: '任务不存在'}});
       return;
     }
+    if (url.pathname === '/api/runtime') {
+      let authorizedRoot = null;
+      try { authorizedRoot = rootController.getSnapshot().path; } catch {}
+      sendJson(res, {status: 200, body: {projectSelection, root: authorizedRoot}});
+      return;
+    }
     if (url.pathname === '/api/dirs') {
       sendJson(res, listDirs(root, url.searchParams.get('path')));
       return;
@@ -407,17 +428,21 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     if (url.pathname === '/api/doctor') {
-      requestDoctor({refresh: url.searchParams.get('refresh') === '1'})
-        .then((result) => sendJson(res, result))
-        .catch(() => sendJson(res, {status: 500, body: {error: '检查环境失败'}}));
+      handleAsync(
+        () => requestDoctor({refresh: url.searchParams.get('refresh') === '1'}),
+        (result) => sendJson(res, result),
+        () => sendJson(res, {status: 500, body: {error: '检查环境失败'}}),
+      );
       return;
     }
     if (url.pathname === '/api/exif') {
       // 唯一的异步 handler(exifr 解析).失败一律回 500 而不是让 promise 逃逸,
       // 否则未捕获的 rejection 会连整个 server 一起带走.
-      getExif(root, url.searchParams.get('path'))
-        .then((result) => sendJson(res, result))
-        .catch(() => sendJson(res, {status: 500, body: {error: '读取 EXIF 失败'}}));
+      handleAsync(
+        () => getExif(root, url.searchParams.get('path')),
+        (result) => sendJson(res, result),
+        () => sendJson(res, {status: 500, body: {error: '读取 EXIF 失败'}}),
+      );
       return;
     }
     // 这两条 GET 会 spawn 外部进程(yt-dlp / ffprobe / curl),所以**破例也要校验
@@ -429,15 +454,19 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     if (url.pathname === '/api/fetch/lyrics-search') {
       // 这几个 handler 都是异步的(外部进程走异步 spawn,不能阻塞单线程 server),
       // 与 /api/exif 一样必须自己接住 rejection,否则会连整个 server 一起带走.
-      searchLyricsCandidates(root, url.searchParams.get('folder'), {...fetchDeps, query: url.searchParams.get('q')})
-        .then((result) => sendJson(res, result))
-        .catch(() => sendJson(res, {status: 500, body: {error: '搜索歌词失败'}}));
+      handleAsync(
+        () => searchLyricsCandidates(root, url.searchParams.get('folder'), {...fetchDeps, query: url.searchParams.get('q')}),
+        (result) => sendJson(res, result),
+        () => sendJson(res, {status: 500, body: {error: '搜索歌词失败'}}),
+      );
       return;
     }
     if (url.pathname === '/api/fetch/audio-search') {
-      searchAudioCandidates(url.searchParams.get('q'), fetchDeps)
-        .then((result) => sendJson(res, result))
-        .catch(() => sendJson(res, {status: 500, body: {error: '搜索音频失败'}}));
+      handleAsync(
+        () => searchAudioCandidates(url.searchParams.get('q'), fetchDeps),
+        (result) => sendJson(res, result),
+        () => sendJson(res, {status: 500, body: {error: '搜索音频失败'}}),
+      );
       return;
     }
     if (url.pathname === '/media') {
@@ -445,9 +474,11 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       return;
     }
     if (url.pathname === '/api/thumb') {
-      resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'), req.headers['if-none-match'], {...thumbDeps, runtime})
-        .then((result) => sendMedia(res, result, createReadStream))
-        .catch(() => sendMedia(res, {status: 500, body: '生成缩略图失败'}, createReadStream));
+      handleAsync(
+        () => resolveThumb(root, url.searchParams.get('path'), url.searchParams.get('w'), req.headers['if-none-match'], {...thumbDeps, runtime, signal: asyncController.signal}),
+        (result) => sendMedia(res, result, createReadStream),
+        () => sendMedia(res, {status: 500, body: '生成缩略图失败'}, createReadStream),
+      );
       return;
     }
     if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
@@ -461,7 +492,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
   });
   // killAll 交给调用方在进程退出时收尾:子进程是 detached 的,收不到终端的
   // Ctrl+C,不显式杀掉就会变成孤儿继续跑(见 jobs.mjs 的说明).
-  return {server, token, killAll: jobManager.killAll, jobManager, rootController, writeGate, beginClosing: () => { closing = true; server.closeAllConnections?.(); }, resetRootState: () => {
+  return {server, token, killAll: jobManager.killAll, jobManager, rootController, writeGate, requestGate, beginClosing: () => { closing = true; }, cancelAsyncOperations: () => asyncController.abort(), resetRootState: () => {
     if (!resetAssetMutationState()) return false;
     jobManager.resetIdleState();
     resetFetchState();

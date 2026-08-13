@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {spawn as spawnActual} from 'node:child_process';
 import {EventEmitter} from 'node:events';
 import fs from 'node:fs';
 import os from 'node:os';
@@ -35,6 +36,22 @@ const makeFolderWithAudio = (root, name = 'trip') => {
 /** 把预设的进程结果按命令分发,单测一律不真的联网/不真的起进程. */
 const fakeRun = (byCommand) => async (command) =>
   byCommand[command] ?? {status: null, stdout: '', stderr: ''};
+
+const processLifecycle = (state) => ({
+  identity: (pid) => ({pid, start: 'started'}),
+  snapshot: () => ({known: state.snapshotKnown ?? true, descendants: []}),
+  freeze: () => ({confirmed: state.freezeConfirmed ?? state.snapshotKnown ?? true, descendants: [], frozen: []}),
+  resume: () => { state.resumed = (state.resumed ?? 0) + 1; },
+  signalGroup: () => { state.signals += 1; return state.killOk; },
+  signalTree: () => false,
+  absent: () => state.absent,
+  terminateWindows: async () => state.killOk,
+});
+
+const staysPending = async (promise) => assert.equal(await Promise.race([
+  promise.then(() => 'settled'),
+  new Promise((resolve) => setTimeout(() => resolve('pending'), 20)),
+]), 'pending');
 
 const SYNCED_RECORD = {
   id: 42,
@@ -88,6 +105,142 @@ test('runProcess 只在显式提供时向子进程传递 resolver env', async ()
   await runProcess('x', [], {spawnImpl});
   assert.deepEqual(options[0].env, {ONLY: 'resolver'});
   assert.equal(Object.hasOwn(options[1], 'env'), false);
+});
+
+test('runProcess abort 会等待 child close 与进程树消失后才收尾', async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  child.pid = 123;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const state = {signals: 0, killOk: true, absent: false};
+  const pending = runProcess('x', [], {
+    timeout: 60_000,
+    signal: controller.signal,
+    lifecycle: processLifecycle(state),
+    spawnImpl: () => child,
+  });
+  controller.abort();
+  await staysPending(pending);
+  child.emit('close', null);
+  await staysPending(pending);
+  state.absent = true;
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assert.deepEqual(await pending, {status: null, stdout: '', stderr: ''});
+  assert.equal(state.signals, 1);
+});
+
+test('runProcess abort 在 kill 失败或 child 不关闭时保持 pending', async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  child.pid = 124;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const state = {signals: 0, killOk: false, absent: true};
+  const pending = runProcess('x', [], {
+    timeout: 60_000,
+    signal: controller.signal,
+    lifecycle: processLifecycle(state),
+    spawnImpl: () => child,
+  });
+  controller.abort();
+  await staysPending(pending);
+  assert.equal(state.signals, 1);
+});
+
+test('runProcess abort 快照未知后 child close 仍保持 pending', async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  child.pid = 125;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const state = {signals: 0, killOk: true, absent: true, snapshotKnown: false};
+  const pending = runProcess('x', [], {signal: controller.signal, lifecycle: processLifecycle(state), spawnImpl: () => child});
+  controller.abort();
+  child.emit('close', null);
+  await staysPending(pending);
+  assert.equal(state.signals, 0);
+});
+
+test('runProcess abort 发信号失败后 child close 仍保持 pending', async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  child.pid = 126;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const state = {signals: 0, killOk: false, absent: true};
+  const pending = runProcess('x', [], {signal: controller.signal, lifecycle: processLifecycle(state), spawnImpl: () => child});
+  controller.abort();
+  child.emit('close', null);
+  await staysPending(pending);
+  assert.equal(state.signals, 1);
+  assert.equal(state.resumed, 1);
+});
+
+test('runProcess abort Windows taskkill 失败后 child close 仍保持 pending', async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  child.pid = 127;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const state = {signals: 0, killOk: false, absent: true};
+  const pending = runProcess('x', [], {signal: controller.signal, platform: 'win32', lifecycle: processLifecycle(state), spawnImpl: () => child});
+  controller.abort();
+  await new Promise((resolve) => setImmediate(resolve));
+  child.emit('close', null);
+  await staysPending(pending);
+  assert.equal(state.signals, 0);
+});
+
+test('runProcess abort 冻结失败后 child close 仍保持 pending', async () => {
+  const controller = new AbortController();
+  const child = new EventEmitter();
+  child.pid = 128;
+  child.stdout = new PassThrough();
+  child.stderr = new PassThrough();
+  const state = {signals: 0, killOk: true, absent: true, freezeConfirmed: false};
+  const pending = runProcess('x', [], {signal: controller.signal, lifecycle: processLifecycle(state), spawnImpl: () => child});
+  controller.abort();
+  child.emit('close', null);
+  await staysPending(pending);
+  assert.equal(state.signals, 0);
+  assert.equal(state.resumed, 1);
+});
+
+test('runProcess abort 会终止真实 POSIX 父子进程树', {skip: process.platform === 'win32'}, async () => {
+  let spawned;
+  let received = '';
+  let report;
+  const reported = new Promise((resolve) => { report = resolve; });
+  const parent = [
+    "import {spawn} from 'node:child_process';",
+    "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], {stdio: 'ignore'});",
+    "process.stdout.write(JSON.stringify({parent: process.pid, child: child.pid}) + '\\n');",
+    'setInterval(() => {}, 1000);',
+  ].join('\n');
+  const controller = new AbortController();
+  const pending = runProcess(process.execPath, ['--input-type=module', '-e', parent], {
+    signal: controller.signal,
+    timeout: 60_000,
+    spawnImpl: (...args) => {
+      spawned = spawnActual(...args);
+      spawned.stdout.on('data', (chunk) => {
+        received += chunk;
+        const newline = received.indexOf('\n');
+        if (newline >= 0) report(JSON.parse(received.slice(0, newline)));
+      });
+      return spawned;
+    },
+  });
+  const ids = await Promise.race([
+    reported,
+    new Promise((_, reject) => setTimeout(() => reject(new Error('父进程未报告 PID')), 2_000)),
+  ]);
+  controller.abort();
+  assert.equal((await pending).status, null);
+  for (const pid of [ids.parent, ids.child]) {
+    assert.throws(() => process.kill(pid, 0), {code: 'ESRCH'});
+  }
 });
 
 // ---- 复用 cli/ 的解析逻辑 ---------------------------------------------------

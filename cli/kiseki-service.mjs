@@ -12,7 +12,7 @@ const listen = (server, startPort = 3000, attempts = 50) => new Promise((resolve
       if (error.code === 'EADDRINUSE' && offset + 1 < attempts) { offset += 1; tryPort(); }
       else reject(error.code === 'EADDRINUSE' ? new CliError(`试了 ${attempts} 个端口都被占用,请手动释放端口后重试`) : error);
     });
-    server.listen(port, '127.0.0.1', () => resolve(port));
+    server.listen(port, '127.0.0.1', () => resolve(server.address().port));
   };
   tryPort();
 });
@@ -20,10 +20,11 @@ const listen = (server, startPort = 3000, attempts = 50) => new Promise((resolve
 const closeServer = (server) => new Promise((resolve) => {
   if (!server.listening) { resolve(); return; }
   server.close(() => resolve());
+  server.closeIdleConnections?.();
 });
 
-export const createKisekiService = ({rootController, runtime = sourceRuntimeLayout, commandResolver, startPort = 3000, serverDeps = {}}) => {
-  const context = createGalleryServer(rootController, {...serverDeps, runtime, ...(commandResolver ? {commandResolver} : {})});
+export const createKisekiService = ({rootController, runtime = sourceRuntimeLayout, commandResolver, startPort = 3000, projectSelection = 'sandbox', serverDeps = {}}) => {
+  const context = createGalleryServer(rootController, {...serverDeps, runtime, projectSelection, ...(commandResolver ? {commandResolver} : {})});
   let started = null;
   let shutdownPromise = null;
   return Object.freeze({
@@ -51,10 +52,22 @@ export const createKisekiService = ({rootController, runtime = sourceRuntimeLayo
       if (!context.resetRootState()) throw new RootBusyError('项目存在待恢复的文件操作，无法切换');
       return rootController.setSnapshot(next);
     },
-    shutdown: (options) => {
+    shutdown: ({deadlineMs = 8000} = {}) => {
       shutdownPromise ??= (async () => {
         context.beginClosing();
-        const [result] = await Promise.all([context.killAll(options), closeServer(context.server), context.writeGate.waitForIdle()]);
+        context.cancelAsyncOperations();
+        let timer;
+        const deadline = new Promise((resolve) => { timer = setTimeout(() => resolve({clean: false}), deadlineMs); });
+        const drainActivity = Promise.all([context.writeGate.waitForIdle(), context.requestGate.waitForIdle()])
+          .then(() => context.server.closeIdleConnections?.());
+        const graceful = Promise.all([
+          context.killAll({deadlineMs}),
+          closeServer(context.server),
+          drainActivity,
+        ]).then(([result]) => ({clean: result?.clean !== false}));
+        const result = await Promise.race([graceful, deadline]);
+        clearTimeout(timer);
+        if (!result.clean) context.server.closeAllConnections?.();
         return result;
       })();
       return shutdownPromise;

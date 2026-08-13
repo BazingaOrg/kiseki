@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import {resolveSafePath} from './sandbox.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
+import {createProcessCompletion} from './process-lifecycle.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const defaultCacheDir = (runtime) => runtime.thumbCacheRoot;
@@ -132,19 +133,38 @@ const ffmpegArgs = (source, destination, width) => [
  * @param {{spawn?: Function, timeoutMs?: number}} [options] 测试注入用;超时
  * 兜底 kill 掉卡死的 ffmpeg 返回 false,调用方回源图,不让请求无限挂着.
  */
-export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn, timeoutMs = THUMB_TIMEOUT_MS, runtime = sourceRuntimeLayout} = {}) =>
+export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn, timeoutMs = THUMB_TIMEOUT_MS, runtime = sourceRuntimeLayout, signal, lifecycle, platform} = {}) =>
   withFfmpegSlot(() => new Promise((resolve) => {
-    const child = spawnImpl(runtime.ffmpeg, ffmpegArgs(source, destination, width), {stdio: 'ignore'});
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      resolve(false);
-    }, timeoutMs);
+    if (signal?.aborted) { resolve(false); return; }
+    const child = spawnImpl(runtime.ffmpeg, ffmpegArgs(source, destination, width), {
+      stdio: 'ignore',
+      detached: true,
+      ...(process.platform === 'win32' ? {windowsHide: true} : {}),
+    });
+    let settled = false;
+    const completion = createProcessCompletion({
+      pid: child.pid,
+      platform,
+      lifecycle,
+      settle: () => done(false),
+    });
+    const timer = setTimeout(() => completion.requestTermination(), timeoutMs);
     const done = (ok) => {
+      if (settled) return;
+      settled = true;
       clearTimeout(timer);
+      signal?.removeEventListener('abort', abort);
       resolve(ok);
     };
-    child.on('error', () => done(false));
-    child.on('close', (code) => done(code === 0 && fs.existsSync(destination)));
+    const abort = () => completion.requestTermination();
+    signal?.addEventListener('abort', abort, {once: true});
+    if (signal?.aborted) abort();
+    child.on('error', () => {
+      if (!child.pid) done(false);
+    });
+    child.on('close', (code) => {
+      if (!completion.close()) done(code === 0 && fs.existsSync(destination));
+    });
   }));
 
 const readSourceStat = (statSync, filePath) => {
@@ -177,7 +197,7 @@ export const resolveThumb = async (root, requestedPath, rawWidth, ifNoneMatch, d
   const renameSync = deps.renameSync ?? fs.renameSync;
   const runtime = deps.runtime ?? sourceRuntimeLayout;
   const cacheDir = deps.cacheDir ?? defaultCacheDir(runtime);
-  const generate = deps.generator ?? ((...args) => runFfmpeg(...args, {runtime}));
+  const generate = deps.generator ?? ((...args) => runFfmpeg(...args, {runtime, signal: deps.signal}));
   const sourceStat = readSourceStat(statSync, safePath);
   if (!sourceStat) return {status: 404, body: '路径不存在'};
   if (!sourceStat.isFile()) return {status: 400, body: '不是文件'};
