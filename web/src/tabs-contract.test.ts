@@ -4,11 +4,37 @@ import test from 'node:test';
 
 const source = (name: string) => readFile(new URL(`./${name}`, import.meta.url), 'utf8');
 
+test('welcome browser fills the viewport and folder columns follow the newest path', async () => {
+  const [css, picker] = await Promise.all([source('App.css'), source('FolderPicker.tsx')]);
+  assert.match(css, /\.welcome\s*\{[^}]*overflow: hidden;/s);
+  assert.match(css, /\.welcome \.folder-picker-browser\s*\{[^}]*flex: 1 1 auto;/s);
+  assert.match(css, /\.recent-folders\s*\{[^}]*text-align: left;/s);
+  assert.match(css, /\.recent-folder-list\s*\{[^}]*flex-wrap: wrap;/s);
+  assert.match(picker, /className=\{runtime\.projectSelection === 'sandbox' \? 'folder-picker folder-picker-browser' : 'folder-picker'\}/);
+  assert.match(picker, /columnsRef/);
+  assert.match(picker, /scroller\.scrollTo\(\{/);
+  assert.match(picker, /left: scroller\.scrollWidth/);
+});
+
 test('materials panels remain mounted and results contains output panels only', async () => {
   const [materials, results] = await Promise.all([source('Materials.tsx'), source('Results.tsx')]);
-  assert.equal((materials.match(/getPanelProps\('(photos|music|lyrics)'\)/g) ?? []).length, 3);
+  assert.equal((materials.match(/getPanelProps\('(photos|music)'\)/g) ?? []).length, 2);
+  assert.doesNotMatch(materials, /getPanelProps\('lyrics'\)/);
   assert.doesNotMatch(results, /getPanelProps\('music'\)|<audio/);
   assert.equal((results.match(/getPanelProps\('(videos|photos)'\)/g) ?? []).length, 2);
+});
+
+test('music and lyrics share one materials panel with a single audio player', async () => {
+  const materials = await source('Materials.tsx');
+  assert.match(materials, /label: '音乐与歌词'/);
+  assert.match(materials, /className="material-song"/);
+  assert.match(materials, /className="material-song-audio"/);
+  assert.match(materials, /className="material-song-lyrics"/);
+  assert.match(materials, /<audio \{\.\.\.audioProps\} aria-hidden="true" \/>/);
+  assert.ok(materials.indexOf('<audio') < materials.indexOf("getPanelProps('photos')"));
+  assert.match(materials, /<Lyrics lyrics=\{project\.lyrics!\} currentTime=\{state\.currentTime\} onSeek=\{seekTo\} \/>/);
+  assert.match(materials, /const playableAudio = audioAssets\.state === 'ready' \? audios\[0\] \?\? null : null/);
+  assert.ok(materials.indexOf('className="material-song-audio"') < materials.indexOf('className="material-song-lyrics"'));
 });
 
 test('a single video uses compact metadata while multiple videos keep the playlist', async () => {

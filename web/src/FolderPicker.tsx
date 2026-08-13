@@ -39,6 +39,7 @@ export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: F
   const [error, setError] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const pendingFocusColumn = useRef<number | null>(null);
+  const columnsRef = useRef<HTMLDivElement>(null);
   // loadDirs 和 handleSelectFolder 共用同一个 gate ——
   // 两者操作重叠的界面状态(面包屑、列表、error),各用一个等于没修。
   const gate = useRef(createLatestGate()).current;
@@ -80,6 +81,15 @@ export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: F
     if (columnIndex === null || columns.length <= columnIndex) return;
     pendingFocusColumn.current = null;
     document.querySelectorAll<HTMLElement>('.folder-column')[columnIndex]?.querySelector<HTMLElement>('.folder-item')?.focus();
+  }, [columns]);
+
+  useEffect(() => {
+    const scroller = columnsRef.current;
+    if (!scroller) return;
+    scroller.scrollTo({
+      left: scroller.scrollWidth,
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth',
+    });
   }, [columns]);
 
   const handleSelectFolder = async (targetPath = selectedPath) => {
@@ -139,7 +149,7 @@ export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: F
   };
 
   return (
-    <div className="folder-picker" onDragOver={(event) => { if (window.kisekiDesktop) event.preventDefault(); }} onDrop={async (event) => {
+    <div className={runtime.projectSelection === 'sandbox' ? 'folder-picker folder-picker-browser' : 'folder-picker'} onDragOver={(event) => { if (window.kisekiDesktop) event.preventDefault(); }} onDrop={async (event) => {
       if (!window.kisekiDesktop) return;
       event.preventDefault();
       const file = event.dataTransfer.files[0];
@@ -178,7 +188,7 @@ export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: F
       )}
 
       {runtime.projectSelection === 'sandbox' && columns.length > 0 && (
-        <div className="folder-columns" aria-busy={loading}>
+        <div className="folder-columns" ref={columnsRef} aria-busy={loading}>
           {columns.map((column, columnIndex) => (
             <section className="folder-column" key={column.path} aria-label={`${splitBreadcrumb(column.path, column.root).slice(-1)[0]?.label ?? column.path}中的文件夹`}>
               <ul className="folder-list">
