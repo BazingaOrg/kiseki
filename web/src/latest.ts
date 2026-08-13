@@ -16,3 +16,12 @@ export const createLatestGate = () => {
     isCurrent: (ticket: number) => ticket !== 0 && ticket === current,
   };
 };
+
+export const createSelectionEpoch = () => {
+  let current = 0;
+  return {
+    capture: () => current,
+    advance: () => ++current,
+    isCurrent: (epoch: number) => epoch === current,
+  };
+};

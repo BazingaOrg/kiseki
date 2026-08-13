@@ -53,6 +53,11 @@ test('internal recovery retry keeps its dialog open until recovery succeeds', as
   assert.doesNotMatch(workbench, /asset-undo|>撤销</);
 });
 
+test('only an immutable sandbox locks project switching', async () => {
+  const workbench = await source('Workbench.tsx');
+  assert.match(workbench, /const locked = projectSelection === 'sandbox' && project\.root === project\.path/);
+});
+
 test('narrow topbar and media status rules preserve truncation and status visibility', async () => {
   const css = await source('App.css');
   assert.match(css, /\.folder-switch-name\s*\{[^}]*overflow: hidden;[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/s);

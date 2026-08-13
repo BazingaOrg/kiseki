@@ -5,7 +5,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {createLatestGate} from './latest.ts';
+import {createLatestGate, createSelectionEpoch} from './latest.ts';
 
 test('单请求 begin 之后 isCurrent 为真', () => {
   const gate = createLatestGate();
@@ -54,4 +54,16 @@ test('未 begin 过的号码 0 不通过', () => {
   assert.equal(gate.isCurrent(0), false);
   gate.begin();
   assert.equal(gate.isCurrent(0), false);
+});
+
+test('host selection 发生后，较早发出的 runtime 恢复响应失效', () => {
+  const epoch = createSelectionEpoch();
+  const runtimeRequest = epoch.capture();
+  epoch.advance();
+  assert.equal(epoch.isCurrent(runtimeRequest), false);
+});
+
+test('没有 host selection 时，runtime 恢复响应保持有效', () => {
+  const epoch = createSelectionEpoch();
+  assert.equal(epoch.isCurrent(epoch.capture()), true);
 });

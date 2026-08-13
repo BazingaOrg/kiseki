@@ -58,3 +58,22 @@ test('native folder picker releases its busy state when the dialog is cancelled'
   const folderPicker = await source('FolderPicker.tsx');
   assert.match(folderPicker, /const selected = await window\.kisekiDesktop\?\.openProject\(\);\s*if \(!selected\) \{ setSelecting\(false\); return; \}/);
 });
+
+test('native folder picker waits for host authorization instead of browsing an unavailable root', async () => {
+  const folderPicker = await source('FolderPicker.tsx');
+  assert.match(folderPicker, /runtime\.projectSelection === 'sandbox' && runtime\.root/);
+  assert.match(folderPicker, /loadDirs\(runtime\.root\)/);
+  assert.doesNotMatch(folderPicker, /loadDirs\('\.'\)/);
+});
+
+test('runtime recovery and every project selection share the App project request gate', async () => {
+  const [app, folderPicker] = await Promise.all([source('App.tsx'), source('FolderPicker.tsx')]);
+  assert.match(app, /const loadProject = useCallback[\s\S]*?const ticket = refreshGate\.begin\(\)/);
+  assert.match(app, /data\.projectSelection === 'native' && data\.root[\s\S]*?loadProject\(data\.root\)/);
+  assert.match(app, /onProjectChanged\(\(targetPath\)[\s\S]*?selectProject\(targetPath\)/);
+  assert.match(app, /<FolderPicker runtime=\{runtime\} onProjectSelected=\{selectProject\}/);
+  assert.match(app, /onInteractionStart=\{\(\) => setProjectLoadError\(null\)\}/);
+  assert.match(folderPicker, /onInteractionStart\(\);[\s\S]*?setSelecting\(true\); setError\(null\);/);
+  assert.match(folderPicker, /await onProjectSelected\(targetPath\)/);
+  assert.doesNotMatch(folderPicker, /fetch\(`\/api\/project/);
+});

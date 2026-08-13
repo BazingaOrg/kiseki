@@ -11,6 +11,13 @@ export interface DirsResponse {
   root: string;
 }
 
+export type ProjectSelection = 'sandbox' | 'native';
+
+export interface RuntimeResponse {
+  projectSelection: ProjectSelection;
+  root: string | null;
+}
+
 export interface LyricLine {
   time: number;
   text: string;
@@ -52,7 +59,7 @@ export interface AssetCollection {
 export interface ProjectResponse {
   path: string;
   name: string;
-  /** 沙箱根。等于 path 时说明启动时锁定了素材夹,页面里换不了 */
+  /** 当前后端授权根目录。能否切换由 RuntimeResponse.projectSelection 决定。 */
   root: string;
   photos: string[];
   audio: string | null;

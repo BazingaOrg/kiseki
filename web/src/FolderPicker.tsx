@@ -3,7 +3,7 @@ import {ChevronRight, Clock3, Folder} from 'lucide-react';
 
 import {createLatestGate} from './latest';
 import {loadRecentFolders, rememberFolder, type RecentFolder} from './recentFolders';
-import type {DirsResponse, ProjectResponse} from './types';
+import type {DirsResponse, ProjectResponse, RuntimeResponse} from './types';
 
 const pathSeparator = (p: string): string => (p.includes('\\') && !p.includes('/') ? '\\' : '/');
 
@@ -26,10 +26,12 @@ const splitBreadcrumb = (fullPath: string, root: string): {label: string; path: 
 };
 
 interface FolderPickerProps {
-  onProjectLoaded: (project: ProjectResponse) => void;
+  runtime: RuntimeResponse;
+  onProjectSelected: (path: string) => Promise<ProjectResponse | null | undefined>;
+  onInteractionStart: () => void;
 }
 
-export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
+export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: FolderPickerProps) => {
   const [columns, setColumns] = useState<DirsResponse[]>([]);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [recentFolders, setRecentFolders] = useState<RecentFolder[]>(loadRecentFolders);
@@ -42,6 +44,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
   const gate = useRef(createLatestGate()).current;
 
   const loadDirs = (targetPath: string, parentColumn = -1) => {
+    onInteractionStart();
     const ticket = gate.begin();
     const previousSelectedPath = selectedPath;
     if (parentColumn >= 0) setSelectedPath(targetPath);
@@ -69,8 +72,8 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
   };
 
   useEffect(() => {
-    loadDirs('.');
-  }, []);
+    if (runtime.projectSelection === 'sandbox' && runtime.root) loadDirs(runtime.root);
+  }, [runtime.projectSelection, runtime.root]);
 
   useEffect(() => {
     const columnIndex = pendingFocusColumn.current;
@@ -79,35 +82,32 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
     document.querySelectorAll<HTMLElement>('.folder-column')[columnIndex]?.querySelector<HTMLElement>('.folder-item')?.focus();
   }, [columns]);
 
-  const handleSelectFolder = (targetPath = selectedPath) => {
+  const handleSelectFolder = async (targetPath = selectedPath) => {
     if (!targetPath) return;
+    onInteractionStart();
     const ticket = gate.begin();
     setSelecting(true);
     setError(null);
-    fetch(`/api/project?path=${encodeURIComponent(targetPath)}`)
-      .then((res) => {
-        if (!res.ok) throw new Error('failed');
-        return res.json();
-      })
-      .then((data: ProjectResponse) => {
-        if (!gate.isCurrent(ticket)) return;
+    try {
+      const data = await onProjectSelected(targetPath);
+      if (!gate.isCurrent(ticket) || data === undefined) return;
+      if (data !== null) {
         setRecentFolders(rememberFolder({name: data.name, path: data.path}));
-        onProjectLoaded(data);
-      })
-      .catch(() => {
-        if (gate.isCurrent(ticket)) setError('读取这个文件夹时出了点问题。');
-      })
-      .finally(() => {
-        if (gate.isCurrent(ticket)) setSelecting(false);
-      });
+      }
+    } catch {
+      if (gate.isCurrent(ticket)) setError('读取这个文件夹时出了点问题。');
+    } finally {
+      if (gate.isCurrent(ticket)) setSelecting(false);
+    }
   };
 
   const handleNativeOpen = async () => {
+    onInteractionStart();
     setSelecting(true); setError(null);
     try {
       const selected = await window.kisekiDesktop?.openProject();
       if (!selected) { setSelecting(false); return; }
-      handleSelectFolder(selected.path);
+      await handleSelectFolder(selected.path);
     } catch { setError('无法打开这个项目。'); setSelecting(false); }
   };
 
@@ -144,14 +144,15 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
       event.preventDefault();
       const file = event.dataTransfer.files[0];
       if (!file) return;
+      onInteractionStart();
       setSelecting(true); setError(null);
-      try { const selected = await window.kisekiDesktop.openDroppedProject(file); handleSelectFolder(selected.path); }
+      try { const selected = await window.kisekiDesktop.openDroppedProject(file); await handleSelectFolder(selected.path); }
       catch { setError('无法打开拖入的项目文件夹。'); setSelecting(false); }
     }}>
-      {window.kisekiDesktop && <button className="primary-button" disabled={selecting} onClick={handleNativeOpen}><Folder size={16} />打开项目</button>}
+      {runtime.projectSelection === 'native' && window.kisekiDesktop && <button className="primary-button" disabled={selecting} onClick={handleNativeOpen}><Folder size={16} />打开项目</button>}
       {error && <p className="hint hint-error" role="alert">{error}</p>}
 
-      {visibleRecentFolders.length > 0 && (
+      {runtime.projectSelection === 'sandbox' && visibleRecentFolders.length > 0 && (
         <section className="recent-folders" aria-labelledby="recent-folders-title">
           <h2 id="recent-folders-title">最近使用</h2>
           <div className="recent-folder-list">
@@ -165,7 +166,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         </section>
       )}
 
-      {columns.length > 0 && (
+      {runtime.projectSelection === 'sandbox' && columns.length > 0 && (
         <nav className="breadcrumb" aria-label="当前位置">
           {crumbs.map((crumb, index) => (
             <span className="breadcrumb-crumb" key={crumb.path}>
@@ -176,7 +177,7 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         </nav>
       )}
 
-      {columns.length > 0 && (
+      {runtime.projectSelection === 'sandbox' && columns.length > 0 && (
         <div className="folder-columns" aria-busy={loading}>
           {columns.map((column, columnIndex) => (
             <section className="folder-column" key={column.path} aria-label={`${splitBreadcrumb(column.path, column.root).slice(-1)[0]?.label ?? column.path}中的文件夹`}>
@@ -209,12 +210,12 @@ export const FolderPicker = ({onProjectLoaded}: FolderPickerProps) => {
         </div>
       )}
 
-      <div className="folder-actions">
+      {runtime.projectSelection === 'sandbox' && <div className="folder-actions">
         <span className="folder-selection" title={selectedPath ?? undefined}>{selectedPath ? `当前选择：${selectedName}` : '请选择一个文件夹'}</span>
         <button className="primary-button" onClick={() => handleSelectFolder()} disabled={selecting || !selectedPath}>
           {selecting ? '正在读取…' : selectedName ? `打开「${selectedName}」` : '打开文件夹'}
         </button>
-      </div>
+      </div>}
     </div>
   );
 };
