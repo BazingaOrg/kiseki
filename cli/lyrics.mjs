@@ -158,7 +158,7 @@ const replaceRecognizedLyrics = ({project, stagedPath, task, identity, beforeMar
   return {finalizeError};
 };
 
-export const runLyrics = (
+export const runLyrics = async (
   folderArg,
   {replace = false, runCommandImpl, runCommandSpecImpl = runCommandSpec, beforeMarkCommitting, leaseManager = createTaskLeaseManager(), runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {},
 ) => {
@@ -208,7 +208,7 @@ export const runLyrics = (
     for (const file of [outputArtifactPaths(project.lyricsPath, task.lease.id).partialPath, outputArtifactPaths(project.lyricsPath, task.lease.id).backupPath, outputArtifactPaths(project.timelinePath, task.lease.id).partialPath, outputArtifactPaths(project.timelinePath, task.lease.id).backupPath]) assertMissing(file);
   }
   const oldRecognizedIdentity = replace ? {lyrics: recognizedIdentity(project.lyricsPath), timeline: fileIdentityOrAbsent(project.timelinePath)} : null;
-  term.start('识别歌词');
+  const lyricsTask = term.task('识别歌词');
   const analyzeArgs = [
     path.join(folder, audio),
     '--lyrics-only',
@@ -216,16 +216,34 @@ export const runLyrics = (
   ];
   if (lyrics) analyzeArgs.push('--lyrics-file', path.join(folder, lyrics));
   const analyzeCommand = commandResolver.analyzer('kiseki-analyze', analyzeArgs);
-  const code = runCommandImpl
-    ? runCommandImpl('识别歌词', analyzeCommand.executable, analyzeCommand.args, {env: analyzeCommand.env})
-    : runCommandSpecImpl('识别歌词', analyzeCommand);
-  if (code !== 0) { if (replace) fs.rmSync(stagedPath, {force: true}); outcome = code; return code; }
-  if (replace) {
-    assertRecognizedIdentity({lyricsPath: project.lyricsPath, lrcFiles: scanFolderLoose(folder).lyrics, identity: oldRecognizedIdentity.lyrics});
-    if (JSON.stringify(fileIdentityOrAbsent(project.timelinePath)) !== JSON.stringify(oldRecognizedIdentity.timeline)) throw new CliError('时间线已变化,未替换');
-    replaceRecognizedLyrics({project, stagedPath, task, identity: oldRecognizedIdentity, beforeMarkCommitting});
+  let code;
+  try {
+    code = await Promise.resolve(
+      runCommandImpl
+        ? runCommandImpl('识别歌词', analyzeCommand.executable, analyzeCommand.args, {env: analyzeCommand.env})
+        : runCommandSpecImpl('识别歌词', analyzeCommand),
+    );
+  } catch (error) {
+    lyricsTask.fail();
+    throw error;
   }
-  term.success('歌词识别完成');
+  if (code !== 0) {
+    lyricsTask.fail();
+    if (replace) fs.rmSync(stagedPath, {force: true});
+    outcome = code;
+    return code;
+  }
+  try {
+    if (replace) {
+      assertRecognizedIdentity({lyricsPath: project.lyricsPath, lrcFiles: scanFolderLoose(folder).lyrics, identity: oldRecognizedIdentity.lyrics});
+      if (JSON.stringify(fileIdentityOrAbsent(project.timelinePath)) !== JSON.stringify(oldRecognizedIdentity.timeline)) throw new CliError('时间线已变化,未替换');
+      replaceRecognizedLyrics({project, stagedPath, task, identity: oldRecognizedIdentity, beforeMarkCommitting});
+    }
+    lyricsTask.succeed();
+  } catch (error) {
+    lyricsTask.fail();
+    throw error;
+  }
 
   const result = JSON.parse(fs.readFileSync(project.lyricsPath, 'utf8'));
   printLyricsPreview(result);

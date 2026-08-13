@@ -15,7 +15,7 @@ import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
-import {term} from './term.mjs';
+import {formatDuration, paint, term} from './term.mjs';
 import {resolveOutputVariantSuffix} from './output-naming.mjs';
 import {acquireCommandLease} from './task-lease.mjs';
 
@@ -178,11 +178,14 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
   let activePartial = null;
   let primaryError = null;
   let didThrow = false;
+  let startedAt = null;
+  let exportTask = null;
 
   try {
     const resolved = resolveJobs(opts.target, opts.output, opts);
     jobs = resolved.jobs;
     task = acquireCommandLease({kind: 'still', folder: resolved.canvasFolder, outputPaths: jobs.map((job) => job.outPath)});
+    startedAt = Date.now();
     originalEnv = Object.fromEntries(
       [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
     );
@@ -201,7 +204,9 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     const stillProgressLabel = (index) =>
       jobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${jobs.length}`;
 
-    term.start(`导出 still(${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 暗色' : ''})`);
+    term.detail(`${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 暗色' : ''}`);
+    exportTask = term.task('导出 still');
+    exportTask.endLine();
     const bundled = await bundleRenderer(resolved.publicDir, {
       runtime,
       onProgress: (value) => progress.update('Bundling code', value),
@@ -295,6 +300,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
   } catch (error) {
     didThrow = true;
     primaryError = error;
+    exportTask?.fail();
     throw error;
   } finally {
     const cleanupErrors = [];
@@ -348,16 +354,18 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     }
   }
 
+  exportTask?.succeed();
+  const elapsed = startedAt == null ? '' : `    ${formatDuration(Date.now() - startedAt)}`;
   if (rendered === 0) {
     const reasons = [
       ...(skipped > 0 ? [`${skipped} 张已存在`] : []),
       ...(skippedExif > 0 ? [`${skippedExif} 张 EXIF 信息不足`] : []),
     ];
-    term.success(`still 完成 → 未导出静态图${reasons.length > 0 ? `(${reasons.join(',')})` : ''}`);
+    term.success(`still 完成 → 未导出静态图${reasons.length > 0 ? `(${reasons.join(',')})` : ''}${elapsed}`);
   } else {
     const destination = jobs.length === 1 ? jobs[0].outPath : path.dirname(jobs[0].outPath);
     const skippedTotal = skipped + skippedExif;
-    term.success(`still 完成 → ${destination}${skippedTotal > 0 ? ` (导出 ${rendered} 张,跳过 ${skippedTotal} 张)` : ''}`);
+    term.success(`still 完成 → ${paint('path', destination)}${skippedTotal > 0 ? ` (导出 ${rendered} 张,跳过 ${skippedTotal} 张)` : ''}${elapsed}`);
   }
   return 0;
 };

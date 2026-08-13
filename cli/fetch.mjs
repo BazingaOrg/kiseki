@@ -243,9 +243,10 @@ const audioFlow = async (ask, folder, {existing = null, task = null, runtime = s
     if (/^https?:\/\//i.test(input)) {
       url = input;
     } else {
-      term.start(`搜索「${input}」`);
+      const searchTask = term.task(`搜索「${input}」`);
       const search = searchYtDlp(input, {runtime});
       if (!search.ok) {
+        searchTask.fail();
         term.error('搜索失败');
         if (search.stderr) term.detail(search.stderr.split('\n').slice(-3).join('\n'));
         term.detail('常见原因:网络需要代理、yt-dlp 版本过旧(yt-dlp -U 可更新)');
@@ -254,6 +255,7 @@ const audioFlow = async (ask, folder, {existing = null, task = null, runtime = s
         }))) return false;
         continue;
       }
+      searchTask.succeed();
       if (search.candidates.length === 0) {
         term.warn(`没有找到「${input}」,换个关键词试试,或手动放入音频文件`);
         continue;
@@ -269,9 +271,11 @@ const audioFlow = async (ask, folder, {existing = null, task = null, runtime = s
       url = `https://www.youtube.com/watch?v=${picked.id}`;
     }
 
-    term.start('下载音频');
+    const downloadTask = term.task('下载音频');
+    downloadTask.endLine();
     const result = await downloadWithYtDlpProgress(url, {tempParent: task?.lease.taskRoot, runtime});
     if (!result.ok) {
+      downloadTask.fail();
       term.error('下载失败');
       if (result.stderr) term.detail(result.stderr);
       term.detail('常见原因:网络需要代理、视频地区受限或已下架;可换一个结果或 URL');
@@ -280,6 +284,7 @@ const audioFlow = async (ask, folder, {existing = null, task = null, runtime = s
       }))) return false;
       continue;
     }
+    downloadTask.succeed();
 
     try {
       for (const warning of result.warnings) term.warn(warning);
@@ -365,7 +370,7 @@ export const lyricsFlow = async (
       queryCustomized = true;
     }
 
-    term.start('搜索同步歌词(lrclib.net)');
+    const lyricsSearchTask = term.task('搜索同步歌词(lrclib.net)');
     let records;
     try {
       records = await searchLyricsRecords({
@@ -376,10 +381,12 @@ export const lyricsFlow = async (
         customized: queryCustomized,
       }, fetcher);
     } catch (error) {
+      lyricsSearchTask.fail();
       term.error(`歌词搜索失败: ${error.message}`);
       term.detail(NETWORK_HINT);
       return false;
     }
+    lyricsSearchTask.succeed();
 
     const synced = limitLyricsCandidates(records);
     if (synced.length === 0) {

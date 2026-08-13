@@ -6,6 +6,13 @@ import test from 'node:test';
 
 import {formatLyricsPreview, runLyrics} from './lyrics.mjs';
 import {createTaskLeaseManager} from './task-lease.mjs';
+import {term} from './term.mjs';
+
+const originalTermTask = term.task;
+term.task = () => ({succeed() {}, fail() {}, endLine() {}});
+test.after(() => {
+  term.task = originalTermTask;
+});
 
 const fixture = () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-lyrics-'));
@@ -67,18 +74,18 @@ test('the confidence threshold is configurable and defaults to the renderer valu
   assert.equal(lines[1].kind, 'line');
 });
 
-test('recognized lyrics require explicit replace before analyzer starts', () => {
+test('recognized lyrics require explicit replace before analyzer starts', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
     const metadata = path.join(folder, 'output', 'metadata');
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
-    assert.throws(() => runLyricsForTest(folder, {runCommandImpl: () => { throw new Error('must not run'); }}), /--replace/);
+    await assert.rejects(() => runLyricsForTest(folder, {runCommandImpl: () => { throw new Error('must not run'); }}), /--replace/);
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('failed replacement preserves old lyrics and downstream metadata', () => {
+test('failed replacement preserves old lyrics and downstream metadata', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -86,13 +93,13 @@ test('failed replacement preserves old lyrics and downstream metadata', () => {
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
     fs.writeFileSync(path.join(metadata, 'timeline.json'), 'timeline');
-    assert.equal(runLyricsForTest(folder, {replace: true, runCommandImpl: () => 1}), 1);
+    assert.equal(await runLyricsForTest(folder, {replace: true, runCommandImpl: () => 1}), 1);
     assert.match(fs.readFileSync(path.join(metadata, 'lyrics.json'), 'utf8'), /old/);
     assert.equal(fs.readFileSync(path.join(metadata, 'timeline.json'), 'utf8'), 'timeline');
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('replacement rejects an unusable staged payload without touching old lyrics or timeline', () => {
+test('replacement rejects an unusable staged payload without touching old lyrics or timeline', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -100,7 +107,7 @@ test('replacement rejects an unusable staged payload without touching old lyrics
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
     fs.writeFileSync(path.join(metadata, 'timeline.json'), 'timeline');
-    assert.throws(() => runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
+    await assert.rejects(() => runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
       fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], JSON.stringify({segments: []}));
       return 0;
     }}), /没有可用歌词/);
@@ -109,7 +116,7 @@ test('replacement rejects an unusable staged payload without touching old lyrics
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('replacement rejects even an empty physical LRC file', () => {
+test('replacement rejects even an empty physical LRC file', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -117,19 +124,19 @@ test('replacement rejects even an empty physical LRC file', () => {
     const metadata = path.join(folder, 'output', 'metadata');
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
-    assert.throws(() => runLyricsForTest(folder, {replace: true, runCommandImpl: () => 0}), /LRC/);
+    await assert.rejects(() => runLyricsForTest(folder, {replace: true, runCommandImpl: () => 0}), /LRC/);
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('replacement requires a current manageable recognized result', () => {
+test('replacement requires a current manageable recognized result', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
-    assert.throws(() => runLyricsForTest(folder, {replace: true, runCommandImpl: () => 0}), /没有可替换/);
+    await assert.rejects(() => runLyricsForTest(folder, {replace: true, runCommandImpl: () => 0}), /没有可替换/);
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('source drift during replacement prevents commit and preserves timeline', () => {
+test('source drift during replacement prevents commit and preserves timeline', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -137,7 +144,7 @@ test('source drift during replacement prevents commit and preserves timeline', (
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
     fs.writeFileSync(path.join(metadata, 'timeline.json'), 'timeline');
-    assert.throws(() => runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
+    await assert.rejects(() => runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
       fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('changed'));
       fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], recognized('new'));
       return 0;
@@ -147,7 +154,7 @@ test('source drift during replacement prevents commit and preserves timeline', (
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('LRC appearing during replacement prevents commit', () => {
+test('LRC appearing during replacement prevents commit', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -155,7 +162,7 @@ test('LRC appearing during replacement prevents commit', () => {
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
     fs.writeFileSync(path.join(metadata, 'timeline.json'), 'timeline');
-    assert.throws(() => runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
+    await assert.rejects(() => runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
       fs.writeFileSync(path.join(folder, 'appeared.lrc'), 'malformed');
       fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], recognized('new'));
       return 0;
@@ -164,7 +171,7 @@ test('LRC appearing during replacement prevents commit', () => {
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('timeline drift after prepare and before commit rolls replacement back', () => {
+test('timeline drift after prepare and before commit rolls replacement back', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -172,7 +179,7 @@ test('timeline drift after prepare and before commit rolls replacement back', ()
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
     fs.writeFileSync(path.join(metadata, 'timeline.json'), 'old timeline');
-    assert.throws(() => runLyricsForTest(folder, {
+    await assert.rejects(() => runLyricsForTest(folder, {
       replace: true,
       runCommandImpl: (_label, _command, args) => { fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], recognized('new')); return 0; },
       beforeMarkCommitting: () => fs.writeFileSync(path.join(metadata, 'timeline.json'), 'edited timeline'),
@@ -182,14 +189,14 @@ test('timeline drift after prepare and before commit rolls replacement back', ()
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('lyrics or LRC drift at the commit boundary prevents installation', () => {
+test('lyrics or LRC drift at the commit boundary prevents installation', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
     const metadata = path.join(folder, 'output', 'metadata');
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
-    assert.throws(() => runLyricsForTest(folder, {
+    await assert.rejects(() => runLyricsForTest(folder, {
       replace: true,
       runCommandImpl: (_label, _command, args) => { fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], recognized('new')); return 0; },
       beforeMarkCommitting: () => fs.writeFileSync(path.join(folder, 'appeared.lrc'), ''),
@@ -198,7 +205,7 @@ test('lyrics or LRC drift at the commit boundary prevents installation', () => {
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('successful replacement invalidates only lyrics-dependent timeline', () => {
+test('successful replacement invalidates only lyrics-dependent timeline', async () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'song.mp3'), 'audio');
@@ -208,7 +215,7 @@ test('successful replacement invalidates only lyrics-dependent timeline', () => 
     fs.writeFileSync(path.join(metadata, 'timeline.json'), 'timeline');
     fs.writeFileSync(path.join(metadata, 'analysis.json'), 'analysis');
     fs.writeFileSync(path.join(metadata, 'beats.json'), 'beats');
-    assert.equal(runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
+    assert.equal(await runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
       fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], recognized('new'));
       return 0;
     }}), 0);
@@ -219,7 +226,7 @@ test('successful replacement invalidates only lyrics-dependent timeline', () => 
   } finally { fs.rmSync(folder, {recursive: true, force: true}); }
 });
 
-test('replacement accepts a canonical metadata path reached through the macOS /var alias', {skip: !macOSVarAlias(os.tmpdir())}, () => {
+test('replacement accepts a canonical metadata path reached through the macOS /var alias', {skip: !macOSVarAlias(os.tmpdir())}, async () => {
   const canonicalFolder = fixture();
   const folder = macOSVarAlias(canonicalFolder);
   try {
@@ -227,7 +234,7 @@ test('replacement accepts a canonical metadata path reached through the macOS /v
     const metadata = path.join(folder, 'output', 'metadata');
     fs.mkdirSync(metadata, {recursive: true});
     fs.writeFileSync(path.join(metadata, 'lyrics.json'), recognized('old'));
-    assert.equal(runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
+    assert.equal(await runLyricsForTest(folder, {replace: true, runCommandImpl: (_label, _command, args) => {
       fs.writeFileSync(args[args.indexOf('--lyrics-output') + 1], recognized('new'));
       return 0;
     }}), 0);

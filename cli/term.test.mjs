@@ -19,7 +19,7 @@ import {fileURLToPath} from 'node:url';
 import {parseArgs} from './options.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {computeInputHash, copyLegacyJson, ensureProjectDirs, resolveProjectPaths, scanFolderLoose} from './project.mjs';
-import {createTerminal, dim, paint, promptPrefix} from './term.mjs';
+import {createTerminal, dim, formatDuration, paint, promptPrefix, SPINNER_FRAMES} from './term.mjs';
 import {runCommandFromArgv} from './kiseki.mjs';
 
 const stream = (isTTY) => ({
@@ -42,10 +42,11 @@ test('lyrics --replace skips the optional fetch offer without changing the norma
     await runCommandFromArgv(['lyrics', folder], options);
     await runCommandFromArgv(['lyrics', folder, '--replace'], options);
     assert.deepEqual(fetchCalls, [folder]);
-    assert.deepEqual(lyricsCalls, [
-      {target: folder, settings: {replace: false}},
-      {target: folder, settings: {replace: true}},
-    ]);
+    assert.equal(lyricsCalls.length, 2);
+    assert.equal(lyricsCalls[0].target, folder);
+    assert.equal(lyricsCalls[0].settings.replace, false);
+    assert.equal(lyricsCalls[1].target, folder);
+    assert.equal(lyricsCalls[1].settings.replace, true);
   } finally {
     rmSync(folder, {recursive: true, force: true});
   }
@@ -227,6 +228,103 @@ test('开关开启但 fd 3 未打开时,默认 JSON 写入器吞掉 EBADF 且不
   assert.equal(stdout.output, '\x1b[39m●\x1b[0m 信息\n\x1b[2m└ 细节\x1b[0m\n');
   assert.equal(stderr.output, '\x1b[33m●\x1b[0m 提醒\n');
 });
+
+const fakeClock = (start = 0) => {
+  let nowMs = start;
+  return {
+    now: () => nowMs,
+    set: (value) => { nowMs = value; },
+    setInterval: () => 1,
+    clearInterval: () => {},
+  };
+};
+
+test('formatDuration uses one decimal second under a minute and m:ss after', () => {
+  assert.equal(formatDuration(4200), '4.2s');
+  assert.equal(formatDuration(65000), '1:05');
+});
+
+test('non-TTY task succeed prints a start line and a duration success line', () => {
+  const stdout = stream(false);
+  const stderr = stream(false);
+  const clock = fakeClock(0);
+  const output = createTerminal({stdout, stderr, env: {}, now: clock.now});
+  const running = output.task('分析音频');
+  clock.set(4200);
+  running.succeed();
+  assert.equal(stdout.output, '● 分析音频\n● 分析音频  4.2s\n');
+  assert.equal(stderr.output, '');
+});
+
+test('TTY task succeed rewrites the line with CR, erase, and duration', () => {
+  const stdout = stream(true);
+  const stderr = stream(true);
+  const clock = fakeClock(0);
+  const output = createTerminal({
+    stdout,
+    stderr,
+    env: {TERM: 'xterm-256color'},
+    now: clock.now,
+    setInterval: clock.setInterval,
+    clearInterval: clock.clearInterval,
+  });
+  const running = output.task('分析音频');
+  clock.set(4200);
+  running.succeed();
+  assert.match(stdout.output, /\r/);
+  assert.match(stdout.output, /\x1b\[2K/);
+  assert.ok(stdout.output.includes(SPINNER_FRAMES[0]));
+  assert.match(stdout.output, /4\.2s/);
+  assert.match(stdout.output, /\x1b\[32m●\x1b\[0m 分析音频\x1b\[2m {2}4\.2s\x1b\[0m\n$/);
+});
+
+test('JSON task events include stage and integer durationMs', () => {
+  const events = [];
+  const clock = fakeClock(1000);
+  const output = createTerminal({
+    stdout: stream(false),
+    stderr: stream(false),
+    env: {KISEKI_JSON_PROGRESS: '1'},
+    jsonWrite: (event) => events.push(event),
+    now: clock.now,
+  });
+
+  const running = output.task('分析音频');
+  clock.set(5200);
+  running.succeed();
+  const failed = output.task('规划照片时间线');
+  clock.set(6000);
+  failed.fail();
+
+  assert.deepEqual(events, [
+    {kind: 'start', text: '分析音频', stage: '分析音频'},
+    {kind: 'success', text: '分析音频', stage: '分析音频', durationMs: 4200},
+    {kind: 'start', text: '规划照片时间线', stage: '规划照片时间线'},
+    {kind: 'error', text: '规划照片时间线', stage: '规划照片时间线', durationMs: 800},
+  ]);
+  assert.equal(Number.isInteger(events[1].durationMs), true);
+  assert.equal(Number.isInteger(events[3].durationMs), true);
+});
+
+for (const [name, isTTY, env] of [
+  ['NO_COLOR', true, {TERM: 'xterm', NO_COLOR: ''}],
+  ['TERM=dumb', true, {TERM: 'dumb'}],
+]) {
+  test(`task under ${name} emits no ANSI`, () => {
+    const stdout = stream(isTTY);
+    const stderr = stream(isTTY);
+    const output = createTerminal({
+      stdout,
+      stderr,
+      env,
+      now: () => 0,
+      setInterval: () => 1,
+      clearInterval: () => {},
+    });
+    output.task('分析音频').succeed();
+    assert.doesNotMatch(stdout.output + stderr.output, /\x1b\[/);
+  });
+}
 
 test('output option requires a value', () => {
   assert.throws(() => parseArgs(['album', '-o']), /需要输出文件路径/);

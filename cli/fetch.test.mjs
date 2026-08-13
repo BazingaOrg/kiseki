@@ -31,6 +31,12 @@ import {
   searchLyricsRecords,
 } from './fetch.mjs';
 
+const originalTermTask = term.task;
+term.task = () => ({succeed() {}, fail() {}, endLine() {}});
+test.after(() => {
+  term.task = originalTermTask;
+});
+
 const runFetchWithAnswers = async (folder, answers) => {
   const leaseManager = createTaskLeaseManager({registryRoot: path.join(folder, '.runtime')});
   const input = new PassThrough();
@@ -41,7 +47,9 @@ const runFetchWithAnswers = async (folder, answers) => {
   // 静音 term 的状态输出:异步写 process.stdout 会与 node:test 的报告流交错
   const silenced = ['info', 'start', 'success', 'warn', 'error', 'detail'];
   const originals = Object.fromEntries(silenced.map((k) => [k, term[k]]));
+  originals.task = term.task;
   for (const k of silenced) term[k] = () => {};
+  term.task = () => ({succeed() {}, fail() {}, endLine() {}});
   try {
     const pending = runFetch(folder, {input, output, leaseManager});
     for (const answer of answers) {

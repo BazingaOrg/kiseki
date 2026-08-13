@@ -1,4 +1,4 @@
-import {spawnSync} from 'node:child_process';
+import {spawn} from 'node:child_process';
 
 import {FIXES} from './dependencies.mjs';
 import {jsonProgressEnabled, term} from './term.mjs';
@@ -19,20 +19,37 @@ const STAGE_DETAILS = {
 const stdioFor = (env) =>
   jsonProgressEnabled(env) ? ['inherit', 'inherit', 'inherit', 3] : 'inherit';
 
-export const runCommand = (stage, cmd, args, opts = {}, spawn = spawnSync, env = process.env) => {
-  const result = spawn(cmd, args, {stdio: stdioFor(env), ...opts});
-  if (result.error) {
+const isChildProcess = (result) =>
+  result && typeof result === 'object' && typeof result.on === 'function';
+
+const waitForSpawn = async (spawned) => {
+  const result = await Promise.resolve(spawned);
+  if (!isChildProcess(result)) return result ?? {status: 1};
+  return await new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    result.once('error', (error) => done({error}));
+    result.once('close', (status) => done({status}));
+  });
+};
+
+const reportSpawnResult = (stage, commandName, result) => {
+  if (result?.error) {
     if (result.error.code === 'ENOENT') {
-      term.error(`${stage}失败: 找不到命令 ${cmd}(未安装或不在 PATH)`);
-      if (FIXES[cmd]) term.detail(FIXES[cmd]);
+      term.error(`${stage}失败: 找不到命令 ${commandName}(未安装或不在 PATH)`);
+      if (FIXES[commandName]) term.detail(FIXES[commandName]);
       term.detail('运行 kiseki doctor 可一次检查全部依赖');
     } else {
-      term.error(`${stage}失败: 无法执行 ${cmd}: ${result.error.message}`);
+      term.error(`${stage}失败: 无法执行 ${commandName}: ${result.error.message}`);
     }
     return 1;
   }
-  if (result.status !== 0) {
-    const code = result.status ?? 1;
+  if (result?.status !== 0) {
+    const code = result?.status ?? 1;
     term.error(`${stage}失败(退出码 ${code})`);
     if (STAGE_DETAILS[stage]) term.detail(STAGE_DETAILS[stage]);
     return code;
@@ -40,25 +57,24 @@ export const runCommand = (stage, cmd, args, opts = {}, spawn = spawnSync, env =
   return 0;
 };
 
-export const runCommandSpec = (stage, spec, spawn = spawnSync) => {
+export const runCommand = async (stage, cmd, args, opts = {}, spawnImpl = spawn, env = process.env) => {
+  let spawned;
+  try {
+    spawned = spawnImpl(cmd, args, {stdio: stdioFor(env), ...opts});
+  } catch (error) {
+    spawned = {error};
+  }
+  return reportSpawnResult(stage, cmd, await waitForSpawn(spawned));
+};
+
+export const runCommandSpec = async (stage, spec, spawnImpl = spawn) => {
   const logicalName = spec.displayName ?? spec.executable;
   const stdio = spec.stdio === 'inherit' ? stdioFor(spec.env) : spec.stdio;
-  const result = spawn(spec.executable, spec.args, {stdio, env: spec.env});
-  if (result.error) {
-    if (result.error.code === 'ENOENT') {
-      term.error(`${stage}失败: 找不到命令 ${logicalName}(未安装或不在 PATH)`);
-      if (FIXES[logicalName]) term.detail(FIXES[logicalName]);
-      term.detail('运行 kiseki doctor 可一次检查全部依赖');
-    } else {
-      term.error(`${stage}失败: 无法执行 ${logicalName}: ${result.error.message}`);
-    }
-    return 1;
+  let spawned;
+  try {
+    spawned = spawnImpl(spec.executable, spec.args, {stdio, env: spec.env});
+  } catch (error) {
+    spawned = {error};
   }
-  if (result.status !== 0) {
-    const code = result.status ?? 1;
-    term.error(`${stage}失败(退出码 ${code})`);
-    if (STAGE_DETAILS[stage]) term.detail(STAGE_DETAILS[stage]);
-    return code;
-  }
-  return 0;
+  return reportSpawnResult(stage, logicalName, await waitForSpawn(spawned));
 };

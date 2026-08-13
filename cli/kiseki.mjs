@@ -32,7 +32,7 @@ import {MENU_BACK, isResidentCommand, runMenu, writeBanner, writeFarewell} from 
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {runStill} from './still.mjs';
 import {runWeb} from './web.mjs';
-import {term} from './term.mjs';
+import {formatDuration, paint, term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
 import {runCommandSpec} from './run-command.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
@@ -77,7 +77,7 @@ export const runCommandFromArgv = async (
     if (!parsed.replace && !inherited && fs.existsSync(lyricsFolder) && fs.statSync(lyricsFolder).isDirectory()) {
       await offerFetchImpl(lyricsFolder, {runtime});
     }
-    return runLyricsImpl(parsed.folder, {replace: parsed.replace, runtime, commandResolver});
+    return await Promise.resolve(runLyricsImpl(parsed.folder, {replace: parsed.replace, runtime, commandResolver}));
   }
   if (parsed.command === 'still') return runStill(parsed, {runtime});
   if (parsed.command === 'web') {
@@ -113,6 +113,7 @@ export const runCommandFromArgv = async (
   // An inherited job must prove it owns the exact final output before any
   // helper can write project state. Direct invocations acquire that same path.
   const task = acquireCommandLease({kind: 'render', folder, outputPaths: [project.outputPath]});
+  const startedAt = Date.now();
   const originalEnv = Object.fromEntries(
     [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
   );
@@ -163,30 +164,37 @@ export const runCommandFromArgv = async (
     } else {
       invalidateAnalysisManifest(project.analysisPath);
     }
-    term.start('分析音频');
-    const analyzeArgs = [
-      path.join(folder, audio),
-      '-o', project.beatsPath,
-      '--lyrics-output', project.lyricsPath,
-    ];
-    if (lyrics) analyzeArgs.push('--lyrics-file', path.join(folder, lyrics));
-    const analyzeCommand = commandResolver.analyzer('kiseki-analyze', analyzeArgs);
-    const code = runResolvedCommand('分析音频', analyzeCommand);
-    if (code !== 0) return code;
-    writeAnalysisManifest({
-      analysisPath: project.analysisPath,
-      beatsPath: project.beatsPath,
-      lyricsPath: project.lyricsPath,
-      audioHash,
-    });
-    term.success('音频分析完成');
+    const analyzeTask = term.task('分析音频');
+    try {
+      const analyzeArgs = [
+        path.join(folder, audio),
+        '-o', project.beatsPath,
+        '--lyrics-output', project.lyricsPath,
+      ];
+      if (lyrics) analyzeArgs.push('--lyrics-file', path.join(folder, lyrics));
+      const analyzeCommand = commandResolver.analyzer('kiseki-analyze', analyzeArgs);
+      const code = await Promise.resolve(runResolvedCommand('分析音频', analyzeCommand));
+      if (code !== 0) {
+        analyzeTask.fail();
+        return code;
+      }
+      writeAnalysisManifest({
+        analysisPath: project.analysisPath,
+        beatsPath: project.beatsPath,
+        lyricsPath: project.lyricsPath,
+        audioHash,
+      });
+      analyzeTask.succeed();
+    } catch (error) {
+      analyzeTask.fail();
+      throw error;
+    }
   }
 
   // 规划步骤总是运行,即便素材未变:是否需要用最新算法刷新 timeline.json
   // 交给 plan.py 自己判断——它靠内容校验和识别文件是否被手动改过,手改过就
   // 原样保留,没被动过就悄悄升级到最新分配算法(见 plan.py _content_checksum)
-  term.start('规划照片时间线');
-  const runPlan = (inputHash, trimOverride = effectiveTrim) => {
+  const runPlan = async (inputHash, trimOverride = effectiveTrim) => {
     const statusPath = path.join(runtime.tempRoot, `kiseki-plan-${randomUUID()}.json`);
     const args = [
       folder,
@@ -199,7 +207,7 @@ export const runCommandFromArgv = async (
     if (trimOverride !== null) args.push('--trim', trimOverride);
     try {
       const planCommand = commandResolver.analyzer('kiseki-plan', args);
-      const code = runResolvedCommand('规划照片时间线', planCommand);
+      const code = await Promise.resolve(runResolvedCommand('规划照片时间线', planCommand));
       let outcome = null;
       if (fs.existsSync(statusPath)) {
         outcome = JSON.parse(fs.readFileSync(statusPath, 'utf8')).outcome ?? null;
@@ -209,9 +217,20 @@ export const runCommandFromArgv = async (
       fs.rmSync(statusPath, {force: true});
     }
   };
-  const {code: planCode, outcome: planOutcome} = runPlan(hash);
-  if (planCode !== 0) return planCode;
-  term.success('照片时间线规划完成');
+  const planTask = term.task('规划照片时间线');
+  let planCode;
+  let planOutcome;
+  try {
+    ({code: planCode, outcome: planOutcome} = await runPlan(hash));
+    if (planCode !== 0) {
+      planTask.fail();
+      return planCode;
+    }
+    planTask.succeed();
+  } catch (error) {
+    planTask.fail();
+    throw error;
+  }
 
   let tl = readValidatedTimeline(timelinePath);
   const trimChoice = await maybePersistTrimChoice({
@@ -220,7 +239,7 @@ export const runCommandFromArgv = async (
     ...(trimPromptRunner === undefined ? {} : {promptRunner: trimPromptRunner}),
   });
   if (trimChoice === 'full') {
-    const {code: replanCode} = runPlan(hash, 'full');
+    const {code: replanCode} = await runPlan(hash, 'full');
     if (replanCode !== 0) return replanCode;
     term.detail('已按完整歌曲重新规划');
     term.success('已记住你的选择');
@@ -238,26 +257,42 @@ export const runCommandFromArgv = async (
   const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
   if (!fs.existsSync(rendererPackage)) throw new CliError('渲染器依赖未安装,先执行: cd renderer && npm install');
 
-  term.start(`渲染视频${exif ? ', EXIF' : ''}${sign ? ', 签名' : ''}${dark ? ', 暗色' : ''}${draft ? ', 草稿' : ''}`);
-  const renderCommand = commandResolver.renderer([
-    timelinePath,
-    outPath,
-    folder,
-    ...(exif ? ['--exif'] : []),
-    ...(sign ? ['--sign'] : []),
-    ...(dark ? ['--dark'] : []),
-    ...(portrait ? ['--portrait'] : []),
-    ...(square ? ['--square'] : []),
-    ...(draft ? ['--draft'] : []),
-    ...(filter ? ['--filter', filter.id] : []),
-    ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
-    ...(template ? ['--template', template] : []),
-  ]);
-  const renderCode = runResolvedCommand('渲染视频', renderCommand);
-  if (renderCode !== 0) return renderCode;
-  term.success('视频渲染完成');
+  const renderFlags = [
+    exif ? 'EXIF' : null,
+    sign ? '签名' : null,
+    dark ? '暗色' : null,
+    draft ? '草稿' : null,
+  ].filter(Boolean);
+  if (renderFlags.length > 0) term.detail(renderFlags.join(', '));
+  const renderTask = term.task('渲染视频');
+  try {
+    renderTask.endLine();
+    const renderCommand = commandResolver.renderer([
+      timelinePath,
+      outPath,
+      folder,
+      ...(exif ? ['--exif'] : []),
+      ...(sign ? ['--sign'] : []),
+      ...(dark ? ['--dark'] : []),
+      ...(portrait ? ['--portrait'] : []),
+      ...(square ? ['--square'] : []),
+      ...(draft ? ['--draft'] : []),
+      ...(filter ? ['--filter', filter.id] : []),
+      ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
+      ...(template ? ['--template', template] : []),
+    ]);
+    const renderCode = await Promise.resolve(runResolvedCommand('渲染视频', renderCommand));
+    if (renderCode !== 0) {
+      renderTask.fail();
+      return renderCode;
+    }
+    renderTask.succeed();
+  } catch (error) {
+    renderTask.fail();
+    throw error;
+  }
 
-  term.success(`完成 → ${outPath}`);
+  term.success(`完成 → ${paint('path', outPath)}    ${formatDuration(Date.now() - startedAt)}`);
   succeeded = true;
   return 0;
   } finally {
