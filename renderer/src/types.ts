@@ -56,6 +56,15 @@ export type TrimDecision = {
   trimmed_duration: number;
 };
 
+export type OpeningRecapSpec = {
+  start: number;
+  settle_start: number;
+  end: number;
+  order: 'reverse';
+  layout: 'single' | 'grid';
+  batch_size: number;
+};
+
 export type TimelineMeta = {
   version: number;
   audio: string;
@@ -66,6 +75,7 @@ export type TimelineMeta = {
   background: string;
   photo_scale: number;
   trim?: TrimDecision;
+  opening_recap?: OpeningRecapSpec;
   input_hash?: string;
   plan_checksum?: string;
   branding?: Branding;

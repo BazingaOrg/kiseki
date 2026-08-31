@@ -33,8 +33,9 @@ export const Photo: React.FC<{
   filter?: {id: string; intensity?: number} | null;
   /** 模板注入的照片运镜;缺省保持静态 */
   motion?: TemplateMotion;
+  motionStart?: number;
   fontFamily?: FontFamily;
-}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion, fontFamily = 'serif'}) => {
+}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion, motionStart, fontFamily = 'serif'}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
@@ -68,7 +69,7 @@ export const Photo: React.FC<{
       motion,
       src: clip.src,
       t,
-      start: clip.start,
+      start: motionStart ?? clip.start,
       end: clip.end,
       safeWidth,
       safeHeight,

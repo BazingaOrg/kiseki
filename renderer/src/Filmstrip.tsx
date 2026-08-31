@@ -11,8 +11,10 @@ import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useV
 import {ChapterCard} from './ChapterCard';
 import {filmstripLayerPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
+import {Intro, introDuration} from './Intro';
+import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
-import {getPalette, getVisualScale} from './theme';
+import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 
@@ -59,9 +61,12 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const visibleMainPhotos = visualClips.flatMap((clip, index) => {
     if (!isPhotoClip(clip)) return [];
     const nextClip = visualClips[index + 1];
+    const presentationStart = meta.opening_recap && clip === photoClips[0]
+      ? clip.start - MAIN_CROSSFADE_DURATION / 2
+      : clip.start;
     const presentation = filmstripLayerPresentation({
       time: t,
-      start: clip.start,
+      start: presentationStart,
       end: clip.end,
       nextPhotoStart: isPhotoClip(nextClip) ? nextClip.start : null,
       transitionDuration: MAIN_CROSSFADE_DURATION,
@@ -81,6 +86,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   const visibleSubtitles = subtitles.filter(
     (l) =>
+      t >= (meta.opening_recap?.end ?? 0) &&
       l.confidence >= 0.6 &&
       t >= l.start - 1 / fps &&
       t <= l.end + 0.25 + 1 / fps,
@@ -90,6 +96,15 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const audioFadeStart = Math.max(0, durationInFrames - Math.round(1.5 * fps));
   const whiteFadeStart = Math.max(0, durationInFrames - Math.round(2.5 * fps));
   const whiteFade = interpolate(frame, [whiteFadeStart, durationInFrames - 1], [0, 1], clamp);
+  const introEnabled = meta.branding?.intro !== false;
+  const showIntro =
+    introEnabled &&
+    photoClips.length > 0 &&
+    (meta.opening_recap
+      ? meta.opening_recap.start >= introDuration
+      : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
+        durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
+  const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
 
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
@@ -127,7 +142,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />
       ))}
       {/* 底部走带:前/当前/后三帧,当前帧高亮 */}
-      <div
+      {active ? <div
         style={{
           position: 'absolute',
           left: 0,
@@ -159,8 +174,12 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
             />
           );
         })}
-      </div>
+      </div> : null}
+      <OpeningRecap meta={meta} photos={photoClips} palette={palette} variant="filmstrip" />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
+      {showIntro && frame <= Math.round(introDuration * fps) ? (
+        <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />
+      ) : null}
     </AbsoluteFill>
   );
 };

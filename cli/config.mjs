@@ -147,6 +147,12 @@ export const CONFIG_SCHEMA = {
     expected: '布尔值 true/false',
     validate: (value, kind) => kind === 'bool',
   },
+  opening_recap: {
+    default: true,
+    example: 'opening_recap = true',
+    expected: '布尔值 true/false',
+    validate: (value, kind) => kind === 'bool',
+  },
   outro_text: {
     default: '',
     example: 'outro_text = "完"',

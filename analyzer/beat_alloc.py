@@ -94,6 +94,7 @@ def allocate_switch_points(
     min_gap: float = 2.0,
     not_before: float = 0.0,
     head_offset: float = 0.0,
+    start_offset: float = 0.0,
     not_after: float | None = None,
     ideal_points: list[float] | None = None,
 ) -> list[float]:
@@ -117,9 +118,12 @@ def allocate_switch_points(
         return []
     if duration <= 0:
         raise ValueError("duration must be positive")
+    if start_offset < 0 or start_offset >= duration:
+        raise ValueError("start_offset must be within the composition")
 
     # 可用候选:落在 [not_before, duration - min_gap] 内(末张照片也要 >= min_gap)
-    usable = sorted(c for c in candidates if not_before <= c <= duration - min_gap)
+    first_switch_floor = max(not_before, start_offset + min_gap)
+    usable = sorted(c for c in candidates if first_switch_floor <= c <= duration - min_gap)
     # 吸附距离上限半个步长:再远就更靠近相邻槽位了,宁可不踩拍也不毁节奏
     span = duration - head_offset
     max_snap = span / n_photos / 2
@@ -129,15 +133,15 @@ def allocate_switch_points(
         raise ValueError("ideal_points length must be n_photos - 1")
     last_idx = len(grid) - 1
     upper = max(grid[last_idx], not_after) if not_after is not None else None
-    first_lower = max(min_gap, not_before)
+    first_lower = max(start_offset + min_gap, not_before)
     reserve_capacity = first_lower <= duration - (n_photos - 1) * min_gap + 1e-9
 
     result: list[float] = []
-    prev = 0.0
+    prev = start_offset
     used_idx = -1  # usable 中已消费到的下标,保证单调 + 不重复吸附
 
     for i, ideal in enumerate(grid):
-        lower = max(prev + min_gap if result else max(min_gap, not_before), not_before)
+        lower = max(prev + min_gap, not_before)
         # 为后续每个切换点及最后一张照片各预留一个 min_gap。仅逐点校验
         # lower 会让动态网格在前段吸附过晚，之后即使尚有总时长也无法补回点数。
         if reserve_capacity:

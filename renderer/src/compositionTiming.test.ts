@@ -26,3 +26,24 @@ test('last polaroid card keeps the existing fade-out behavior', () => {
   assert.ok(Math.abs(card.opacity - 0.5) < Number.EPSILON);
   assert.equal(card.rotation, 1);
 });
+
+test('opening recap preroll leaves filmstrip and polaroid fully settled at handoff', () => {
+  const bodyStart = 4.017;
+  const filmstrip = filmstripLayerPresentation({
+    time: bodyStart,
+    start: bodyStart - 0.3,
+    end: 6,
+    nextPhotoStart: null,
+    transitionDuration: 0.6,
+  });
+  const polaroid = polaroidCardPresentation({
+    time: bodyStart,
+    start: bodyStart - 0.4,
+    end: 6,
+    nextPhotoStart: null,
+    rotation: -2,
+  });
+  assert.deepEqual(filmstrip, {visible: true, opacity: 1});
+  assert.equal(polaroid.opacity, 1);
+  assert.equal(polaroid.rotation, -2);
+});

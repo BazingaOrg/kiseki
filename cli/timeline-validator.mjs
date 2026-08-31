@@ -91,6 +91,20 @@ export const validateTimeline = (timeline) => {
     const trimmedDuration = finite(trim.trimmed_duration, '$.meta.trim.trimmed_duration', {positive: true});
     if (trimmedDuration > fullDuration) fail('$.meta.trim.trimmed_duration', '不能超过 $.meta.trim.full_duration');
   }
+  if ('opening_recap' in meta) {
+    const recap = object(meta.opening_recap, '$.meta.opening_recap');
+    const start = finite(recap.start, '$.meta.opening_recap.start', {nonNegative: true});
+    const settleStart = finite(recap.settle_start, '$.meta.opening_recap.settle_start', {nonNegative: true});
+    const end = finite(recap.end, '$.meta.opening_recap.end', {nonNegative: true});
+    if (settleStart <= start) fail('$.meta.opening_recap.settle_start', '必须大于 start');
+    if (end <= settleStart) fail('$.meta.opening_recap.end', '必须大于 settle_start');
+    if (end > duration) fail('$.meta.opening_recap.end', '不能超过 $.meta.duration');
+    if (string(recap.order, '$.meta.opening_recap.order') !== 'reverse') fail('$.meta.opening_recap.order', '必须是 reverse');
+    const layout = string(recap.layout, '$.meta.opening_recap.layout');
+    if (!['single', 'grid'].includes(layout)) fail('$.meta.opening_recap.layout', '必须是 single 或 grid');
+    const batchSize = finite(recap.batch_size, '$.meta.opening_recap.batch_size', {positive: true, integer: true});
+    if (layout === 'single' && batchSize !== 1) fail('$.meta.opening_recap.batch_size', 'single 布局必须为 1');
+  }
   if ('chapters' in meta) {
     const chapters = object(meta.chapters, '$.meta.chapters');
     boolean(chapters.enabled, '$.meta.chapters.enabled');

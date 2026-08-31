@@ -45,7 +45,7 @@ node cli/kiseki.mjs help
 
 ## 配置与文档
 
-- [配置参考](docs/config.md)：严格的 `kiseki.toml` 21 键契约
+- [配置参考](docs/config.md)：严格的 `kiseki.toml` 22 键契约
 - [时间线格式](docs/specs/timeline-schema.md)：`timeline.json` 的只读校验边界
 - [项目状态](docs/kiseki-status.md)：工作台、缓存与已知限制
 

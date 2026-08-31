@@ -20,6 +20,7 @@
     "chapters": true,
     "demucs": true,
     "intro": true,
+    "opening_recap": true,
     "outro_text": "",
     "signature": ""
   },
@@ -48,13 +49,14 @@
         "chapters": true,
         "demucs": true,
         "intro": true,
+        "opening_recap": true,
         "outro_text": "",
         "signature": ""
       }
     },
     {
       "name": "all-keys-non-default",
-      "toml": "width = 1280\nheight = 720\nfps = 30\nbackground = \"#123456\"\nphoto_scale = 0.5\ntransition = \"cut\"\nalbum_fade = 0.1\ncrossfade = 0.2\nmin_gap = 1.5\nflash_min_gap = 0.3\nflash_avg_threshold = 1.0\ntrim_avg_threshold = 5.0\ntrim_target_avg = 4.0\npacing = \"uniform\"\ntrim = 15\nsubtitles = false\nchapters = false\ndemucs = false\nintro = false\noutro_text = \"the end\"\nsignature = \"sig.svg\"\n",
+      "toml": "width = 1280\nheight = 720\nfps = 30\nbackground = \"#123456\"\nphoto_scale = 0.5\ntransition = \"cut\"\nalbum_fade = 0.1\ncrossfade = 0.2\nmin_gap = 1.5\nflash_min_gap = 0.3\nflash_avg_threshold = 1.0\ntrim_avg_threshold = 5.0\ntrim_target_avg = 4.0\npacing = \"uniform\"\ntrim = 15\nsubtitles = false\nchapters = false\ndemucs = false\nintro = false\nopening_recap = false\noutro_text = \"the end\"\nsignature = \"sig.svg\"\n",
       "files": [{"name": "sig.svg", "content": "<svg xmlns=\"http://www.w3.org/2000/svg\"></svg>"}],
       "expect": "ok",
       "config": {
@@ -77,6 +79,7 @@
         "chapters": false,
         "demucs": false,
         "intro": false,
+        "opening_recap": false,
         "outro_text": "the end",
         "signature": "sig.svg"
       }
@@ -147,6 +150,7 @@
         "chapters": true,
         "demucs": true,
         "intro": true,
+        "opening_recap": true,
         "outro_text": "a # b",
         "signature": ""
       }
@@ -231,6 +235,7 @@
         "chapters": true,
         "demucs": true,
         "intro": true,
+        "opening_recap": true,
         "outro_text": "",
         "signature": ""
       }
@@ -254,6 +259,13 @@
       "toml": "demucs = \"yes\"\n",
       "expect": "error",
       "key": "demucs",
+      "line": 1
+    },
+    {
+      "name": "opening-recap-string",
+      "toml": "opening_recap = \"yes\"\n",
+      "expect": "error",
+      "key": "opening_recap",
       "line": 1
     }
   ]

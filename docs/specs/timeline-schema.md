@@ -21,6 +21,8 @@
 
 可选 `meta.trim` 必须有 `mode`（`"auto"`、`"full"` 或 `"seconds"`）、`applied`（布尔）、`full_duration` 与 `trimmed_duration`（正有限数），且后者不大于前者。可选 `meta.chapters` 必须有 `enabled`（布尔）、`day_count` 与 `card_count`（非负整数）。可选 `meta.branding` 的 `outro_text`、`signature` 为字符串，`intro` 为布尔。
 
+可选 `meta.opening_recap` 表示签名片头后的倒序照片预览：`start < settle_start < end <= meta.duration`，三者均为非负有限秒数；`order` 固定为 `"reverse"`；`layout` 为 `"single"` 或 `"grid"`；`batch_size` 为正整数，且 `single` 布局必须为 `1`。正文第一张照片从 `end` 开始，`settle_start..end` 由预览层停在第一张，保证进入正文时连续；渲染器在低帧率下至少保留一个停稳帧。
+
 ## photos
 
 每个 `photos[i]` 是对象，且 `start`、`end` 都是非负有限数，`end > start` 且不超过 `$.meta.duration`。

@@ -6,7 +6,7 @@
     "studio": "remotion studio",
     "render": "remotion render Diary",
     "typecheck": "tsc --noEmit",
-    "test": "node --experimental-strip-types --test src/compositionTiming.test.ts src/filters.test.ts src/fontLoadPlan.test.ts src/motion.test.ts src/subtitle.test.ts src/templates.test.ts"
+    "test": "node --experimental-strip-types --test src/compositionTiming.test.ts src/filters.test.ts src/fontLoadPlan.test.ts src/motion.test.ts src/openingRecapTiming.test.ts src/subtitle.test.ts src/templates.test.ts src/transition.test.ts"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.0",

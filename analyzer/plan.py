@@ -49,6 +49,7 @@ DEFAULTS = {
     "outro_text": "",
     "signature": "",             # 空串 = 内置签名;非空为素材夹内 .svg 相对路径
     "intro": True,               # false 时跳过片头且 plan 不预留片头时长
+    "opening_recap": True,
     "demucs": True,              # 分离人声开关;由 analyze 阶段消费
 }
 
@@ -181,6 +182,7 @@ CONFIG_SCHEMA = {
     "chapters": ("true 或 false", lambda v, _folder: isinstance(v, bool)),
     "demucs": ("布尔值 true/false", lambda v, _folder: isinstance(v, bool)),
     "intro": ("布尔值 true/false", lambda v, _folder: isinstance(v, bool)),
+    "opening_recap": ("布尔值 true/false", lambda v, _folder: isinstance(v, bool)),
     "outro_text": ("不含换行符的字符串", lambda v, _folder: isinstance(v, str) and "\n" not in v),
     "signature": ("空字符串,或以 .svg 结尾且存在于素材夹内的相对路径", _signature_is_in_folder),
 }
@@ -289,6 +291,61 @@ def ordered_photos(folder: Path) -> list[Path]:
 
 CHAPTER_SYMBOLS = [":)", "♪", "✦", "˖°"]
 
+OPENING_RECAP_MIN_PHOTOS = 8
+OPENING_RECAP_MIN_SLOT_FRAMES = 4
+OPENING_RECAP_TARGET_SLOT_FRAMES = 6
+OPENING_RECAP_MIN_DURATION = 1.0
+OPENING_RECAP_MAX_DURATION = 2.8
+
+
+def _opening_recap_spec(beats: dict, n_photos: int, cfg: dict, planning_duration: float) -> dict | None:
+    if not cfg.get("intro", True) or not cfg.get("opening_recap", True) or n_photos < OPENING_RECAP_MIN_PHOTOS:
+        return None
+    fps = int(cfg["fps"])
+    all_beats = sorted({float(value) for value in beats.get("beats", []) if math.isfinite(float(value))})
+    downbeats = {float(value) for value in beats.get("downbeats", []) if math.isfinite(float(value))}
+    near_intro = [value for value in all_beats if INTRO_DURATION <= value <= INTRO_DURATION + 0.35]
+    start = near_intro[0] if near_intro else INTRO_DURATION
+    bpm = float(beats.get("bpm", 120.0))
+    beat_duration = 60.0 / bpm if math.isfinite(bpm) and bpm > 0 else 0.5
+    settle_duration = min(0.4, max(0.25, beat_duration / 2))
+    desired_rewind = (n_photos - 1) * OPENING_RECAP_TARGET_SLOT_FRAMES / fps
+    target_duration = min(
+        OPENING_RECAP_MAX_DURATION,
+        max(OPENING_RECAP_MIN_DURATION, desired_rewind + settle_duration),
+    )
+    candidates = [
+        value for value in all_beats
+        if start + OPENING_RECAP_MIN_DURATION <= value <= start + OPENING_RECAP_MAX_DURATION
+    ]
+    if not candidates:
+        return None
+    target_end = start + target_duration
+    end = min(candidates, key=lambda value: (abs(value - target_end) - (0.08 if value in downbeats else 0), value))
+    body_span = planning_duration - end
+    if body_span <= 0:
+        return None
+    body_average = body_span / n_photos
+    body_min_gap = cfg["flash_min_gap"] if body_average < cfg["flash_avg_threshold"] else cfg["min_gap"]
+    if body_span + 1e-9 < n_photos * body_min_gap:
+        return None
+    settle_start = end - settle_duration
+    rewind_frames = max(0, round((settle_start - start) * fps))
+    max_slots = rewind_frames // OPENING_RECAP_MIN_SLOT_FRAMES
+    if max_slots < 1:
+        return None
+    raw_batch_size = max(1, math.ceil((n_photos - 1) / max_slots))
+    columns = math.ceil(math.sqrt(raw_batch_size))
+    batch_size = columns * columns
+    return {
+        "start": round(start, 3),
+        "settle_start": round(settle_start, 3),
+        "end": round(end, 3),
+        "order": "reverse",
+        "layout": "single" if batch_size == 1 else "grid",
+        "batch_size": batch_size,
+    }
+
 
 def _photo_days(photos: list[Path]) -> list[str] | None:
     """Return sortable YYYY-MM-DD days only when every DateTimeOriginal is usable."""
@@ -344,33 +401,40 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     full_duration = float(beats["duration"])
     duration = full_duration
     n = len(photos)
-    avg = duration / n
 
     trim_value = cfg["trim"]
     trim_mode = "seconds" if _is_trim_seconds(trim_value) else trim_value
-    target = float(trim_value) if trim_mode == "seconds" else n * cfg["trim_target_avg"]
+    planning_duration = min(full_duration, float(trim_value)) if trim_mode == "seconds" else full_duration
+    opening_recap = _opening_recap_spec(beats, n, cfg, planning_duration)
+    body_start = opening_recap["end"] if opening_recap else 0.0
+    full_body_average = (full_duration - body_start) / n
+    target = float(trim_value) if trim_mode == "seconds" else body_start + n * cfg["trim_target_avg"]
     should_trim = (
         (trim_mode == "seconds" and target < full_duration)
-        or (trim_mode == "auto" and avg > cfg["trim_avg_threshold"])
+        or (trim_mode == "auto" and full_body_average > cfg["trim_avg_threshold"])
     )
     # 图少歌长或显式秒数:在目标时长附近的重拍处截断
     # (渲染端按 duration 收尾淡出,无需真裁音频)。
     if should_trim:
         candidates = [
             d for d in beats["downbeats"]
-            if n * cfg["min_gap"] <= d < full_duration
+            if body_start + n * cfg["min_gap"] <= d < full_duration
         ]
         if candidates:
             duration = min(candidates, key=lambda d: abs(d - target))
-            avg = duration / n
-            term.info(f"裁剪模式: 歌长图少,在 {duration:.1f}s 重拍处截断并淡出,平均每张 {avg:.1f}s")
+            body_average = (duration - body_start) / n
+            term.info(f"裁剪模式: 歌长图少,在 {duration:.1f}s 重拍处截断并淡出,平均每张 {body_average:.1f}s")
         else:
             term.info("裁剪模式: 找不到满足最小照片间隔的重拍点,保留完整歌曲")
 
-    is_flash = avg < cfg["flash_avg_threshold"]
+    if opening_recap and opening_recap["end"] >= duration:
+        opening_recap = None
+        body_start = 0.0
+    body_average = (duration - body_start) / n
+    is_flash = body_average < cfg["flash_avg_threshold"]
     if is_flash:
         candidates, min_gap = beats["beats"], cfg["flash_min_gap"]
-        term.info(f"快闪模式: 平均每张 {avg:.1f}s < {cfg['flash_avg_threshold']}s,吸附每拍,min_gap={min_gap}s")
+        term.info(f"快闪模式: 平均每张 {body_average:.1f}s < {cfg['flash_avg_threshold']}s,吸附每拍,min_gap={min_gap}s")
     else:
         candidates, min_gap = beats["downbeats"], cfg["min_gap"]
 
@@ -393,7 +457,10 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     intro_enabled = bool(cfg.get("intro", True))
     min_duration_for_reserve = SHOW_INTRO_MIN_T + (MIN_PHOTO_VISIBLE if n == 2 else 0.0)
     head_offset = 0.0
-    if (
+    if opening_recap:
+        not_before = max(not_before, body_start + min_gap)
+        head_offset = body_start
+    elif (
         intro_enabled
         and not is_flash
         and duration >= min_duration_for_reserve
@@ -412,7 +479,7 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     switches = allocate_switch_points(
         duration, n, candidates,
         min_gap=min_gap, not_before=not_before,
-        head_offset=head_offset, not_after=not_after,
+        head_offset=head_offset, start_offset=body_start, not_after=not_after,
         ideal_points=ideal_points,
     )
     if len(switches) < n - 1:
@@ -429,7 +496,7 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
         later_transition = {"type": "album", "duration": cfg["album_fade"]}
     motion = {"type": "none", "from": 1.0, "to": 1.0}
 
-    bounds = [0.0, *switches, duration]
+    bounds = [body_start, *switches, duration]
     clips = []
     for i, p in enumerate(photos):
         clips.append({
@@ -471,6 +538,8 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
         },
         "chapters": chapter_meta,
     }
+    if opening_recap:
+        meta["opening_recap"] = opening_recap
     if branding:
         meta["branding"] = branding
     if input_hash:
@@ -580,9 +649,10 @@ def main(argv: list[str] | None = None) -> int:
     write_json_atomic(out, timeline)
     _write_status(args.status_output, "generated")
     n = sum(clip.get("kind") == "photo" for clip in timeline["photos"])
+    body_start = timeline["meta"].get("opening_recap", {}).get("end", 0.0)
     term.detail(
         f"plan: {n} photos / {timeline['meta']['duration']}s "
-        f"(平均每张 {timeline['meta']['duration'] / n:.1f}s, 字幕 {len(lyrics)} 行)"
+        f"(平均每张 {(timeline['meta']['duration'] - body_start) / n:.1f}s, 字幕 {len(lyrics)} 行)"
     )
     return 0
 

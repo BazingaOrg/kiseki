@@ -34,6 +34,7 @@ test('reports precise paths for root and known clip errors', () => {
 test('validates optional renderer fields in their real shapes', () => {
   const timeline = validTimeline();
   timeline.meta.trim = {mode: 'seconds', applied: true, full_duration: 40, trimmed_duration: 30};
+  timeline.meta.opening_recap = {start: 3, settle_start: 4.25, end: 4.5, order: 'reverse', layout: 'single', batch_size: 1};
   timeline.meta.chapters = {enabled: true, day_count: 2, card_count: 1};
   timeline.meta.branding = {outro_text: '', signature: 'signature.svg', intro: false};
   timeline.meta.filter = null;
@@ -43,6 +44,19 @@ test('validates optional renderer fields in their real shapes', () => {
   assert.equal(validateTimeline(timeline), timeline);
   timeline.meta.chapters.card_count = -1;
   assert.throws(() => validateTimeline(timeline), /\$\.meta\.chapters\.card_count/);
+});
+
+test('opening recap validates ordered bounded timing and batch shape', () => {
+  const timeline = validTimeline();
+  timeline.meta.opening_recap = {start: 3, settle_start: 4.25, end: 4.5, order: 'reverse', layout: 'grid', batch_size: 4};
+  assert.equal(validateTimeline(timeline), timeline);
+  timeline.meta.opening_recap.settle_start = 2;
+  assert.throws(() => validateTimeline(timeline), /\$\.meta\.opening_recap\.settle_start/);
+  timeline.meta.opening_recap.settle_start = 4.25;
+  timeline.meta.opening_recap.batch_size = 0;
+  assert.throws(() => validateTimeline(timeline), /\$\.meta\.opening_recap\.batch_size/);
+  timeline.meta.opening_recap = {start: 3, settle_start: 4.25, end: 4.5, order: 'reverse', layout: 'single', batch_size: 4};
+  assert.throws(() => validateTimeline(timeline), /single 布局必须为 1/);
 });
 
 test('trim duration must not exceed the full duration', () => {

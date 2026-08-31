@@ -12,10 +12,11 @@ import {Intro, introDuration} from './Intro';
 import {Outro} from './Outro';
 import {Photo, hasDisplayableExif} from './Photo';
 import {ChapterCard} from './ChapterCard';
+import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, getPalette, getVisualScale} from './theme';
-import {getFadeDuration} from './transition';
+import {getFadeDuration, resolvePhotoTransition} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 import {resolveTemplatePresentation} from './templates';
 
@@ -51,25 +52,35 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const photoClips = visualClips.filter(isPhotoClip);
   const chapterClips = visualClips.filter(isChapterClip);
-  const visiblePhotos: Array<{clip: PhotoClip; index: number}> = [];
+  const visiblePhotos: Array<{clip: PhotoClip; index: number; motionStart: number}> = [];
   for (let index = 0; index < visualClips.length; index += 1) {
     const clip = visualClips[index];
     if (!isPhotoClip(clip)) continue;
     // 模板转场是呈现层默认,取代 timeline 里的逐 clip 转场;chapter 卡保持自身节奏
-    const effective = template.transition === undefined ? clip : {...clip, transition: template.transition};
+    const openingRecapFirst = Boolean(meta.opening_recap && clip === photoClips[0]);
+    const effective = {
+      ...clip,
+      start: openingRecapFirst ? meta.opening_recap!.settle_start : clip.start,
+      transition: resolvePhotoTransition({
+        clipTransition: clip.transition,
+        templateTransition: template.transition,
+        openingRecapFirst,
+      }),
+    };
     const dIn = getFadeDuration(effective.transition);
     const nextClip = visualClips[index + 1];
     const dOut = isPhotoClip(nextClip) ? getFadeDuration(template.transition ?? nextClip.transition) : 0;
     if (
-      t >= clip.start - dIn / 2 - 1 / fps &&
+      t >= effective.start - dIn / 2 - 1 / fps &&
       t <= clip.end + dOut / 2 + 1 / fps
     ) {
-      visiblePhotos.push({clip: effective, index});
+      visiblePhotos.push({clip: effective, index, motionStart: clip.start});
     }
   }
 
   const visibleSubtitles = subtitles.filter(
     (l) =>
+      t >= (meta.opening_recap?.end ?? 0) &&
       l.confidence >= SUBTITLE.confidenceThreshold &&
       t >= l.start - 1 / fps &&
       t <= l.end + SUBTITLE.fadeOutDuration + 1 / fps,
@@ -86,8 +97,10 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const showIntro =
     introEnabled &&
     photoClips.length > 0 &&
-    photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
-    durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible;
+    (meta.opening_recap
+      ? meta.opening_recap.start >= introDuration
+      : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
+        durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
 
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
   const outroOpacity =
@@ -121,7 +134,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         src={staticFile(meta.audio.replace(/^\.\//, ''))}
         volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
       />
-      {visiblePhotos.map(({clip, index}) => (
+      {visiblePhotos.map(({clip, index, motionStart}) => (
         <Photo
           key={`${clip.src}-${index}`}
           clip={clip}
@@ -135,6 +148,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           signature={meta.sign ? photoSignature : undefined}
           filter={clip.filter ?? meta.filter}
           motion={template.motion}
+          motionStart={motionStart}
           fontFamily={template.fontFamily}
         />
       ))}
@@ -151,6 +165,12 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         />
       ))}
       {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />)}
+      <OpeningRecap
+        meta={meta}
+        photos={photoClips}
+        palette={palette}
+        variant={meta.templateId === 'news-cut' ? 'cut' : 'diary'}
+      />
       {whiteFade > 0 ? (
         <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} />
       ) : null}

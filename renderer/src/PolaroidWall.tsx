@@ -11,9 +11,11 @@ import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useV
 import {ChapterCard} from './ChapterCard';
 import {polaroidCardPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
+import {Intro, introDuration} from './Intro';
+import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
 import {hashString} from './motion';
-import {getPalette, getVisualScale} from './theme';
+import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 
@@ -47,6 +49,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const chapterClips = visualClips.filter(isChapterClip);
   const visibleSubtitles = subtitles.filter(
     (l) =>
+      t >= (meta.opening_recap?.end ?? 0) &&
       l.confidence >= SUBTITLE_CONFIDENCE &&
       t >= l.start - 1 / fps &&
       t <= l.end + SUBTITLE_FADE_OUT + 1 / fps,
@@ -56,13 +59,26 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const audioFadeStart = Math.max(0, durationInFrames - Math.round(1.5 * fps));
   const whiteFadeStart = Math.max(0, durationInFrames - Math.round(2.5 * fps));
   const whiteFade = interpolate(frame, [whiteFadeStart, durationInFrames - 1], [0, 1], clamp);
+  const photoClips = visualClips.filter(isPhotoClip);
+  const introEnabled = meta.branding?.intro !== false;
+  const showIntro =
+    introEnabled &&
+    photoClips.length > 0 &&
+    (meta.opening_recap
+      ? meta.opening_recap.start >= introDuration
+      : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
+        durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
+  const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
 
   const cards = visualClips.flatMap((clip, index) => {
     if (!isPhotoClip(clip)) return [];
     const nextClip = visualClips[index + 1];
+    const presentationStart = meta.opening_recap && clip === photoClips[0]
+      ? clip.start - 0.4
+      : clip.start;
     const presentation = polaroidCardPresentation({
       time: t,
-      start: clip.start,
+      start: presentationStart,
       end: clip.end,
       nextPhotoStart: isPhotoClip(nextClip) ? nextClip.start : null,
       rotation: (hashString(clip.src) % 9) - 4,
@@ -114,7 +130,11 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => (
         <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />
       ))}
+      <OpeningRecap meta={meta} photos={photoClips} palette={palette} variant="polaroid" />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
+      {showIntro && frame <= Math.round(introDuration * fps) ? (
+        <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />
+      ) : null}
     </AbsoluteFill>
   );
 };

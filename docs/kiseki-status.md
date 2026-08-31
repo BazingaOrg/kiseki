@@ -10,6 +10,8 @@ kiseki 是本地工作台：读取照片、唯一音频和可选 LRC，分析并
 
 视频与 still 可从同一素材夹制作；无音频但有照片时仍可导出 still，只有 still 时也可进入成果。视频与 still 共用画布、字体、照片和配色；still 的 `--scale 1-4` 表示静态导出像素倍率，不是增强。
 
+默认在手写签名片头后加入自适应序章闪回：不少于 8 张照片且正文时长足够时，从节拍窗口内倒序回看到第一张，再在拍点进入正文；图片密度过高时使用分组联系印，避免把单张压缩到不可辨认的帧数。默认展陈、新闻快切、胶片带与拍立得 composition 分别沿用自身照片容器；`opening_recap = false` 可关闭。
+
 服务内同一时间只允许一个 job，第二个创建请求返回 409。任务创建或运行时禁用换素材夹，但可在三段间切换而不丢进度、错误或取消入口。刷新同一 server、同一素材夹时会重新挂接当前 job 并回放事件；这不是 server 重启后的恢复。
 
 歌词优先读取 LRC，否则本地 Whisper 识别。多音频或多歌词会显示歧义；在线歌词候选先选中，再明确确认保存，确认前不写入素材。
@@ -28,10 +30,10 @@ Web doctor 异步检查外部依赖，成功结果短暂缓存并合并同时请
 - 照片全有 EXIF 时间时按拍摄时间排序，否则按文件名排序。
 - 缺少 `web/dist` 时 `kiseki web` 直接失败。
 - Linux、Windows 与更多真实歌曲/照片组合仍需验证；浏览器真实媒体播放与成片视觉质量由人工验收。
-- 配置为严格的 21 键契约，见 [config.md](config.md)；非法或未知配置不会静默回退。
+- 配置为严格的 22 键契约，见 [config.md](config.md)；非法或未知配置不会静默回退。
 
 ## 本轮最终验证
 
-2026-08-12，基线 HEAD 为 `49eff53`，在全量改名后的当前工作树验证：CLI `583/583`、Analyzer `161`、Renderer `20/20` 加 typecheck、Web `52/52` 加 typecheck 与 production build 均通过；新 CLI、renderer 转发与三个 analyzer console scripts 的入口 smoke 通过。另目检 1280×720 与 390×844 欢迎页 Logo，以及 3000×1700 README 架构图；浏览器真实媒体播放、完整素材操作与成片视觉质量仍未验收。
+2026-08-31，基线 HEAD 为 `c2ffca9`，序章闪回改动验证：CLI `631/631`、Analyzer `169/169`、Renderer `34/34` 加 typecheck 均通过；用 12 张照片与真实 30 秒音频完成 301 帧 Diary 开场编码，并逐帧核对 Diary、Filmstrip、PolaroidWall 在闪回到正文边界没有空帧、重复淡入或二次旋转；默认 Diary、Filmstrip、PolaroidWall 的交界关键帧 SSIM 均为 `1.000`，slow-cinema 在交界后只发生预期的 Ken Burns 运镜且没有亮度下坠；50 张照片的分组联系印关键帧也已渲染目检。Web 未改动，本轮未重复运行 Web 测试、typecheck 或 build；更多真实歌曲、照片与完整成片的主观节奏仍需人工验收。
 
 历史方案中“只读画廊”和 `Cache-Control: private, max-age=86400` 是当时审计/性能基线的保留文字，不代表当前工作台或缩略图实现；当前行为以上文的本地工作台与 `private, no-cache`、ETag/304 说明为准。
