@@ -41,7 +41,7 @@ DEEPSEEK_API_KEY=... node cli/kiseki.mjs ./osaka-trip --photo-caption
 DEEPSEEK_API_KEY=... node cli/kiseki.mjs still ./photo.jpg --photo-caption
 ```
 
-The API key is read from the environment only and is not part of `kiseki.toml`. You can also put `DEEPSEEK_API_KEY=...` in a repo-root `.env` (see `.env.example`); CLI/web load it on startup and never override a key already set in the shell. When enabled, kiseki sends low-resolution JPEG previews to DeepSeek, caches captions in `output/metadata/ai-captions.json`, and starts rendering only after every required caption is ready. Original photos are never uploaded. With the option off, the existing local analysis and render path is unchanged.
+The API key is read from the environment only and is not part of `kiseki.toml`. You can also put `DEEPSEEK_API_KEY=...` in a repo-root `.env` (see `.env.example`); CLI/web load it on startup and never override a key already set in the shell. When enabled, kiseki sends a downscaled JPEG preview to DeepSeek, caches captions in `output/metadata/ai-captions.json`, and starts rendering only after every required caption is ready. Original photos are never uploaded. With the option off, the existing local analysis and render path is unchanged.
 
 `web` starts the local workbench; the frontend is built by `./scripts/setup.sh`. The page can view and make material, and rename or delete assets. Writes are protected by the startup material root, server token, conflict and job checks; deletion first moves an item to trash and undo is available only within the running process. See [project status](docs/kiseki-status.md).
 

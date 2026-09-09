@@ -42,7 +42,7 @@ DEEPSEEK_API_KEY=... node cli/kiseki.mjs ./osaka-trip --photo-caption
 DEEPSEEK_API_KEY=... node cli/kiseki.mjs still ./photo.jpg --photo-caption
 ```
 
-密钥只从环境读取，不属于 `kiseki.toml`。也可在仓库根目录放 `.env`（见 `.env.example`），启动 CLI/web 时会填入尚未设置的 `DEEPSEEK_API_KEY`；已 export 的环境变量优先生效。开启后会把低清 JPEG 预览发给 DeepSeek，文案缓存在 `output/metadata/ai-captions.json`，全部生成后再开始渲染；原图不会上传。关闭该选项时路径与现有本地分析/渲染一致。
+密钥只从环境读取，不属于 `kiseki.toml`。也可在仓库根目录放 `.env`（见 `.env.example`），启动 CLI/web 时会填入尚未设置的 `DEEPSEEK_API_KEY`；已 export 的环境变量优先生效。开启后会把缩小后的 JPEG 预览发给 DeepSeek，文案缓存在 `output/metadata/ai-captions.json`，全部生成后再开始渲染；原图不会上传。关闭该选项时路径与现有本地分析/渲染一致。
 
 `web` 启动本地工作台，前端由 `./scripts/setup.sh` 构建。网页可查看和制作素材，也可改名或删除资产；写入受启动时的素材根目录、服务 token、冲突与任务检查保护，删除先移入回收区并仅提供进程内撤销。详见[项目状态](docs/kiseki-status.md)。
 

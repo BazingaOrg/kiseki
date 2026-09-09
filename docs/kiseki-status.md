@@ -1,6 +1,6 @@
 # kiseki 项目状态
 
-kiseki 是本地工作台：读取照片、唯一音频和可选 LRC，分析并规划时间线，输出视频或静态 PNG。`fetch` 是可选在线备料；音频/时间线分析与渲染仍在本机完成。用户显式开启 `--photo-caption` 时，任务会在渲染前把低清预览发给 DeepSeek，文案写入 `output/metadata/ai-captions.json`；API Key 只从 `DEEPSEEK_API_KEY` 读取，不进入 `kiseki.toml`、页面或 Renderer。
+kiseki 是本地工作台：读取照片、唯一音频和可选 LRC，分析并规划时间线，输出视频或静态 PNG。`fetch` 是可选在线备料；音频/时间线分析与渲染仍在本机完成。用户显式开启 `--photo-caption` 时，任务会在渲染前把缩小后的预览发给 DeepSeek，文案写入 `output/metadata/ai-captions.json`；API Key 只从 `DEEPSEEK_API_KEY` 读取，不进入 `kiseki.toml`、页面或 Renderer。
 
 主力入口是 CLI 与 `kiseki web`。`desktop/` 是实验性 macOS 壳，不承诺打包与跨平台。
 

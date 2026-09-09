@@ -257,7 +257,7 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability}: Optio
           图片旁白
         </label>
         <p className="make-field-hint" id="photo-caption-help">
-          为照片补上一句画外之意。开启后会将低清预览发送给 DeepSeek，全部生成后再开始制作。
+          为照片补上一句画外之意。开启后会将缩小后的预览发给 DeepSeek，全部生成后再开始制作。原图不会上传。
         </p>
         {captionCapability && !captionCapability.enabled && (
           <p className="hint hint-error">{captionCapability.blockers[0]?.reason}</p>

@@ -156,7 +156,7 @@ export const runMenu = async (
       sign = await ask.confirm('加入签名落款,用于作品署名?', {
         defaultValue: false, defaultLabel: '不加入', alternateKey: 's', alternateLabel: '加入',
       });
-      photoCaption = await ask.confirm('为照片生成图片旁白？会发送低清预览。', {
+      photoCaption = await ask.confirm('为照片生成图片旁白？会发送缩小后的预览，不上传原图。', {
         defaultValue: false, defaultLabel: '不生成', alternateKey: 'c', alternateLabel: '生成',
       });
       dark = await ask.confirm('使用暗色背景?', {
