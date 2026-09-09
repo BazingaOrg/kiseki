@@ -14,6 +14,10 @@ import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
+import {PhotoCaption} from './PhotoCaption';
+import {photoCaptionPresentation} from './compositionTiming';
+import {resolveFontFamily} from './fontFamily';
+import {FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
@@ -28,8 +32,7 @@ const isChapterClip = (clip: VisualClip | undefined): clip is Extract<VisualClip
 
 const toStatic = (src: string) => staticFile(src.replace(/^\.\//, ''));
 
-// 主照片在 photo_scale 基础上再缩 8%:给底部走带留出空间
-const MAIN_PHOTO_FACTOR = 0.92;
+
 // 走带高度占画布比例
 const STRIP_HEIGHT_RATIO = 0.09;
 const MAIN_CROSSFADE_DURATION = 0.6;
@@ -43,19 +46,17 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const template = resolveTemplatePresentation(meta.templateId);
   ensureFonts(template.fontFamily);
 
-  const mainScale = meta.photo_scale * MAIN_PHOTO_FACTOR;
+  const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
+  const photoClips = visualClips.filter(isPhotoClip);
+  const hasCaption = photoClips.some((clip) => Boolean(clip.caption));
+  const mainScale = meta.photo_scale * (hasCaption ? FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION : FILMSTRIP_MAIN_PHOTO_FACTOR);
   const mainSafeWidth = meta.width * mainScale;
   const mainSafeHeight = meta.height * mainScale;
   const stripHeight = height * STRIP_HEIGHT_RATIO;
-  // 字幕带:主照片下缘与走带上缘之间的中线;photo_scale 极大时下缘会低于走带
-  // 上缘,钳到走带上沿之上,保证字幕永远不压到走带
   const bandCenterFromBottom = Math.max(
     stripHeight + 24 * scale,
     ((1 - mainScale) / 2 * meta.height + stripHeight) / 2,
   );
-
-  const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
-  const photoClips = visualClips.filter(isPhotoClip);
   const chapterClips = visualClips.filter(isChapterClip);
 
   const visibleMainPhotos = visualClips.flatMap((clip, index) => {
@@ -105,6 +106,16 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
         durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
   const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
+  const captionState = photoCaptionPresentation({
+    clips: visualClips,
+    frame,
+    fps,
+    showIntro,
+    introEnd: introDuration,
+    recapEnd: meta.opening_recap?.end ?? 0,
+    durationInFrames,
+  });
+  const captionClip = captionState.clip && typeof captionState.clip.caption === 'string' ? captionState.clip : null;
 
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
@@ -127,6 +138,15 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           />
         </AbsoluteFill>
       ))}
+      {captionClip?.caption && captionState.visible ? (
+        <PhotoCaption
+          text={captionClip.caption}
+          layout={captionClip.captionLayout}
+          palette={palette}
+          fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
+          opacity={captionState.opacity}
+        />
+      ) : null}
       {visibleSubtitles.map((l) => (
         <Subtitle
           key={`${l.start}-${l.text}`}

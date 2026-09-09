@@ -45,6 +45,7 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
 
   if (readBool('exif')) flags.push('--exif');
   if (readBool('sign')) flags.push('--sign');
+  if (readBool('photoCaption')) flags.push('--photo-caption');
   if (readBool('dark')) flags.push('--dark');
 
   const format = opts.format === undefined ? 'landscape' : opts.format;

@@ -93,5 +93,5 @@ test('entrypoints validate before loading Remotion or reading render statistics'
   const renderSource = fs.readFileSync(new URL('./render.mjs', import.meta.url), 'utf8');
   assert.ok(renderSource.indexOf('const timeline = readTimeline(timelinePath);') < renderSource.indexOf('loadRemotionRenderer()'));
   const cliSource = fs.readFileSync(new URL('./kiseki.mjs', import.meta.url), 'utf8');
-  assert.ok(cliSource.indexOf('let tl = readValidatedTimeline(timelinePath);') < cliSource.indexOf('const n = tl.photos.filter'));
+  assert.ok(cliSource.indexOf('let tl = readValidatedTimeline(timelinePath);') < cliSource.indexOf('tl.photos.filter'));
 });

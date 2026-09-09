@@ -5,7 +5,7 @@ import {CliError, parseArgs} from './options.mjs';
 
 test('bare folder argument routes to the render command', () => {
   assert.deepEqual(parseArgs(['album']), {
-    command: 'render', folder: 'album', output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null,
+    command: 'render', folder: 'album', output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4']), {
     command: 'render',
@@ -13,6 +13,7 @@ test('bare folder argument routes to the render command', () => {
     output: 'out.mp4',
     exif: false,
     sign: false,
+    photoCaption: false,
     dark: false,
     portrait: false,
     square: false,
@@ -30,6 +31,7 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     output: null,
     exif: true,
     sign: true,
+    photoCaption: false,
     dark: true,
     portrait: false,
     square: false,
@@ -44,6 +46,7 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     output: 'out.mp4',
     exif: true,
     sign: false,
+    photoCaption: false,
     dark: false,
     portrait: false,
     square: false,
@@ -128,7 +131,7 @@ test('a leading `help` token (or -h / --help) routes to the help command', () =>
 });
 
 test('a path-qualified folder named doctor/lyrics/still/fetch/help is the escape hatch, not a verb', () => {
-  const flags = {exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
+  const flags = {exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
   assert.deepEqual(parseArgs(['./lyrics']), {command: 'render', folder: './lyrics', output: null, ...flags});
   assert.deepEqual(parseArgs(['./fetch']), {command: 'render', folder: './fetch', output: null, ...flags});
   assert.deepEqual(parseArgs(['./doctor']), {command: 'render', folder: './doctor', output: null, ...flags});
@@ -149,6 +152,7 @@ test('a leading `still` token routes to the still command with defaults', () => 
     output: null,
     exif: false,
     sign: false,
+    photoCaption: false,
     dark: false,
     portrait: false,
     square: false,
@@ -165,6 +169,7 @@ test('still accepts -o, --exif, and --scale', () => {
     output: 'out',
     exif: true,
     sign: false,
+    photoCaption: false,
     dark: false,
     portrait: false,
     square: false,
@@ -172,6 +177,11 @@ test('still accepts -o, --exif, and --scale', () => {
     scale: 3,
     filter: null,
   });
+});
+
+test('render and still accept --photo-caption', () => {
+  assert.equal(parseArgs(['album', '--photo-caption']).photoCaption, true);
+  assert.equal(parseArgs(['still', 'photo.jpg', '--photo-caption']).photoCaption, true);
 });
 
 test('still accepts signature and explicit resume flags', () => {

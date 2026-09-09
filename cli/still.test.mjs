@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
-import {formatStillDiagnostics, loadStillCanvasConfig, resolveJobs} from './still.mjs';
+import {formatStillDiagnostics, loadStillCanvasConfig, prepareStillJobs, resolveJobs} from './still.mjs';
 
 const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-still-'));
 
@@ -60,6 +60,8 @@ test('default and EXIF variants use separate output names', () => {
   assert.equal(path.basename(resolveJobs(photo, null, {exif: true}).jobs[0].outPath), 'IMG-exif.png');
   assert.equal(path.basename(resolveJobs(photo, null, {sign: true}).jobs[0].outPath), 'IMG-sign.png');
   assert.equal(path.basename(resolveJobs(photo, null, {exif: true, sign: true}).jobs[0].outPath), 'IMG-exif-sign.png');
+  assert.equal(path.basename(resolveJobs(photo, null, {photoCaption: true}).jobs[0].outPath), 'IMG-caption.png');
+  assert.equal(path.basename(resolveJobs(photo, null, {sign: true, photoCaption: true, dark: true}).jobs[0].outPath), 'IMG-sign-caption-dark.png');
 });
 
 test('still filter suffix is stable and never rewrites an explicit output file', () => {
@@ -133,6 +135,23 @@ test('batch rejects source names that collide across variant runs', () => {
   fs.writeFileSync(path.join(dir, 'IMG-dark.jpg'), 'x');
   assert.throws(() => resolveJobs(dir, null), /still 变体输出冲突/);
   assert.throws(() => resolveJobs(dir, null, {dark: true}), /IMG-dark\.png/);
+});
+
+test('still preflight skips existing outputs and EXIF-insufficient photos before captions', async () => {
+  const dir = fixture();
+  fs.writeFileSync(path.join(dir, 'a.jpg'), 'x');
+  fs.writeFileSync(path.join(dir, 'b.jpg'), 'x');
+  const jobs = resolveJobs(dir, null).jobs;
+  fs.mkdirSync(path.dirname(jobs[0].outPath), {recursive: true});
+  fs.writeFileSync(jobs[0].outPath, 'png');
+  const result = await prepareStillJobs(jobs, {
+    skipExisting: true,
+    exif: true,
+    extractExif: async (file) => path.basename(file) === 'b.jpg' ? null : {camera: 'x'},
+  });
+  assert.equal(result.skipped, 1);
+  assert.equal(result.skippedExif, 1);
+  assert.deepEqual(result.prepared, []);
 });
 
 test('batch rejects collisions with every portrait and square presentation combination', () => {

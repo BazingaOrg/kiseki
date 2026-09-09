@@ -33,10 +33,10 @@ export const createPercentProgress = ({
     `└ ${label.padEnd(18)} ${formatBar(percent)} ${String(percent).padStart(3)}%`;
 
   return {
-    update(nextLabel, value, nextStage = nextLabel) {
+    update(nextLabel, value, nextStage = nextLabel, counts = null) {
       const nextPercent = clampPercent(value);
       const stageChanged = nextStage !== stage;
-      const changed = stageChanged || nextLabel !== label || nextPercent !== percent;
+      const changed = stageChanged || nextLabel !== label || nextPercent !== percent || counts != null;
       if (!changed) return;
 
       if (stageChanged) {
@@ -45,7 +45,7 @@ export const createPercentProgress = ({
       }
       label = nextLabel;
       percent = nextPercent;
-      if (jsonEnabled) jsonWrite({kind: 'progress', label: nextLabel, percent});
+      if (jsonEnabled) jsonWrite({kind: 'progress', label: nextLabel, percent, ...(counts ? {counts} : {})});
       const line = currentLine();
 
       if (interactive) {

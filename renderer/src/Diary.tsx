@@ -16,6 +16,9 @@ import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, getPalette, getVisualScale} from './theme';
+import {PhotoCaption} from './PhotoCaption';
+import {photoCaptionPresentation} from './compositionTiming';
+import {resolveFontFamily} from './fontFamily';
 import {getFadeDuration, resolvePhotoTransition} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 import {resolveTemplatePresentation} from './templates';
@@ -102,6 +105,16 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
         durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
 
+  const captionState = photoCaptionPresentation({
+    clips: visualClips,
+    frame,
+    fps,
+    showIntro,
+    introEnd: introDuration,
+    recapEnd: meta.opening_recap?.end ?? 0,
+    durationInFrames,
+  });
+  const captionClip = captionState.clip && typeof captionState.clip.caption === 'string' ? captionState.clip : null;
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
   const outroOpacity =
     outroText === ''
@@ -152,6 +165,15 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           fontFamily={template.fontFamily}
         />
       ))}
+      {captionClip?.caption && captionState.visible ? (
+        <PhotoCaption
+          text={captionClip.caption}
+          layout={captionClip.captionLayout}
+          palette={palette}
+          fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
+          opacity={captionState.opacity}
+        />
+      ) : null}
       {visibleSubtitles.map((l) => (
         <Subtitle
           key={`${l.start}-${l.text}`}

@@ -15,6 +15,10 @@ import {Intro, introDuration} from './Intro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
 import {hashString} from './motion';
+import {PhotoCaption} from './PhotoCaption';
+import {photoCaptionPresentation} from './compositionTiming';
+import {resolveFontFamily} from './fontFamily';
+import {POLAROID_PHOTO_FACTOR, POLAROID_PHOTO_FACTOR_CAPTION} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
@@ -41,6 +45,8 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const template = resolveTemplatePresentation(meta.templateId);
   ensureFonts(template.fontFamily);
 
+  const hasCaption = photos.some((clip) => 'caption' in clip && Boolean(clip.caption));
+  const photoFactor = hasCaption ? POLAROID_PHOTO_FACTOR_CAPTION : POLAROID_PHOTO_FACTOR;
   const safeWidth = meta.width * meta.photo_scale;
   const safeHeight = meta.height * meta.photo_scale;
   const bandCenterFromBottom = (meta.height * (1 - meta.photo_scale)) / 4;
@@ -107,8 +113,8 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
               src={toStatic(clip.src)}
               style={{
                 display: 'block',
-                maxWidth: safeWidth * 0.9,
-                maxHeight: safeHeight * 0.9,
+                maxWidth: safeWidth * photoFactor,
+                maxHeight: safeHeight * photoFactor,
                 objectFit: 'contain',
                 background: '#000',
               }}
@@ -116,6 +122,27 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           </div>
         </AbsoluteFill>
       ))}
+      {(() => {
+        const captionState = photoCaptionPresentation({
+          clips: visualClips,
+          frame,
+          fps,
+          showIntro,
+          introEnd: introDuration,
+          recapEnd: meta.opening_recap?.end ?? 0,
+          durationInFrames,
+        });
+        const captionClip = captionState.clip && typeof captionState.clip.caption === 'string' ? captionState.clip : null;
+        return captionClip?.caption && captionState.visible ? (
+          <PhotoCaption
+            text={captionClip.caption}
+            layout={captionClip.captionLayout}
+            palette={palette}
+            fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
+            opacity={captionState.opacity}
+          />
+        ) : null;
+      })()}
       {visibleSubtitles.map((l) => (
         <Subtitle
           key={`${l.start}-${l.text}`}

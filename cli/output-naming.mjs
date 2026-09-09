@@ -48,6 +48,7 @@ export const resolveFilterOutputSuffix = ({filter = null, filterConfig = null, p
 export const resolveOutputVariantSuffix = ({
   exif = false,
   sign = false,
+  photoCaption = false,
   dark = false,
   portrait = false,
   square = false,
@@ -56,11 +57,42 @@ export const resolveOutputVariantSuffix = ({
   filter = null,
   filterConfig = null,
   photoNames = [],
-} = {}) => `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${dark ? '-dark' : ''}` +
+} = {}) => `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${photoCaption ? '-caption' : ''}${dark ? '-dark' : ''}` +
   `${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}` +
-  // 呈现模板只影响视频(still 不传 template);换模板重渲染不能覆盖上一份成片
   `${template && SAFE_SUFFIX.test(template) ? `-template-${template}` : ''}` +
   resolveFilterOutputSuffix({filter, filterConfig, photoNames});
+
+export const enumerateOutputVariantSuffixes = ({
+  includeDraft = false,
+  templates = [],
+  extraFilterSuffixes = [''],
+} = {}) => {
+  const suffixes = new Set();
+  for (const exif of [false, true]) {
+    for (const sign of [false, true]) {
+      for (const photoCaption of [false, true]) {
+        for (const dark of [false, true]) {
+          for (const canvas of [null, 'portrait', 'square']) {
+            for (const draft of includeDraft ? [false, true] : [false]) {
+              for (const template of templates.length > 0 ? [null, ...templates] : [null]) {
+                for (const extra of extraFilterSuffixes) {
+                  suffixes.add(`${resolveOutputVariantSuffix({
+                    exif, sign, photoCaption, dark,
+                    portrait: canvas === 'portrait',
+                    square: canvas === 'square',
+                    draft,
+                    template,
+                  })}${extra}`);
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+  return [...suffixes];
+};
 
 /**
  * Pure canonical video destination resolver. Explicit -o remains authoritative;

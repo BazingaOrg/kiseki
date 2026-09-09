@@ -12,10 +12,15 @@ import {FIXES} from './dependencies.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
-import {resolveTemplateComposition} from './templates.mjs';
+import {resolveTemplateComposition, templateMotionZoom} from './templates.mjs';
 import {term} from './term.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
+import {cacheHit, captionsPathFor, loadCaptionCache} from './ai/photo-caption-cache.mjs';
+import {normalizePhotoKey} from './ai/photo-key.mjs';
+import {captionPageFromBrowser, fitTopCaption} from './ai/photo-caption-fit.mjs';
+import {assertUnchangedSources} from './ai/photo-caption-service.mjs';
+import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from './image-identity.mjs';
 
 export const detectParallelism = (osModule = os) =>
   typeof osModule.availableParallelism === 'function'
@@ -109,13 +114,21 @@ const normalizeLoudness = (file, runtime = sourceRuntimeLayout) => {
  * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null;
  * template → meta.templateId(呈现层由渲染器注册表解析,见 renderer/src/templates.ts).
  * @param {object} timeline
- * @param {{exif?: boolean, sign?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null, template?: string | null}} flags
+ * @param {{exif?: boolean, sign?: boolean, photoCaption?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null, template?: string | null}} flags
  * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null}} deps
  */
+const stripRuntimeCaptions = (timeline) => {
+  timeline.photos = (timeline.photos ?? []).map((photo) => {
+    if (!photo || typeof photo !== 'object') return photo;
+    const {caption: _caption, captionLayout: _layout, ...rest} = photo;
+    return rest;
+  });
+};
+
 export const applyRenderVariants = async (
   timeline,
-  {exif = false, sign = false, dark = false, portrait = false, square = false, filter = null, template = null} = {},
-  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null} = {},
+  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null} = {},
+  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null} = {},
 ) => {
   if (portrait && square) throw new Error('--portrait 与 --square 不能同时使用');
   if (portrait) timeline.meta = {...timeline.meta, width: 1080, height: 1920};
@@ -144,6 +157,31 @@ export const applyRenderVariants = async (
       return resolved ? {...photo, filter: resolved} : photo;
     });
   }
+  stripRuntimeCaptions(timeline);
+  const captionSources = [];
+  if (photoCaption && publicDir) {
+    const cache = loadCaptionCache(captionsPathFor(publicDir));
+    timeline.photos = (timeline.photos ?? []).map((photo) => {
+      if ((photo.kind !== undefined && photo.kind !== 'photo') || typeof photo.src !== 'string') return photo;
+      const key = normalizePhotoKey(publicDir, photo.src);
+      if (!key) return photo;
+      const absPath = path.join(publicDir, key);
+      captionSources.push({absPath, key});
+      const stat = readSourceStat(absPath);
+      if (!stat) throw Object.assign(new Error('照片已变化，请重新制作'), {code: 'source-changed', failureStage: 'photo-caption'});
+      const item = cacheHit(cache, key, sourceIdentityRecord(key, stat, PREVIEW_WIDTH));
+      if (!item?.text) return photo;
+      return {
+        ...photo,
+        caption: item.text,
+        captionPreview: {
+          width: item.preview_pixel_width || 640,
+          height: item.preview_pixel_height || 480,
+        },
+      };
+    });
+  }
+  timeline._captionSources = captionSources;
   if (exif) {
     const exifBySrc = new Map();
     for (const photo of (timeline.photos ?? []).filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string')) {
@@ -161,6 +199,44 @@ export const applyRenderVariants = async (
   return timeline;
 };
 
+export const applyCaptionLayouts = async (timeline, {page, templateId = null, motionZoom = 1} = {}) => {
+  const width = timeline.meta.width;
+  const height = timeline.meta.height;
+  const visualScale = Math.min(width, height) / 1080;
+  let skippedLayout = 0;
+  let skippedShort = 0;
+  const next = [];
+  for (const photo of timeline.photos ?? []) {
+    if ((photo.kind !== undefined && photo.kind !== 'photo') || !photo.caption) {
+      const {captionPreview: _preview, ...rest} = photo;
+      next.push(rest);
+      continue;
+    }
+    if (typeof photo.start === 'number' && typeof photo.end === 'number' && photo.end - photo.start < 2.5) {
+      skippedShort += 1;
+    }
+    const captionLayout = await fitTopCaption({
+      text: photo.caption,
+      canvasWidth: width,
+      canvasHeight: height,
+      photoScale: timeline.meta.photo_scale,
+      imageWidth: photo.captionPreview?.width || 640,
+      imageHeight: photo.captionPreview?.height || 480,
+      visualScale,
+      hasExif: Boolean(photo.exif && (photo.exif.camera || photo.exif.lens || photo.exif.params?.length || photo.exif.datetime)),
+      templateId,
+      src: photo.src,
+      motionZoom,
+      page,
+    });
+    if (!captionLayout) skippedLayout += 1;
+    const {captionPreview: _preview, ...rest} = photo;
+    next.push({...rest, captionLayout});
+  }
+  timeline.photos = next;
+  return {skippedLayout, skippedShort};
+};
+
 const main = async () => {
   const [timelineArg, outputArg, publicDirArg, ...flagArgs] = process.argv.slice(2);
   if (!timelineArg || !outputArg || !publicDirArg) {
@@ -175,6 +251,7 @@ const main = async () => {
   const flags = {
     exif: flagArgs.includes('--exif'),
     sign: flagArgs.includes('--sign'),
+    photoCaption: flagArgs.includes('--photo-caption'),
     dark: flagArgs.includes('--dark'),
     portrait: flagArgs.includes('--portrait'),
     square: flagArgs.includes('--square'),
@@ -194,18 +271,23 @@ const main = async () => {
   const partialOutputPath = createPartialOutput(outputPath, taskId);
   const publicDir = path.resolve(publicDirArg);
   // 必须在加载 Remotion 前失败:内部入口也可直接调用,不能只依赖主 CLI.
+  delete process.env.DEEPSEEK_API_KEY;
   const timeline = readTimeline(timelinePath);
-  const {renderMedia, selectComposition} = loadRemotionRenderer();
+  const {renderMedia, selectComposition, openBrowser} = loadRemotionRenderer();
   const progress = createPercentProgress();
   const renderSettings = resolveRenderSettings({draft: flags.draft});
   let cleanup = () => {};
+  let browser = null;
 
   const filterConfig = readFilterConfig(publicDir);
   const inputProps = await applyRenderVariants(timeline, flags, {
     resolvePhotoPath: (src) => path.join(publicDir, src),
     onExifShortage: (count) => progress.println(`└ ${count} 张照片 EXIF 信息不足,视频中不显示展签`),
     filterConfig,
+    publicDir,
   });
+  const captionSources = inputProps._captionSources ?? [];
+  delete inputProps._captionSources;
 
   try {
     fs.mkdirSync(path.dirname(outputPath), {recursive: true});
@@ -217,14 +299,35 @@ const main = async () => {
     // progress 生命周期提前 finish,renderMedia 仍复用它进入渲染阶段.
     progress.endLine();
 
+    if (flags.photoCaption) {
+      browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable: sourceRuntimeLayout.chromium});
+      const bundledCleanup = bundled.cleanup;
+      cleanup = () => {
+        Promise.resolve(browser.close({silent: true})).catch(() => {});
+        bundledCleanup();
+      };
+    }
     const composition = await selectComposition({
       serveUrl: bundled.serveUrl,
-      // 模板决定 composition:Diary(默认单页)或 PolaroidWall(拍立得卡片)
       id: resolveTemplateComposition(flags.template),
       inputProps,
       logLevel: 'error',
       browserExecutable: sourceRuntimeLayout.chromium,
+      ...(browser ? {puppeteerInstance: browser} : {}),
     });
+    if (flags.photoCaption) {
+      if (captionSources.length > 0) {
+        assertUnchangedSources(publicDir, captionSources, loadCaptionCache(captionsPathFor(publicDir)));
+      }
+      const page = await captionPageFromBrowser(browser, bundled.serveUrl);
+      const {skippedLayout, skippedShort} = await applyCaptionLayouts(inputProps, {
+        page,
+        templateId: flags.template,
+        motionZoom: templateMotionZoom(flags.template),
+      });
+      if (skippedLayout > 0) progress.println(`└ 旁白排版跳过 ${skippedLayout} 张`);
+      if (skippedShort > 0) progress.println(`└ 短镜头跳过 ${skippedShort} 张`);
+    }
     const totalFrames = composition.durationInFrames;
     // 这里已拿到最终 composition;紧邻 renderMedia 输出,CLI 和 Web fd3 日志看见
     // 的都是同一份实际负载,而非原始请求或百分比历史.
@@ -237,10 +340,14 @@ const main = async () => {
         : null,
     }));
 
+    if (flags.photoCaption && captionSources.length > 0) {
+      assertUnchangedSources(publicDir, captionSources, loadCaptionCache(captionsPathFor(publicDir)));
+    }
     await renderMedia({
       serveUrl: bundled.serveUrl,
       composition,
       inputProps,
+      ...(browser ? {puppeteerInstance: browser} : {}),
       codec: 'h264',
       ...renderSettings,
       audioCodec: 'aac',
@@ -271,6 +378,9 @@ const main = async () => {
       normalizeLoudness(partialOutputPath);
     }
     else term.detail('草稿模式: 跳过响度归一');
+    if (flags.photoCaption && captionSources.length > 0) {
+      assertUnchangedSources(publicDir, captionSources, loadCaptionCache(captionsPathFor(publicDir)));
+    }
     commitAtomicOutput(outputPath, partialOutputPath, {taskId});
   } finally {
     removePartialOutput(partialOutputPath);

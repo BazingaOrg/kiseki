@@ -4,6 +4,9 @@ import {ensureFonts} from './fonts';
 import {ExifPanel, type StillExif} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
 import {Signature, useSignatureData} from './Signature';
+import {PhotoCaption} from './PhotoCaption';
+import {STILL_CAPTION_RESERVE, STILL_CAPTION_SIGN_LIFT} from './photoCaptionLayout.mjs';
+import {resolveFontFamily} from './fontFamily';
 import {CANVAS, STILL, getExifLayout, getPalette, getVisualScale} from './theme';
 
 export type {StillExif} from './ExifPanel';
@@ -18,6 +21,15 @@ export type StillProps = {
   sign?: boolean;
   signatureSrc?: string;
   filter?: {id: string; intensity?: number} | null;
+  caption?: string | null;
+  captionLayout?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fontSize: number;
+    letterSpacing: string;
+  } | null;
 };
 
 const toStatic = (src: string) => staticFile(src.replace(/^\.\//, ''));
@@ -35,6 +47,8 @@ export const Still: React.FC<StillProps> = ({
   sign = false,
   signatureSrc,
   filter,
+  caption,
+  captionLayout,
 }) => {
   ensureFonts('serif');
   const scale = getVisualScale(width, height);
@@ -44,7 +58,10 @@ export const Still: React.FC<StillProps> = ({
 
   if (!hasExif) {
     const safeW = width * photoScale;
-    const safeH = height * photoScale;
+    const showCaption = Boolean(caption && captionLayout);
+    const captionReserve = showCaption ? STILL_CAPTION_RESERVE * scale : 0;
+    const safeH = height * photoScale - captionReserve;
+    const lift = showCaption && sign ? STILL_CAPTION_SIGN_LIFT * scale : 0;
     return (
       <AbsoluteFill
         style={{
@@ -53,7 +70,24 @@ export const Still: React.FC<StillProps> = ({
           alignItems: 'center',
         }}
       >
-        <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} filter={filter} />
+        <div style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: showCaption ? 24 * scale : 0,
+          transform: lift ? `translateY(-${lift}px)` : undefined,
+        }}>
+          <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={Math.max(0, safeH)} renderScale={scale} palette={palette} filter={filter} />
+          {showCaption ? (
+            <PhotoCaption
+              text={caption ?? ''}
+              layout={captionLayout}
+              palette={palette}
+              fontFamily={resolveFontFamily(caption ?? '', 'zh')}
+              flow
+            />
+          ) : null}
+        </div>
         {sign && signature ? (
           <div style={{position: 'absolute', left: 0, right: 0, bottom: STILL.signature.bottomInset * scale, display: 'flex', justifyContent: 'center', color: palette.text, opacity: STILL.signature.opacity}}>
             <Signature data={signature} style={{height: STILL.signature.height * scale, maxWidth: safeW}} pathProps={{fill: 'currentColor'}} />
@@ -83,14 +117,25 @@ export const Still: React.FC<StillProps> = ({
           maxHeight: '100%',
         }}
       >
-        <FramedPhoto
-          src={toStatic(src)}
-          maxWidth={layout.photoMaxWidth}
-          maxHeight={layout.photoMaxHeight}
-          renderScale={scale}
-          palette={palette}
-          filter={filter}
-        />
+        <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: caption && captionLayout ? 24 * scale : 0}}>
+          <FramedPhoto
+            src={toStatic(src)}
+            maxWidth={layout.photoMaxWidth}
+            maxHeight={caption && captionLayout ? layout.photoMaxHeight - STILL_CAPTION_RESERVE * scale : layout.photoMaxHeight}
+            renderScale={scale}
+            palette={palette}
+            filter={filter}
+          />
+          {caption && captionLayout ? (
+            <PhotoCaption
+              text={caption}
+              layout={captionLayout}
+              palette={palette}
+              fontFamily={resolveFontFamily(caption, 'zh')}
+              flow
+            />
+          ) : null}
+        </div>
         <ExifPanel exif={exif!} scale={scale} width={layout.panelWidth} sign={sign} signature={signature} palette={palette} />
       </div>
     </AbsoluteFill>

@@ -3,14 +3,19 @@
  * cli 是纯 .mjs,renderer/src 是 TS 源码(未编译),两边无法直接 import,
  * 故在此维护一份平行的纯数据副本,用于 CLI 校验/帮助/渲染时选 composition;
  * 呈现字段(transition/motion/captions/chapterCard/fontFamily)只存在于渲染器
- * 注册表,渲染时按 id 解析.
+ * 注册表,渲染时按 id 解析.motionZoom 是旁白预排版需要的运镜倍率副本.
  */
 export const TEMPLATES = [
   {id: 'filmstrip', name: '胶片带', description: '主图下方保留前后照片序列', composition: 'Filmstrip'},
   {id: 'news-cut', name: '新闻快切', description: '干脆的硬切、黑体醒目大号字幕', composition: 'Diary'},
   {id: 'polaroid', name: '拍立得', description: '单张白框卡片、轻微旋转入场', composition: 'PolaroidWall'},
-  {id: 'slow-cinema', name: '电影舒缓', description: '缓慢交叉淡化、细字极简字幕、照片缓推', composition: 'Diary'},
+  {id: 'slow-cinema', name: '电影舒缓', description: '缓慢交叉淡化、细字极简字幕、照片缓推', composition: 'Diary', motionZoom: 1.06},
 ];
+
+export const templateMotionZoom = (templateId) => {
+  const template = TEMPLATES.find((item) => item.id === templateId);
+  return typeof template?.motionZoom === 'number' ? template.motionZoom : 1;
+};
 
 export const TEMPLATE_IDS = TEMPLATES.map((template) => template.id);
 

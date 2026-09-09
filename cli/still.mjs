@@ -16,15 +16,15 @@ import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAto
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {formatDuration, paint, term} from './term.mjs';
-import {resolveOutputVariantSuffix} from './output-naming.mjs';
+import {enumerateOutputVariantSuffixes, resolveFilterOutputSuffix, resolveOutputVariantSuffix} from './output-naming.mjs';
 import {acquireCommandLease} from './task-lease.mjs';
+import {assertUnchangedSources, captionsForKeys, preparePhotoCaptions, requireCaptionApiKey} from './ai/photo-caption-service.mjs';
+import {emitCaptionFailure, withProcessAbort} from './ai/caption-runtime.mjs';
+import {normalizePhotoKey} from './ai/photo-key.mjs';
+import {captionPageFromBrowser, fitStillCaption} from './ai/photo-caption-fit.mjs';
+import {loadCaptionCache, captionsPathFor} from './ai/photo-caption-cache.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-const PRESENTATION_SUFFIXES = ['', '-exif', '-sign', '-dark', '-exif-sign', '-exif-dark', '-sign-dark', '-exif-sign-dark'];
-const CANVAS_SUFFIXES = ['', '-portrait', '-square'];
-const ALL_VARIANT_SUFFIXES = PRESENTATION_SUFFIXES.flatMap((presentation) =>
-  CANVAS_SUFFIXES.map((canvas) => `${presentation}${canvas}`),
-);
 
 /** 读取视频/still 共享配置 schema,仅投影 still 所需画布字段. */
 export const loadStillCanvasConfig = (folder) => {
@@ -52,14 +52,15 @@ const listPhotosInFolder = (folder) => {
     .map((f) => path.join(folder, f));
 };
 
-const assertNoCrossVariantCollisions = (jobs, variantSuffix) => {
+const assertNoCrossVariantCollisions = (jobs, variantSuffix, extraFilterSuffixes = ['']) => {
+  const suffixes = enumerateOutputVariantSuffixes({extraFilterSuffixes});
   const producers = new Map();
   for (const job of jobs) {
     const currentStem = path.basename(job.outPath, '.png');
-    const outputStem = variantSuffix
+    const outputStem = variantSuffix && currentStem.endsWith(variantSuffix)
       ? currentStem.slice(0, -variantSuffix.length)
       : currentStem;
-    for (const suffix of ALL_VARIANT_SUFFIXES) {
+    for (const suffix of suffixes) {
       const outputName = `${outputStem}${suffix}.png`;
       const key = outputName.toLowerCase();
       const previous = producers.get(key);
@@ -74,7 +75,7 @@ const assertNoCrossVariantCollisions = (jobs, variantSuffix) => {
   }
 };
 
-export const resolveJobs = (target, output, {exif = false, sign = false, dark = false, portrait = false, square = false, filter = null} = {}) => {
+export const resolveJobs = (target, output, {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null} = {}) => {
   const resolved = path.resolve(target);
   if (!fs.existsSync(resolved)) {
     throw new CliError(`找不到路径: ${resolved}`);
@@ -88,7 +89,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
     }
     const publicDir = path.dirname(resolved);
     const variantSuffix = resolveOutputVariantSuffix({
-      exif, sign, dark, portrait, square, filter,
+      exif, sign, photoCaption, dark, portrait, square, filter,
       filterConfig: readFilterConfig(publicDir), photoNames: [path.basename(resolved)],
     });
     const base = path.basename(resolved, path.extname(resolved));
@@ -123,7 +124,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
       throw new CliError(`文件夹里没有照片: ${resolved}`);
     }
     const variantSuffix = resolveOutputVariantSuffix({
-      exif, sign, dark, portrait, square, filter,
+      exif, sign, photoCaption, dark, portrait, square, filter,
       filterConfig: readFilterConfig(resolved), photoNames: photos.map((photo) => path.basename(photo)),
     });
     const outDir = output
@@ -147,7 +148,12 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
       }
       term.warn(`同名照片输出冲突,已保留源扩展名消歧: ${group.map((job) => path.basename(job.outPath)).join(', ')}`);
     }
-    assertNoCrossVariantCollisions(jobs, variantSuffix);
+    const extraFilter = resolveFilterOutputSuffix({
+      filter,
+      filterConfig: readFilterConfig(resolved),
+      photoNames: photos.map((photo) => path.basename(photo)),
+    });
+    assertNoCrossVariantCollisions(jobs, variantSuffix, extraFilter ? ['', extraFilter] : ['']);
     return {
       publicDir: resolved,
       canvasFolder: resolved,
@@ -158,8 +164,35 @@ export const resolveJobs = (target, output, {exif = false, sign = false, dark = 
   throw new CliError(`不是文件或文件夹: ${resolved}`);
 };
 
+export const prepareStillJobs = async (jobs, {
+  skipExisting = false,
+  exif = false,
+  extractExif = extractFormattedExif,
+  existsSync = fs.existsSync,
+} = {}) => {
+  const prepared = [];
+  let skipped = 0;
+  let skippedExif = 0;
+  for (const job of jobs) {
+    if (skipExisting && existsSync(job.outPath)) {
+      skipped += 1;
+      continue;
+    }
+    let exifProps = null;
+    if (exif) {
+      exifProps = await extractExif(job.absPath);
+      if (!exifProps) {
+        skippedExif += 1;
+        continue;
+      }
+    }
+    prepared.push({...job, exifProps});
+  }
+  return {prepared, skipped, skippedExif};
+};
+
 /**
- * @param {{target: string, output: string | null, exif: boolean, sign: boolean, dark: boolean, skipExisting: boolean, scale: number, filter?: {id: string, intensity?: number} | null}} opts
+ * @param {{target: string, output: string | null, exif: boolean, sign: boolean, photoCaption?: boolean, dark: boolean, skipExisting: boolean, scale: number, filter?: {id: string, intensity?: number} | null}} opts
  */
 export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
   const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
@@ -180,16 +213,19 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
   let didThrow = false;
   let startedAt = null;
   let exportTask = null;
+  let capturedKey = undefined;
 
   try {
+    if (opts.photoCaption) capturedKey = requireCaptionApiKey();
     const resolved = resolveJobs(opts.target, opts.output, opts);
     jobs = resolved.jobs;
     task = acquireCommandLease({kind: 'still', folder: resolved.canvasFolder, outputPaths: jobs.map((job) => job.outPath)});
     startedAt = Date.now();
     originalEnv = Object.fromEntries(
-      [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+      [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP', 'DEEPSEEK_API_KEY'].map((key) => [key, process.env[key]]),
     );
     Object.assign(process.env, task.env);
+    delete process.env.DEEPSEEK_API_KEY;
 
     const canvas = loadStillCanvasConfig(resolved.canvasFolder);
     const filterConfig = readFilterConfig(resolved.canvasFolder);
@@ -198,13 +234,52 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     if (opts.dark) canvas.background = '#000000';
     if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
     if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
+    const preflight = await prepareStillJobs(jobs, {skipExisting: opts.skipExisting, exif: opts.exif});
+    skipped = preflight.skipped;
+    skippedExif = preflight.skippedExif;
+    const preparedJobs = preflight.prepared;
+    term.detail(`${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.photoCaption ? ', 图片旁白' : ''}${opts.dark ? ', 暗色' : ''}`);
+    if (preparedJobs.length === 0) {
+      jobs = preparedJobs;
+      if (skipped > 0) term.detail(`跳过 ${skipped} 张已存在(--skip-existing)`);
+      if (skippedExif > 0) term.detail(`跳过 ${skippedExif} 张 EXIF 信息不足`);
+    } else {
+    let captionTexts = new Map();
+    if (opts.photoCaption) {
+      const captionTask = term.task('准备图片旁白');
+      progress = createPercentProgress();
+      try {
+        captionTask.endLine();
+        const prepared = await withProcessAbort((signal) => preparePhotoCaptions({
+          projectRoot: resolved.canvasFolder,
+          sources: preparedJobs.map((job) => ({
+            absPath: job.absPath,
+            key: normalizePhotoKey(resolved.canvasFolder, job.absPath),
+          })),
+          apiKey: capturedKey,
+          signal,
+          onProgress: ({completed, total, reused, generated}) => {
+            progress.update('Photo captions', total === 0 ? 1 : completed / total, 'Photo captions', {completed, total, reused, generated});
+            if (completed === total) term.detail(`复用 ${reused} 条，新生成 ${generated} 条`);
+          },
+        }));
+        progress.finish();
+        captionTask.succeed();
+        captionTexts = captionsForKeys(prepared.cache, prepared.requiredKeys);
+      } catch (error) {
+        progress.finish();
+        captionTask.fail();
+        emitCaptionFailure(error);
+        throw error;
+      }
+    }
+
     const {openBrowser, renderStill, selectComposition} = loadRemotionRenderer(runtime);
     progress = createPercentProgress();
     const taskId = resolveAtomicTaskId();
     const stillProgressLabel = (index) =>
-      jobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${jobs.length}`;
+      preparedJobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${preparedJobs.length}`;
 
-    term.detail(`${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.dark ? ', 暗色' : ''}`);
     exportTask = term.task('导出 still');
     exportTask.endLine();
     const bundled = await bundleRenderer(resolved.publicDir, {
@@ -212,11 +287,8 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
       onProgress: (value) => progress.update('Bundling code', value),
     });
     cleanup = bundled.cleanup;
-    // 诊断须独占一行;不 finish,后面的批量进度仍沿用稳定的 Rendering still stage.
     progress.endLine();
 
-    // 复用同一个 Chromium 渲染全部照片:每张冷启动一次浏览器是批量导出
-    // 的最大开销.selectComposition 与 renderStill 都吃同一个 puppeteerInstance.
     const browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable: runtime.chromium});
     cleanup = () => {
       Promise.resolve(browser.close({silent: true})).catch(() => {});
@@ -224,7 +296,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     };
 
     const compositionInputProps = {
-      src: jobs[0].src,
+      src: preparedJobs[0].src,
       background: canvas.background,
       photoScale: canvas.photo_scale,
       width: canvas.width,
@@ -232,27 +304,19 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
       exif: null,
       sign: opts.sign,
       ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
-      filter: resolveJobFilter(jobs[0]),
+      filter: resolveJobFilter(preparedJobs[0]),
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error', puppeteerInstance: browser});
-    term.detail(formatStillDiagnostics({canvas, scale: opts.scale, jobs}));
-    for (let i = 0; i < jobs.length; i++) {
-      const job = jobs[i];
-      if (opts.skipExisting && fs.existsSync(job.outPath)) {
-        skipped++;
-        continue;
+    term.detail(formatStillDiagnostics({canvas, scale: opts.scale, jobs: preparedJobs}));
+    const captionPage = opts.photoCaption ? await captionPageFromBrowser(browser, bundled.serveUrl) : null;
+    let skippedLayout = 0;
+    for (let i = 0; i < preparedJobs.length; i++) {
+      const job = preparedJobs[i];
+      const key = normalizePhotoKey(resolved.canvasFolder, job.absPath);
+      const captionSources = key ? [{absPath: job.absPath, key}] : [];
+      if (opts.photoCaption && key) {
+        assertUnchangedSources(resolved.canvasFolder, captionSources, loadCaptionCache(captionsPathFor(resolved.canvasFolder)));
       }
-      let exifProps;
-      if (opts.exif) {
-        exifProps = await extractFormattedExif(job.absPath);
-        if (!exifProps) {
-          skippedExif++;
-          progress.println(`└ ${path.basename(job.absPath)}: EXIF 信息不足,已跳过导出`);
-          progress.update(stillProgressLabel(i), (i + 1) / jobs.length, 'Rendering still');
-          continue;
-        }
-      }
-
       const inputProps = {
         src: job.src,
         background: canvas.background,
@@ -261,13 +325,35 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         height: canvas.height,
         sign: opts.sign,
         ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
-        exif: exifProps ?? null,
+        exif: job.exifProps ?? null,
         filter: resolveJobFilter(job),
       };
+      if (opts.photoCaption && key && captionTexts.get(key)) {
+        const cache = loadCaptionCache(captionsPathFor(resolved.canvasFolder));
+        const item = cache.items[key];
+        const visualScale = Math.min(canvas.width, canvas.height) / 1080;
+        inputProps.caption = captionTexts.get(key);
+        inputProps.captionLayout = await fitStillCaption({
+          text: inputProps.caption,
+          canvasWidth: canvas.width,
+          canvasHeight: canvas.height,
+          photoScale: canvas.photo_scale,
+          imageWidth: item?.preview_pixel_width || 640,
+          imageHeight: item?.preview_pixel_height || 480,
+          visualScale,
+          hasExif: Boolean(job.exifProps),
+          sign: opts.sign,
+          page: captionPage,
+        });
+        if (!inputProps.captionLayout) skippedLayout += 1;
+      }
 
       fs.mkdirSync(path.dirname(job.outPath), {recursive: true});
 
       activePartial = createPartialOutput(job.outPath, taskId);
+      if (opts.photoCaption && key) {
+        assertUnchangedSources(resolved.canvasFolder, captionSources, loadCaptionCache(captionsPathFor(resolved.canvasFolder)));
+      }
       await renderStill({
         serveUrl: bundled.serveUrl,
         // selectComposition 只做一次以复用相同画布元数据;其 resolved props
@@ -287,16 +373,22 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         },
       });
 
+      if (opts.photoCaption && key) {
+        assertUnchangedSources(resolved.canvasFolder, captionSources, loadCaptionCache(captionsPathFor(resolved.canvasFolder)));
+      }
       commitAtomicOutput(job.outPath, activePartial, {taskId});
       activePartial = null;
 
-      progress.update(stillProgressLabel(i), (i + 1) / jobs.length, 'Rendering still');
+      progress.update(stillProgressLabel(i), (i + 1) / preparedJobs.length, 'Rendering still');
       progress.println(`→ ${job.outPath}`);
       rendered++;
     }
     if (skipped > 0) progress.println(`└ 跳过 ${skipped} 张已存在(--skip-existing)`);
     if (skippedExif > 0) progress.println(`└ 跳过 ${skippedExif} 张 EXIF 信息不足`);
-    progress.update(stillProgressLabel(jobs.length - 1), 1, 'Rendering still');
+    if (skippedLayout > 0) progress.println(`└ 旁白排版跳过 ${skippedLayout} 张`);
+    progress.update(stillProgressLabel(preparedJobs.length - 1), 1, 'Rendering still');
+    }
+    jobs = preparedJobs;
   } catch (error) {
     didThrow = true;
     primaryError = error;
@@ -375,6 +467,8 @@ const isMain =
   fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
 if (isMain) {
   // 便于单独调试:node cli/still.mjs <target> ...
+  const {loadLocalEnv} = await import('./load-env.mjs');
+  loadLocalEnv();
   const {parseArgs} = await import('./options.mjs');
   try {
     const parsed = parseArgs(['still', ...process.argv.slice(2)]);

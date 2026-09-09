@@ -31,6 +31,10 @@ import {runLyrics} from './lyrics.mjs';
 import {MENU_BACK, isResidentCommand, runMenu, writeBanner, writeFarewell} from './menu.mjs';
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {runStill} from './still.mjs';
+import {preparePhotoCaptions, requireCaptionApiKey} from './ai/photo-caption-service.mjs';
+import {emitCaptionFailure, withProcessAbort} from './ai/caption-runtime.mjs';
+import {normalizePhotoKey} from './ai/photo-key.mjs';
+import {createPercentProgress} from './progress.mjs';
 import {runWeb} from './web.mjs';
 import {formatDuration, paint, term} from './term.mjs';
 import {maybePersistTrimChoice} from './trim.mjs';
@@ -41,6 +45,7 @@ import {resolveRenderOutputPath} from './output-naming.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {createNodeCommandResolver} from './command-resolver.mjs';
+import {loadLocalEnv} from './load-env.mjs';
 
 export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
   validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
@@ -86,7 +91,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
 
-  const {folder: folderArg, output, exif, sign, dark, portrait, square, draft, trim, filter, template} = parsed;
+  const {folder: folderArg, output, exif, sign, photoCaption, dark, portrait, square, draft, trim, filter, template} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -105,8 +110,9 @@ export const runCommandFromArgv = async (
   // The loose scan is read-only and lets us compute the exact default output
   // name even when fetch is about to supply a currently missing audio file.
   const preflight = scanFolderLoose(folder);
+  if (photoCaption) requireCaptionApiKey();
   const outputPath = resolveRenderOutputPath({
-    folder, output, exif, sign, dark, portrait, square, draft, filter, template,
+    folder, output, exif, sign, photoCaption, dark, portrait, square, draft, filter, template,
     filterConfig: readFilterConfig(folder), photoNames: preflight.photos,
   });
   const project = resolveProjectPaths(folder, outputPath);
@@ -115,9 +121,11 @@ export const runCommandFromArgv = async (
   const task = acquireCommandLease({kind: 'render', folder, outputPaths: [project.outputPath]});
   const startedAt = Date.now();
   const originalEnv = Object.fromEntries(
-    [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP'].map((key) => [key, process.env[key]]),
+    [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP', 'DEEPSEEK_API_KEY'].map((key) => [key, process.env[key]]),
   );
   Object.assign(process.env, task.env);
+  const capturedKey = photoCaption ? requireCaptionApiKey() : undefined;
+  if (photoCaption) delete process.env.DEEPSEEK_API_KEY;
   let succeeded = false;
   try {
   // 交互终端下缺音频/歌词先给下载与在线搜索的机会;备齐或非交互时不打扰
@@ -245,13 +253,50 @@ export const runCommandFromArgv = async (
     term.success('已记住你的选择');
     tl = readValidatedTimeline(timelinePath);
   }
-  const n = tl.photos.filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string').length;
+  const photoClips = tl.photos.filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string');
+  const n = photoClips.length;
   term.info('渲染计划');
   term.detail(
     `照片: ${n} 张,平均每张 ${(tl.meta.duration / n).toFixed(1)}s\n` +
       `音频: ${tl.meta.audio.replace(/^\.\//, '')},${Math.round(tl.meta.duration)}s\n` +
       `歌词: ${tl.subtitles.length > 0 ? `${tl.subtitles.length} 行` : '无(纯音乐或未识别)'}`,
   );
+
+  if (photoCaption) {
+    const sources = [];
+    const seen = new Set();
+    for (const clip of photoClips) {
+      const key = normalizePhotoKey(folder, clip.src);
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      sources.push({absPath: path.join(folder, key), key});
+    }
+    const captionTask = term.task('准备图片旁白');
+    const progress = createPercentProgress();
+    try {
+      captionTask.endLine();
+      const prepared = await withProcessAbort((signal) => preparePhotoCaptions({
+        projectRoot: folder,
+        sources,
+        apiKey: capturedKey,
+        signal,
+        onProgress: ({completed, total, reused, generated}) => {
+          progress.update('Photo captions', total === 0 ? 1 : completed / total, 'Photo captions', {completed, total, reused, generated});
+          if (completed === total) {
+            term.detail(`复用 ${reused} 条，新生成 ${generated} 条`);
+          }
+        },
+      }));
+      progress.finish();
+      captionTask.succeed();
+      term.detail(`图片旁白 ${prepared.requiredKeys.length} 张,复用 ${prepared.reused} 条,新生成 ${prepared.generated} 条`);
+    } catch (error) {
+      progress.finish();
+      captionTask.fail();
+      emitCaptionFailure(error);
+      throw error;
+    }
+  }
 
   const outPath = project.outputPath;
   const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
@@ -273,6 +318,7 @@ export const runCommandFromArgv = async (
       folder,
       ...(exif ? ['--exif'] : []),
       ...(sign ? ['--sign'] : []),
+      ...(photoCaption ? ['--photo-caption'] : []),
       ...(dark ? ['--dark'] : []),
       ...(portrait ? ['--portrait'] : []),
       ...(square ? ['--square'] : []),
@@ -350,6 +396,7 @@ export const runInteractiveMenu = async (
 };
 
 const main = async () => {
+  loadLocalEnv();
   const argv = process.argv.slice(2);
   // 裸跑 + 交互终端 → 常驻数字菜单;管道/脚本里仍走 USAGE 报错,不破坏可脚本性
   if (argv.length === 0 && process.stdin.isTTY && process.stdout.isTTY) {

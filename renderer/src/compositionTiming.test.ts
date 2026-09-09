@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {filmstripLayerPresentation, polaroidCardPresentation} from './compositionTiming.ts';
+import {filmstripLayerPresentation, photoCaptionPresentation, polaroidCardPresentation} from './compositionTiming.ts';
 
 test('filmstrip crossfade keeps the outgoing layer visible while the next photo enters', () => {
   const outgoing = filmstripLayerPresentation({time: 4, start: 0, end: 4, nextPhotoStart: 4, transitionDuration: 0.6});
@@ -46,4 +46,27 @@ test('opening recap preroll leaves filmstrip and polaroid fully settled at hando
   assert.deepEqual(filmstrip, {visible: true, opacity: 1});
   assert.equal(polaroid.opacity, 1);
   assert.equal(polaroid.rotation, -2);
+});
+
+test('photo captions occupy one exclusive interval and skip short clips', () => {
+  const clips = [
+    {kind: 'photo', src: 'a.jpg', start: 0, end: 1},
+    {kind: 'photo', src: 'b.jpg', start: 3, end: 8},
+    {kind: 'chapter', start: 8, end: 10},
+  ];
+  const fps = 60;
+  const durationInFrames = 12 * fps;
+  const short = photoCaptionPresentation({
+    clips, frame: Math.round(0.5 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
+  });
+  assert.equal(short.visible, false);
+  const mid = photoCaptionPresentation({
+    clips, frame: Math.round(5 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
+  });
+  assert.equal(mid.visible, true);
+  assert.equal(mid.clip?.src, 'b.jpg');
+  const switchFrame = photoCaptionPresentation({
+    clips, frame: Math.ceil(8 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
+  });
+  assert.equal(switchFrame.visible, false);
 });

@@ -48,6 +48,15 @@ test('offline analyzer specs use the prepared environment and bundled Python', (
   assert.equal(spec.env.KISEKI_FFMPEG_BIN, '/runtime/ffmpeg');
 });
 
+test('renderer analyzer and tools omit DEEPSEEK_API_KEY while CLI keeps it', () => {
+  const resolver = createNodeCommandResolver({runtime, executable: '/node', baseEnv: {DEEPSEEK_API_KEY: 'secret', BASE: '1'}});
+  assert.equal(resolver.cli(['help']).env.DEEPSEEK_API_KEY, 'secret');
+  assert.equal(resolver.renderer([]).env.DEEPSEEK_API_KEY, undefined);
+  assert.equal(resolver.analyzer('kiseki-plan', []).env.DEEPSEEK_API_KEY, undefined);
+  assert.equal(resolver.tool('ffmpeg', ['-version']).env.DEEPSEEK_API_KEY, undefined);
+  assert.equal(resolver.renderer([], {omitEnvKeys: []}).env.DEEPSEEK_API_KEY, 'secret');
+});
+
 test('tool resolver is allowlisted and preserves absolute commands with spaces', () => {
   const resolver = createNodeCommandResolver({runtime});
   assert.equal(resolver.tool('uv', ['--version']).executable, '/tools with spaces/uv');

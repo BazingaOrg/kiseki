@@ -60,3 +60,11 @@ test('still 调用不传 template,输出名不带模板后缀(模板是渲染专
     '-sign',
   );
 });
+
+test('caption suffix sits after sign and before dark', () => {
+  assert.equal(resolveOutputVariantSuffix({photoCaption: true}), '-caption');
+  assert.equal(
+    resolveOutputVariantSuffix({exif: true, sign: true, photoCaption: true, dark: true, portrait: true}),
+    '-exif-sign-caption-dark-portrait',
+  );
+});

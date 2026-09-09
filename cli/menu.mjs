@@ -67,11 +67,12 @@ export const normalizeDroppedPath = (input) => {
 };
 
 /** 由菜单选择组装 argv,与命令行同一语义;未知选择返回 null. */
-export const buildArgvFromChoices = ({choice, target, exif = false, sign = false, dark = false, portrait = false, square = false, filter = null, template = null}) => {
+export const buildArgvFromChoices = ({choice, target, exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null}) => {
   if (choice === '1') {
     const argv = [target];
     if (exif) argv.push('--exif');
     if (sign) argv.push('--sign');
+    if (photoCaption) argv.push('--photo-caption');
     if (dark) argv.push('--dark');
     if (portrait) argv.push('--portrait');
     if (square) argv.push('--square');
@@ -83,6 +84,7 @@ export const buildArgvFromChoices = ({choice, target, exif = false, sign = false
     const argv = ['still', target];
     if (exif) argv.push('--exif');
     if (sign) argv.push('--sign');
+    if (photoCaption) argv.push('--photo-caption');
     if (dark) argv.push('--dark');
     if (portrait) argv.push('--portrait');
     if (square) argv.push('--square');
@@ -141,6 +143,7 @@ export const runMenu = async (
 
     let exif = false;
     let sign = false;
+    let photoCaption = false;
     let dark = false;
     let portrait = false;
     let square = false;
@@ -152,6 +155,9 @@ export const runMenu = async (
       });
       sign = await ask.confirm('加入签名落款,用于作品署名?', {
         defaultValue: false, defaultLabel: '不加入', alternateKey: 's', alternateLabel: '加入',
+      });
+      photoCaption = await ask.confirm('为照片生成图片旁白？会发送低清预览。', {
+        defaultValue: false, defaultLabel: '不生成', alternateKey: 'c', alternateLabel: '生成',
       });
       dark = await ask.confirm('使用暗色背景?', {
         defaultValue: false, defaultLabel: '不使用', alternateKey: 'd', alternateLabel: '使用',
@@ -174,7 +180,7 @@ export const runMenu = async (
       filter = filterChoice.index === 0 ? null : FILTER_IDS[filterChoice.index - 1];
     }
 
-    const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, dark, portrait, square, filter, template});
+    const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, photoCaption, dark, portrait, square, filter, template});
     term.detail(`等效命令: ${formatEquivalentCommand(argv)}`);
     if (!['4', '5', '6'].includes(item.key)) {
       term.detail('进阶配置(分辨率/过渡/字幕/背景...)见素材夹 kiseki.toml,参考 docs/config.md');

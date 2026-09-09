@@ -91,6 +91,23 @@ test('非 TTY 路径下 JSON 事件不受终端的 25% 节流影响,逐个 perce
   );
 });
 
+test('caption counts ride along on JSON progress events', () => {
+  const stdout = stream(true);
+  const events = [];
+  const progress = createPercentProgress({
+    stream: stdout,
+    env: {KISEKI_JSON_PROGRESS: '1'},
+    jsonWrite: (event) => events.push(event),
+  });
+  progress.update('Photo captions', 0.5, 'Photo captions', {completed: 2, total: 4, reused: 1, generated: 1});
+  assert.deepEqual(events, [{
+    kind: 'progress',
+    label: 'Photo captions',
+    percent: 50,
+    counts: {completed: 2, total: 4, reused: 1, generated: 1},
+  }]);
+});
+
 test('重复的 percent 跳过 JSON 事件,与终端"同 percent 不重复打印"一致', () => {
   const stdout = stream(true);
   const events = [];

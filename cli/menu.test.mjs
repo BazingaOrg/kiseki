@@ -64,10 +64,11 @@ test('normalizeDroppedPath expands a leading tilde and trims whitespace', () => 
 
 test('buildArgvFromChoices maps each menu entry onto CLI argv', () => {
   assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip'}), ['./trip']);
-  assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip', exif: true, sign: true}), [
+  assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip', exif: true, sign: true, photoCaption: true}), [
     './trip',
     '--exif',
     '--sign',
+    '--photo-caption',
   ]);
   assert.deepEqual(buildArgvFromChoices({choice: '1', target: './trip', dark: true}), [
     './trip',
@@ -138,12 +139,13 @@ test('still accepts a file path and defaults presentation choices to off', async
   try {
     const {result, confirmCalls} = await interact({
       lines: ['2', file],
-      confirms: [false, false, false],
+      confirms: [false, false, false, false],
     });
     assert.deepEqual(result, ['still', file]);
     assert.deepEqual(confirmCalls.map((call) => call.options), [
       {defaultValue: false, defaultLabel: '不显示', alternateKey: 'e', alternateLabel: '显示'},
       {defaultValue: false, defaultLabel: '不加入', alternateKey: 's', alternateLabel: '加入'},
+      {defaultValue: false, defaultLabel: '不生成', alternateKey: 'c', alternateLabel: '生成'},
       {defaultValue: false, defaultLabel: '不使用', alternateKey: 'd', alternateLabel: '使用'},
     ]);
   } finally {
@@ -156,12 +158,13 @@ test('render (choice 1) asks presentation questions and defaults to the project 
   try {
     const {result, confirmCalls} = await interact({
       lines: ['1', root],
-      confirms: [true, false, true], picks: [{index: 0}],
+      confirms: [true, false, false, true], picks: [{index: 0}],
     });
     assert.deepEqual(result, [root, '--exif', '--dark']);
     assert.deepEqual(confirmCalls.map((call) => call.options), [
       {defaultValue: false, defaultLabel: '不显示', alternateKey: 'e', alternateLabel: '显示'},
       {defaultValue: false, defaultLabel: '不加入', alternateKey: 's', alternateLabel: '加入'},
+      {defaultValue: false, defaultLabel: '不生成', alternateKey: 'c', alternateLabel: '生成'},
       {defaultValue: false, defaultLabel: '不使用', alternateKey: 'd', alternateLabel: '使用'},
     ]);
   } finally {
@@ -185,7 +188,7 @@ test('runMenu asks for a filter after the format pick and defaults to none on en
   try {
     const {result} = await interact({
       lines: ['1', root],
-      confirms: [false, false, false],
+      confirms: [false, false, false, false],
       picks: [{index: 0}, {index: 0}, {index: 0}],
     });
     assert.deepEqual(result, [root]);
@@ -200,7 +203,7 @@ test('runMenu wires a chosen filter id into the equivalent argv', async () => {
     const filterIndex = FILTER_IDS.indexOf('mono') + 1; // 0 号是「无滤镜」
     const {result} = await interact({
       lines: ['1', root],
-      confirms: [false, false, false],
+      confirms: [false, false, false, false],
       picks: [{index: 0}, {index: 0}, {index: filterIndex}],
     });
     assert.deepEqual(result, [root, '--filter', 'mono']);
@@ -215,7 +218,7 @@ test('runMenu wires a chosen template into the equivalent argv and defaults to n
     const cinemaIndex = TEMPLATES.findIndex((t) => t.id === 'slow-cinema') + 1; // 0 号是「不应用模板」
     const {result} = await interact({
       lines: ['1', root],
-      confirms: [false, false, false],
+      confirms: [false, false, false, false],
       picks: [{index: 0}, {index: cinemaIndex}, {index: 0}],
     });
     assert.deepEqual(result, [root, '--template', 'slow-cinema']);

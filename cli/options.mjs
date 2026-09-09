@@ -19,13 +19,13 @@ const parseFilterId = (raw) => {
   return id;
 };
 
-const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
+const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --photo-caption  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
 export const STILL_USAGE = `用法: kiseki still <photo|folder> ${STILL_OPTIONS}`;
 
 export const USAGE =
   '用法:\n' +
   '  kiseki                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]  渲染相册视频(默认命令)\n' +
+  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]  渲染相册视频(默认命令)\n' +
   '  kiseki still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  kiseki doctor                             检查依赖是否就绪\n' +
   '  kiseki lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
@@ -38,7 +38,7 @@ export const USAGE =
   '若文件夹名恰好叫 doctor / lyrics / still / fetch / web / help,用路径前缀转义,如 kiseki ./still';
 
 const parseRenderArgs = (argv) => {
-  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
+  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
   let filterId = null;
   let filterIntensity = null;
   for (let i = 0; i < argv.length; i++) {
@@ -51,6 +51,8 @@ const parseRenderArgs = (argv) => {
       args.exif = true;
     } else if (argv[i] === '--sign') {
       args.sign = true;
+    } else if (argv[i] === '--photo-caption') {
+      args.photoCaption = true;
     } else if (argv[i] === '--dark') {
       args.dark = true;
     } else if (argv[i] === '--portrait') {
@@ -175,6 +177,7 @@ const parseStillArgs = (rest) => {
     skipExisting: false,
     scale: 2,
     filter: null,
+    photoCaption: false,
   };
   let filterId = null;
   let filterIntensity = null;
@@ -189,6 +192,8 @@ const parseStillArgs = (rest) => {
       args.exif = true;
     } else if (token === '--sign') {
       args.sign = true;
+    } else if (token === '--photo-caption') {
+      args.photoCaption = true;
     } else if (token === '--dark') {
       args.dark = true;
     } else if (token === '--portrait') {

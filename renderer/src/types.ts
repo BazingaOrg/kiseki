@@ -26,6 +26,16 @@ export type PhotoClip = {
   exif?: StillExif | null;
   /** 渲染时覆盖注入的滤镜;id 见 renderer/src/filters.ts 注册表,intensity 缺省用滤镜自身默认值 */
   filter?: {id: string; intensity?: number} | null;
+  /** 渲染输入专用,不是 timeline 手改字段 */
+  caption?: string | null;
+  captionLayout?: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fontSize: number;
+    letterSpacing: string;
+  } | null;
 };
 
 export type ChapterClip = {kind: 'chapter'; text: string; start: number; end: number};
