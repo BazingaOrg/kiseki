@@ -2,7 +2,6 @@ import {
   CAPTION_FONT_SIZE,
   CAPTION_FONT_WEIGHT,
   captionMaxTextWidth,
-  layoutStillCaption,
   layoutTopBandCaption,
   letterSpacingFor,
   stillCaptionMetrics,
@@ -83,6 +82,7 @@ export const fitTopCaption = async ({
   imageHeight,
   visualScale,
   hasExif = false,
+  sign = false,
   templateId = null,
   src = '',
   motionZoom = 1,
@@ -91,7 +91,7 @@ export const fitTopCaption = async ({
 }) => {
   const codePoints = [...text].length;
   const subjectTop = videoSubjectTop({
-    canvasWidth, canvasHeight, photoScale, imageWidth, imageHeight, hasExif, templateId, src, motionZoom,
+    canvasWidth, canvasHeight, photoScale, imageWidth, imageHeight, hasExif, sign, templateId, src, motionZoom,
   });
   const regionWidth = hasExif && templateId !== 'filmstrip' && templateId !== 'polaroid'
     ? captionMaxTextWidth(canvasWidth * 0.52, visualScale)
@@ -125,16 +125,15 @@ export const fitStillCaption = async ({
   const metrics = stillCaptionMetrics({
     canvasWidth, canvasHeight, visualScale, photoScale, imageWidth, imageHeight, hasExif, sign,
   });
-  const maxTextWidth = captionMaxTextWidth(metrics.photoBox.width, visualScale);
+  const maxTextWidth = captionMaxTextWidth(canvasWidth, visualScale);
   const measuredAtMax = await measuredWidth({page, measureWidth, text, visualScale, codePoints});
-  return layoutStillCaption({
+  return layoutTopBandCaption({
     canvasWidth,
     canvasHeight,
     visualScale,
-    photoBox: metrics.photoBox,
+    subjectTop: metrics.photoBox.y,
     maxTextWidth,
     measuredAtMax,
     codePoints,
-    signTop: metrics.signTop,
   });
 };

@@ -3,7 +3,8 @@ import {AbsoluteFill, interpolate, staticFile, useCurrentFrame, useVideoConfig} 
 import {ExifPanel} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
 import {Signature, getSignatureDisplayWidth, type SignatureData} from './Signature';
-import {STILL, getExifLayout, getVisualScale, type FontFamily, type Palette} from './theme';
+import {signaturePhotoLift} from './photoCaptionLayout.mjs';
+import {STILL, getExifLayout, getVisualScale, signaturePathProps, type FontFamily, type Palette} from './theme';
 import {getFadeDuration} from './transition';
 import {motionTransform} from './motion';
 import type {TemplateMotion} from './templates';
@@ -50,6 +51,13 @@ export const Photo: React.FC<{
   const renderScale = getVisualScale(width, height);
 
   const hasExif = hasDisplayableExif(clip.exif);
+  const lift = signaturePhotoLift({
+    canvasHeight,
+    maxPhotoHeight: safeHeight,
+    visualScale: renderScale,
+    sign: Boolean(sign && signature),
+    hasExif,
+  });
 
   // 运镜包一层 transform:无 motion 时原样返回 FramedPhoto,输出逐字节不变。
   // 缩放带着相框与阴影一起走,克制的 6% 推近下观感自然,也省去图内裁切复杂度。
@@ -64,17 +72,23 @@ export const Photo: React.FC<{
         filter={filter}
       />
     );
-    if (!motion) return framed;
-    const {scale, x, y} = motionTransform({
-      motion,
-      src: clip.src,
-      t,
-      start: motionStart ?? clip.start,
-      end: clip.end,
-      safeWidth,
-      safeHeight,
-    });
-    return <div style={{transform: `translate(${x}px, ${y}px) scale(${scale})`}}>{framed}</div>;
+    let node = framed;
+    if (motion) {
+      const {scale, x, y} = motionTransform({
+        motion,
+        src: clip.src,
+        t,
+        start: motionStart ?? clip.start,
+        end: clip.end,
+        safeWidth,
+        safeHeight,
+      });
+      node = <div style={{transform: `translate(${x}px, ${y}px) scale(${scale})`}}>{framed}</div>;
+    }
+    if (lift) {
+      node = <div style={{display: 'inline-flex', transform: `translateY(${-lift}px)`}}>{node}</div>;
+    }
+    return node;
   };
 
   // 带 EXIF 展签:照片左 + 展签右,整体居中,与 Still withExif 分支同款布局
@@ -130,7 +144,7 @@ export const Photo: React.FC<{
           maxWidth={safeWidth}
           maxHeight={safeHeight}
           />
-        {/* 视频底部中线让给字幕带,落款按摄影钤印惯例退居右下(still 无字幕,维持居中,Still.tsx 不动) */}
+        {/* 无 EXIF 时落款退居右下,把底部中线让给字幕;照片上移以留出和题签对等的底距 */}
         <div
           style={{
             position: 'absolute',
@@ -141,7 +155,7 @@ export const Photo: React.FC<{
             opacity: STILL.signature.opacity,
           }}
         >
-          <Signature data={signature} style={{width: signatureWidth, height: signatureHeight}} pathProps={{fill: 'currentColor'}} />
+          <Signature data={signature} style={{width: signatureWidth, height: signatureHeight}} pathProps={signaturePathProps} />
         </div>
       </AbsoluteFill>
     );

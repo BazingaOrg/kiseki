@@ -224,6 +224,7 @@ export const applyCaptionLayouts = async (timeline, {page, templateId = null, mo
       imageHeight: photo.captionPreview?.height || 480,
       visualScale,
       hasExif: Boolean(photo.exif && (photo.exif.camera || photo.exif.lens || photo.exif.params?.length || photo.exif.datetime)),
+      sign: Boolean(timeline.meta?.sign),
       templateId,
       src: photo.src,
       motionZoom,

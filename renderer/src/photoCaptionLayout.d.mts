@@ -9,7 +9,6 @@ export const CAPTION_LINE_HEIGHT: number;
 export const CAPTION_EDGE_PAD: number;
 export const STILL_CAPTION_RESERVE: number;
 export const STILL_CAPTION_GAP: number;
-export const STILL_CAPTION_SIGN_LIFT: number;
 export const STILL_CAPTION_SIGN_GAP: number;
 export const STILL_SIGNATURE_HEIGHT: number;
 export const STILL_SIGNATURE_BOTTOM_INSET: number;
@@ -68,6 +67,13 @@ export function exifLayout(width: number, height: number): {
   gap: number;
 };
 export function polaroidMaxRotation(src: string): number;
+export function signaturePhotoLift(args: {
+  canvasHeight: number;
+  maxPhotoHeight: number;
+  visualScale: number;
+  sign?: boolean;
+  hasExif?: boolean;
+}): number;
 export function videoSubjectTop(args: {
   canvasWidth: number;
   canvasHeight: number;
@@ -75,6 +81,7 @@ export function videoSubjectTop(args: {
   imageWidth: number;
   imageHeight: number;
   hasExif?: boolean;
+  sign?: boolean;
   templateId?: string | null;
   src?: string;
   motionZoom?: number;

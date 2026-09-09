@@ -39,17 +39,17 @@ test('fitTopCaption returns null when measured width cannot fit the band', async
   assert.equal(layout, null);
 });
 
-test('fitStillCaption refuses a caption that would collide with the signature', async () => {
+test('fitStillCaption returns null when the photo leaves no top band', async () => {
   const layout = await fitStillCaption({
     text: '签名上方空间不够',
     canvasWidth: 1920,
     canvasHeight: 400,
-    photoScale: 0.9,
-    imageWidth: 640,
-    imageHeight: 480,
+    photoScale: 1,
+    imageWidth: 1920,
+    imageHeight: 400,
     visualScale: 1,
     hasExif: false,
-    sign: true,
+    sign: false,
     measureWidth: async () => 200,
   });
   assert.equal(layout, null);

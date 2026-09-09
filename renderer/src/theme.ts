@@ -169,12 +169,12 @@ export const STILL = {
     gap: 0.05, // × 画布宽
   },
   signature: {
-    height: 56,
-    panelHeight: 44,
+    height: 72,
+    panelHeight: 56,
     bottomInset: 26,
-    opacity: 0.65,
+    opacity: 1,
     rightInset: 48, // 右下角落款距右边距(px,1080p 基准)
-    maxWidthRatio: 0.26, // 落款最大宽度 = 画布宽度 × 该比例,保留印章/钤印比例
+    maxWidthRatio: 0.34, // 落款最大宽度 = 画布宽度 × 该比例,保留印章/钤印比例
     subtitleGap: 24, // 落款与字幕的最小水平间距(px,1080p 基准)
   },
   typography: {
@@ -190,4 +190,8 @@ export const STILL = {
     fontFamily: `'Noto Serif', 'Noto Serif JP', 'Noto Serif SC', serif`,
     letterSpacing: '0.12em',
   },
+} as const;
+
+export const signaturePathProps = {
+  fill: 'currentColor',
 } as const;

@@ -1,6 +1,6 @@
 import React from 'react';
 import {Signature, type SignatureData} from './Signature';
-import {FONT_FAMILY, STILL, type FontFamily, type Palette} from './theme';
+import {FONT_FAMILY, STILL, signaturePathProps, type FontFamily, type Palette} from './theme';
 
 export type StillExif = {
   camera?: string;
@@ -66,7 +66,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
       {line(exif.datetime, t.datetimeFontSize, palette.secondaryText, 400)}
       {sign && signature ? (
         <div style={{marginTop: t.groupGap * scale, color: palette.text, opacity: STILL.signature.opacity}}>
-          <Signature data={signature} style={{height: STILL.signature.panelHeight * scale, maxWidth: width}} pathProps={{fill: 'currentColor'}} />
+          <Signature data={signature} style={{height: STILL.signature.panelHeight * scale, maxWidth: width}} pathProps={signaturePathProps} />
         </div>
       ) : null}
     </div>

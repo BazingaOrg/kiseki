@@ -1,17 +1,16 @@
 export const CAPTION_FONT_SIZE = 32;
 export const CAPTION_MIN_FONT_SIZE = 24;
-export const CAPTION_FONT_WEIGHT = 400;
-export const CAPTION_LETTER_SPACING = 0.08;
-export const CAPTION_COMPACT_LETTER_SPACING = 0.04;
+export const CAPTION_FONT_WEIGHT = 300;
+export const CAPTION_LETTER_SPACING = 0.16;
+export const CAPTION_COMPACT_LETTER_SPACING = 0.1;
 export const CAPTION_COMPACT_THRESHOLD = 18;
 export const CAPTION_MAX_WIDTH_RATIO = 0.86;
 export const CAPTION_LINE_HEIGHT = 1.35;
 export const CAPTION_EDGE_PAD = 24;
 export const STILL_CAPTION_RESERVE = 72;
 export const STILL_CAPTION_GAP = 24;
-export const STILL_CAPTION_SIGN_LIFT = 16;
 export const STILL_CAPTION_SIGN_GAP = 24;
-export const STILL_SIGNATURE_HEIGHT = 56;
+export const STILL_SIGNATURE_HEIGHT = 72;
 export const STILL_SIGNATURE_BOTTOM_INSET = 26;
 export const FILMSTRIP_MAIN_PHOTO_FACTOR = 0.92;
 export const FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION = 0.86;
@@ -49,22 +48,37 @@ export const layoutTopBandCaption = ({
   codePoints,
 }) => {
   const pad = CAPTION_EDGE_PAD * visualScale;
-  const bandTop = pad;
-  const bandBottom = subjectTop - pad;
-  const bandHeight = bandBottom - bandTop;
+  const gap = CAPTION_EDGE_PAD * visualScale;
   const letterSpacing = letterSpacingFor(codePoints);
   const fontSize = chooseFontSize({measuredAtMax, maxWidth: maxTextWidth, visualScale});
   if (fontSize == null) return null;
   const lineHeight = CAPTION_LINE_HEIGHT * fontSize;
-  if (bandHeight < lineHeight || bandHeight <= 0 || subjectTop <= pad * 2) return null;
+  const y = subjectTop - gap - lineHeight;
+  if (y < pad || subjectTop - gap < lineHeight || subjectTop <= pad + gap) return null;
   return {
     x: (canvasWidth - maxTextWidth) / 2,
-    y: bandTop + (bandHeight - lineHeight) / 2,
+    y,
     width: maxTextWidth,
     height: lineHeight,
     fontSize,
     letterSpacing: `${letterSpacing}em`,
   };
+};
+
+export const signaturePhotoLift = ({
+  canvasHeight,
+  maxPhotoHeight,
+  visualScale,
+  sign = false,
+  hasExif = false,
+}) => {
+  if (!sign || hasExif || !(maxPhotoHeight > 0) || !(canvasHeight > 0)) return 0;
+  const signTop = canvasHeight - (STILL_SIGNATURE_BOTTOM_INSET + STILL_SIGNATURE_HEIGHT) * visualScale;
+  const gap = CAPTION_EDGE_PAD * visualScale;
+  const centeredTop = (canvasHeight - maxPhotoHeight) / 2;
+  const overflow = centeredTop + maxPhotoHeight + gap - signTop;
+  if (overflow <= 0) return 0;
+  return Math.min(overflow, Math.max(0, centeredTop));
 };
 
 export const layoutStillCaption = ({
@@ -130,10 +144,12 @@ export const videoSubjectTop = ({
   imageWidth,
   imageHeight,
   hasExif = false,
+  sign = false,
   templateId = null,
   src = '',
   motionZoom = 1,
 }) => {
+  const visualScale = Math.min(canvasWidth, canvasHeight) / 1080;
   if (templateId === 'polaroid') {
     const photo = containSize(
       imageWidth,
@@ -155,14 +171,24 @@ export const videoSubjectTop = ({
       : Math.max(photo.height, panelEstimate);
     return (canvasHeight - groupHeight) / 2;
   }
+  const maxPhotoHeight = canvasHeight * photoScale * factor;
   const photo = containSize(
     imageWidth,
     imageHeight,
     canvasWidth * photoScale * factor,
-    canvasHeight * photoScale * factor,
+    maxPhotoHeight,
   );
   let top = (canvasHeight - photo.height) / 2;
-  if (motionZoom > 1) top -= (motionZoom - 1) * (canvasHeight * photoScale * factor) / 2;
+  if (motionZoom > 1) top -= (motionZoom - 1) * maxPhotoHeight / 2;
+  if (templateId !== 'filmstrip') {
+    top -= signaturePhotoLift({
+      canvasHeight,
+      maxPhotoHeight,
+      visualScale,
+      sign,
+      hasExif,
+    });
+  }
   return top;
 };
 
@@ -177,24 +203,31 @@ export const stillCaptionMetrics = ({
   sign,
 }) => {
   const layout = hasExif ? exifLayout(canvasWidth, canvasHeight) : null;
-  const reserve = STILL_CAPTION_RESERVE * visualScale;
   const gap = STILL_CAPTION_GAP * visualScale;
   const maxW = hasExif ? layout.photoMaxWidth : canvasWidth * photoScale;
-  const maxH = (hasExif ? layout.photoMaxHeight : canvasHeight * photoScale) - reserve;
+  const maxH = hasExif ? layout.photoMaxHeight : canvasHeight * photoScale;
   const photo = containSize(imageWidth, imageHeight, maxW, Math.max(1, maxH));
-  const lift = sign && !hasExif ? STILL_CAPTION_SIGN_LIFT * visualScale : 0;
-  const groupHeight = photo.height + gap + CAPTION_FONT_SIZE * visualScale * CAPTION_LINE_HEIGHT;
-  const groupTop = (canvasHeight - groupHeight) / 2 - lift;
+  const stacked = Boolean(layout?.stacked);
+  const panelEstimate = stacked ? canvasHeight * 0.22 : 0;
+  const groupHeight = stacked ? photo.height + layout.gap + panelEstimate : photo.height;
+  const groupTop = (canvasHeight - groupHeight) / 2;
+  const lift = signaturePhotoLift({
+    canvasHeight,
+    maxPhotoHeight: hasExif ? 0 : canvasHeight * photoScale,
+    visualScale,
+    sign,
+    hasExif,
+  });
   const photoBox = {
-    x: hasExif && !layout.stacked
+    x: hasExif && !stacked
       ? (canvasWidth - (photo.width + layout.gap + layout.panelWidth)) / 2
       : (canvasWidth - photo.width) / 2,
-    y: groupTop,
+    y: groupTop - lift,
     width: photo.width,
     height: photo.height,
   };
   const signTop = sign && !hasExif
     ? canvasHeight - (STILL_SIGNATURE_BOTTOM_INSET + STILL_SIGNATURE_HEIGHT) * visualScale
     : null;
-  return {photoBox, photoMaxWidth: maxW, photoMaxHeight: maxH, signTop, lift, gap, stacked: Boolean(layout?.stacked)};
+  return {photoBox, photoMaxWidth: maxW, photoMaxHeight: maxH, signTop, lift, gap, stacked};
 };
