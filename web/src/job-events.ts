@@ -1,4 +1,4 @@
-import type {JobEvent} from './useJob';
+import type {JobEvent, JobStatus} from './useJob';
 
 export type CollapsedJobRow =
   | {key: string; label: string; state: 'running'}
@@ -87,3 +87,49 @@ export const collapseJobEvents = (events: JobEvent[]): CollapsedJobRow[] => {
 
   return rows;
 };
+
+const TEXT_EVENT_KINDS = new Set(['start', 'info', 'success', 'warn', 'error', 'detail']);
+
+export const parseJobEvent = (raw: unknown): JobEvent | null => {
+  if (!raw || typeof raw !== 'object') return null;
+  const data = raw as Record<string, unknown>;
+  if (data.kind === 'progress') {
+    if (typeof data.label !== 'string' || typeof data.percent !== 'number') return null;
+    const event: Extract<JobEvent, {kind: 'progress'}> = {kind: 'progress', label: data.label, percent: data.percent};
+    if (data.counts && typeof data.counts === 'object') {
+      const counts = data.counts as Record<string, unknown>;
+      if (typeof counts.completed === 'number' && typeof counts.total === 'number') {
+        event.counts = {
+          completed: counts.completed,
+          total: counts.total,
+          ...(typeof counts.reused === 'number' ? {reused: counts.reused} : {}),
+          ...(typeof counts.generated === 'number' ? {generated: counts.generated} : {}),
+        };
+      }
+    }
+    return event;
+  }
+  if (typeof data.kind !== 'string' || !TEXT_EVENT_KINDS.has(data.kind) || typeof data.text !== 'string') {
+    return null;
+  }
+  const event: Extract<JobEvent, {text: string}> = {
+    kind: data.kind as Extract<JobEvent, {text: string}>['kind'],
+    text: data.text,
+  };
+  if (typeof data.stage === 'string') event.stage = data.stage;
+  if (typeof data.durationMs === 'number' && Number.isFinite(data.durationMs)) event.durationMs = data.durationMs;
+  if (typeof data.path === 'string') event.path = data.path;
+  if (typeof data.failureStage === 'string') event.failureStage = data.failureStage;
+  if (typeof data.code === 'string') event.code = data.code;
+  return event;
+};
+
+export const hasPhotoCaptionFailure = (
+  status: JobStatus,
+  failureStage: string | null | undefined,
+  events: JobEvent[],
+): boolean =>
+  status === 'failed' && (
+    failureStage === 'photo-caption'
+    || events.some((event) => event.kind !== 'progress' && event.failureStage === 'photo-caption')
+  );

@@ -8,7 +8,7 @@ import {Logo} from './Logo';
 import {Make} from './Make';
 import {Materials} from './Materials';
 import {Results} from './Results';
-import type {DoctorState, ProjectResponse, ProjectSelection} from './types';
+import type {DoctorState, ProjectResponse, ProjectSelection, RuntimeResponse} from './types';
 import {CommandHint} from './ui';
 import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
@@ -48,6 +48,7 @@ interface WorkbenchProps {
   onProjectRefresh: () => void;
   /** 最近一次 onProjectRefresh 失败了,当前看到的可能不是最新数据 */
   projectStale: boolean;
+  runtime?: Pick<RuntimeResponse, 'photoCaptionConfigured'> | null;
 }
 
 export const Workbench = ({
@@ -58,10 +59,11 @@ export const Workbench = ({
   onSwitchFolder,
   onProjectRefresh,
   projectStale,
+  runtime = null,
 }: WorkbenchProps) => {
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
   const [doctorOpen, setDoctorOpen] = useState(false);
-  const capabilities = deriveCapabilities(project, doctor);
+  const capabilities = deriveCapabilities(project, doctor, runtime);
   const locked = projectSelection === 'sandbox' && project.root === project.path;
   // 导出静态图不需要音频，只要 renderVideo 或 exportStill 任一可用就该放行「制作」
   const makeUnlocked = capabilities.renderVideo.enabled || capabilities.exportStill.enabled;

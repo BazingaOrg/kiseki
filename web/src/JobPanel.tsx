@@ -17,6 +17,7 @@ const STAGE_LABELS: Record<string, string> = {
   'Rendering frames': '渲染画面',
   'Encoding video': '编码视频',
   'Rendering still': '导出静态图',
+  'Photo captions': '准备图片旁白',
 };
 
 /**
@@ -86,6 +87,7 @@ interface JobPanelProps {
   onCancel: () => void;
   onReset: () => void;
   resetLabel: string;
+  failActions?: Array<{label: string; onClick: () => void; primary?: boolean}>;
 }
 
 export const JobPanel = ({
@@ -97,6 +99,7 @@ export const JobPanel = ({
   onCancel,
   onReset,
   resetLabel,
+  failActions,
 }: JobPanelProps) => {
   const logRef = useRef<HTMLDivElement>(null);
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -131,9 +134,14 @@ export const JobPanel = ({
     return () => window.clearInterval(id);
   }, [status]);
 
+  const captionProgress = lastProgress?.label.startsWith('Photo captions');
   const statusLabel =
     status === 'running'
-      ? `正在${verb}…`
+      ? captionProgress
+        ? '正在写图片旁白…'
+        : lastProgress?.label.startsWith('Rendering') || lastProgress?.label.startsWith('Bundling') || lastProgress?.label.startsWith('Encoding')
+          ? '正在渲染画面…'
+          : `正在${verb}…`
       : status === 'done'
         ? '完成了 ：）'
         : status === 'cancelled'
@@ -155,10 +163,17 @@ export const JobPanel = ({
         (lastProgress ? (
           <>
             <div className="job-progress-summary">
-              <span>{translateStage(lastProgress.label)}</span>
+              <span>
+                {translateStage(lastProgress.label)}
+                {lastProgress.counts
+                  ? ` · 已准备 ${lastProgress.counts.completed} / ${lastProgress.counts.total} 张`
+                  : ''}
+              </span>
               <span>{lastProgress.percent}%</span>
             </div>
-            <div className="job-progress" role="progressbar" aria-label={`${verb}进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lastProgress.percent} aria-valuetext={`${translateStage(lastProgress.label)} ${lastProgress.percent}%`}>
+            <div className="job-progress" role="progressbar" aria-label={`${verb}进度`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={lastProgress.percent} aria-valuetext={lastProgress.counts
+              ? `${translateStage(lastProgress.label)} 已准备 ${lastProgress.counts.completed} / ${lastProgress.counts.total} 张 ${lastProgress.percent}%`
+              : `${translateStage(lastProgress.label)} ${lastProgress.percent}%`}>
               <span className="job-progress-fill" style={{transform: `scaleX(${lastProgress.percent / 100})`} as CSSProperties} />
             </div>
           </>
@@ -203,6 +218,16 @@ export const JobPanel = ({
           <button className="job-cancel" onClick={onCancel}>
             <X size={14} /> 取消
           </button>
+        ) : failActions && failActions.length > 0 && status === 'failed' ? (
+          failActions.map((action) => (
+            <button
+              key={action.label}
+              className={action.primary ? 'primary-button' : 'link-button'}
+              onClick={action.onClick}
+            >
+              {action.label}
+            </button>
+          ))
         ) : (
           <button className="link-button" onClick={onReset}>
             {resetLabel}

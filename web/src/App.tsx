@@ -130,6 +130,7 @@ const App = () => {
       onSwitchFolder={() => { setProject(null); setProjectStale(false); setProjectLoadError(null); }}
       onProjectRefresh={refreshProject}
       projectStale={projectStale}
+      runtime={runtime}
     />
   );
 };

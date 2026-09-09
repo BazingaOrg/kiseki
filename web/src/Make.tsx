@@ -13,7 +13,7 @@ import type {ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import {FieldHelp} from './FieldHelp';
 import type {JobOptions} from './useJob';
-import type {useJob} from './useJob';
+import {hasPhotoCaptionFailure, type useJob} from './useJob';
 import {useTransitionPresence} from './useTransitionPresence';
 
 type Kind = 'render' | 'still';
@@ -108,6 +108,7 @@ const FILTER_GROUPS = [
 const RENDER_DEFAULTS: JobOptions = {
   exif: false,
   sign: false,
+  photoCaption: false,
   dark: false,
   format: 'landscape',
   filter: null,
@@ -121,6 +122,7 @@ const RENDER_DEFAULTS: JobOptions = {
 const STILL_DEFAULTS: JobOptions = {
   exif: false,
   sign: false,
+  photoCaption: false,
   dark: false,
   format: 'landscape',
   filter: null,
@@ -167,9 +169,10 @@ interface OptionsFormProps {
   photos: string[];
   options: JobOptions;
   onChange: (options: JobOptions) => void;
+  captionCapability?: Capability;
 }
 
-const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
+const OptionsForm = ({kind, photos, options, onChange, captionCapability}: OptionsFormProps) => {
   const set = <K extends keyof JobOptions>(key: K, value: JobOptions[K]) =>
     onChange({...options, [key]: value});
 
@@ -237,6 +240,27 @@ const OptionsForm = ({kind, photos, options, onChange}: OptionsFormProps) => {
             />
             草稿模式（渲染更快，预览画质较低）
           </label>
+        )}
+      </div>
+      <div className="make-field make-caption-field">
+        <label className="make-checkbox">
+          <input
+            type="checkbox"
+            checked={options.photoCaption === true}
+            disabled={!captionCapability?.enabled && options.photoCaption !== true}
+            aria-describedby="photo-caption-help"
+            onChange={(e) => {
+              if (e.target.checked && captionCapability && !captionCapability.enabled) return;
+              set('photoCaption', e.target.checked);
+            }}
+          />
+          图片旁白
+        </label>
+        <p className="make-field-hint" id="photo-caption-help">
+          为照片补上一句画外之意。开启后会将低清预览发送给 DeepSeek，全部生成后再开始制作。
+        </p>
+        {captionCapability && !captionCapability.enabled && (
+          <p className="hint hint-error">{captionCapability.blockers[0]?.reason}</p>
         )}
       </div>
 
@@ -372,6 +396,7 @@ interface ActionCardProps {
   otherRunning: boolean;
   onStart: (options: JobOptions) => void;
   onReset: () => void;
+  captionCapability: Capability;
 }
 
 const ActionCard = ({
@@ -388,9 +413,11 @@ const ActionCard = ({
   otherRunning,
   onStart,
   onReset,
+  captionCapability,
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
+  const [submittedOptions, setSubmittedOptions] = useState<JobOptions | null>(null);
   const [presets, setPresets] = useState<RenderPreset[]>(() => loadPresets(folder));
   const [presetName, setPresetName] = useState('');
   const optionsPresence = useTransitionPresence(expanded);
@@ -425,7 +452,7 @@ const ActionCard = ({
     const template = preset.options.template && RENDER_TEMPLATES.some((t) => t.id === preset.options.template)
       ? preset.options.template
       : null;
-    handleOptionsChange({...preset.options, trim: preset.options.trim ?? 'auto', template});
+    handleOptionsChange({...preset.options, photoCaption: preset.options.photoCaption === true, trim: preset.options.trim ?? 'auto', template});
   };
 
   const isCurrentPreset = (preset: RenderPreset) => JSON.stringify(preset.options) === JSON.stringify(options);
@@ -436,6 +463,12 @@ const ActionCard = ({
   };
 
   const handleDeletePreset = (id: string) => setPresets(deletePreset(folder, id));
+
+  useEffect(() => {
+    if (!isActive || !job.snapshotOptions || submittedOptions) return;
+    setSubmittedOptions(job.snapshotOptions);
+    setOptions((prev) => ({...prev, ...job.snapshotOptions}));
+  }, [isActive, job.snapshotOptions, submittedOptions]);
 
   useLayoutEffect(() => {
     const panel = optionsPanelRef.current;
@@ -475,6 +508,10 @@ const ActionCard = ({
               onCancel={job.cancel}
               onReset={handleAdjust}
               resetLabel={adjustLabel}
+              failActions={hasPhotoCaptionFailure(job.status, job.failureStage, job.events) && submittedOptions ? [
+                {label: '重试图片旁白', primary: true, onClick: () => onStart(submittedOptions)},
+                {label: '不加旁白，继续制作', onClick: () => onStart({...submittedOptions, photoCaption: false})},
+              ] : undefined}
             />
           </div>
         ) : (
@@ -536,13 +573,13 @@ const ActionCard = ({
                       </div>
                     </div>
                   )}
-                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} />
+                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} captionCapability={captionCapability} />
                 </div>
               )}
               {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
             </div>
             <div className="action-card-footer">
-              <button className="primary-button" disabled={otherRunning} onClick={() => onStart(options)}>
+              <button className="primary-button" disabled={otherRunning || Boolean(options.photoCaption && !captionCapability.enabled)} onClick={() => { setSubmittedOptions(options); onStart(options); }}>
                 开始{KIND_VERB[kind]}
               </button>
               <CommandHint command={command} label="复制命令" />
@@ -590,6 +627,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, 
           otherRunning={otherRunning()}
           onStart={(options) => onStart('render', options)}
           onReset={onReset}
+          captionCapability={capabilities.photoCaption}
         />
         <ActionCard
           kind="still"
@@ -605,6 +643,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, 
           otherRunning={otherRunning()}
           onStart={(options) => onStart('still', options)}
           onReset={onReset}
+          captionCapability={capabilities.photoCaption}
         />
       </div>
     </Section>

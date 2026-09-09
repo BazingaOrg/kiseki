@@ -44,6 +44,17 @@ test('render: 全部选项开启,精确匹配整串(含 env 前缀)', () => {
   );
 });
 
+test('photoCaption maps to --photo-caption after --sign', () => {
+  assert.equal(
+    equivalentCommand('render', '/f', {photoCaption: true}),
+    'KISEKI_RENDER_SPEED=balanced kiseki /f --photo-caption',
+  );
+  assert.equal(
+    equivalentCommand('still', '/f', {sign: true, photoCaption: true}),
+    'KISEKI_RENDER_SPEED=balanced kiseki still /f --sign --photo-caption',
+  );
+});
+
 test('still: 默认 scale(2 或不传)不带 --scale', () => {
   assert.equal(equivalentCommand('still', '/f', {}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f');
   assert.equal(equivalentCommand('still', '/f', {scale: 2}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f');

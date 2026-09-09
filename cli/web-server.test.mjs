@@ -393,7 +393,7 @@ test('创建任务后 GET /api/jobs/current → 返回该任务的 id/kind/folde
     // resolveSafePath 会把 folder 解析成真实路径,macOS 上 /tmp 是指向 /private/tmp
     // 的符号链接,所以这里跟 root 比较前也要走一遍 realpath,否则本地必过、CI 也过,
     // 但字面量比较会因为符号链接被展开而误报.
-    assert.deepEqual(res.body, {job: {id: created.body.id, kind: 'render', folder: fs.realpathSync(root)}});
+    assert.deepEqual(res.body, {job: {id: created.body.id, kind: 'render', folder: fs.realpathSync(root), options: {}}});
   } finally {
     server.close();
   }

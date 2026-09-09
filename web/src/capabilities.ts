@@ -1,5 +1,5 @@
 /** 从项目与环境状态派生所有能力门禁，避免组件各自维护依赖规则。 */
-import type {DoctorState, ProjectResponse} from './types';
+import type {DoctorState, ProjectResponse, RuntimeResponse} from './types';
 
 export type CapabilityId =
   | 'browsePhotos'
@@ -9,7 +9,8 @@ export type CapabilityId =
   | 'exportStill'
   | 'recognizeLyrics'
   | 'fetchAudio'
-  | 'fetchLyrics';
+  | 'fetchLyrics'
+  | 'photoCaption';
 
 export interface Remedy {
   label: string;
@@ -73,6 +74,7 @@ const make = (blockers: (Blocker | null)[]): Capability => {
 export const deriveCapabilities = (
   project: ProjectResponse | null,
   doctor: DoctorState,
+  runtime: Pick<RuntimeResponse, 'photoCaptionConfigured'> | null = null,
 ): Capabilities => {
   const noFolder: Blocker = {reason: '还没有选素材夹。', remedy: null};
 
@@ -87,6 +89,7 @@ export const deriveCapabilities = (
       recognizeLyrics: blocked,
       fetchAudio: blocked,
       fetchLyrics: blocked,
+      photoCaption: blocked,
     };
   }
 
@@ -161,6 +164,13 @@ export const deriveCapabilities = (
       hasAudio ? null : {reason: '在线找歌词要先有音频，靠它的标题和时长匹配。', remedy: MATERIALS},
       ambiguousAudio,
       ambiguousLyrics,
+    ]),
+
+    photoCaption: make([
+      doctor === 'loading' ? {reason: '正在检查图片旁白环境…', remedy: null} : null,
+      doctor === 'unavailable' ? {reason: '暂时无法检查，请重试', remedy: DOCTOR} : null,
+      runtime?.photoCaptionConfigured ? null : {reason: '图片旁白尚未配置。设置 DEEPSEEK_API_KEY 后重新打开工作台，或关闭图片旁白继续制作。', remedy: null},
+      depBlocker(doctor, 'ffmpeg', '生成低清预览'),
     ]),
   };
 };

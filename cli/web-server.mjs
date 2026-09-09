@@ -416,7 +416,11 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     if (url.pathname === '/api/runtime') {
       let authorizedRoot = null;
       try { authorizedRoot = rootController.getSnapshot().path; } catch {}
-      sendJson(res, {status: 200, body: {projectSelection, root: authorizedRoot}});
+      sendJson(res, {status: 200, body: {
+        projectSelection,
+        root: authorizedRoot,
+        photoCaptionConfigured: Boolean(String(process.env.DEEPSEEK_API_KEY ?? '').trim()),
+      }});
       return;
     }
     if (url.pathname === '/api/dirs') {

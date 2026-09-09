@@ -15,11 +15,11 @@ test('native service starts without an authorized root and switches only to a ca
   const response = await fetch(started.url);
   assert.equal(response.status, 200);
   const runtime = await fetch(`${started.url}/api/runtime`);
-  assert.deepEqual(await runtime.json(), {projectSelection: 'native', root: null});
+  assert.deepEqual(await runtime.json(), {projectSelection: 'native', root: null, photoCaptionConfigured: false});
   assert.equal((await fetch(`${started.url}/api/dirs?path=.`)).status, 409);
   assert.throws(() => service.getRoot(), /尚未授权/);
   assert.equal(service.switchRoot(root).path, fs.realpathSync(root));
-  assert.deepEqual(await (await fetch(`${started.url}/api/runtime`)).json(), {projectSelection: 'native', root: fs.realpathSync(root)});
+  assert.deepEqual(await (await fetch(`${started.url}/api/runtime`)).json(), {projectSelection: 'native', root: fs.realpathSync(root), photoCaptionConfigured: false});
   await service.shutdown();
   fs.rmSync(root, {recursive: true});
 });

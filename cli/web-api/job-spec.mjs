@@ -13,6 +13,7 @@ import {readFilterConfig, scanFolderLoose} from '../project.mjs';
 import {resolveJobs} from '../still.mjs';
 import {resolveRenderOutputPath} from '../output-naming.mjs';
 import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
+import {requireCaptionApiKey} from '../ai/photo-caption-service.mjs';
 import {parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from '../ytdlp.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createNodeCommandResolver} from '../command-resolver.mjs';
@@ -92,6 +93,13 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = 
   tempParent ??= runtime.tempRoot;
   if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent, commandResolver});
 
+  if (options?.photoCaption === true) {
+    try {
+      requireCaptionApiKey();
+    } catch (error) {
+      throw new JobValidationError('photoCaption', error instanceof Error ? error.message : String(error));
+    }
+  }
   const {argv, env} = buildJobInvocation({kind, folder, options});
   return {
     ...commandResolver.cli(argv, {
@@ -111,6 +119,7 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = 
         output: options.output ?? null,
         exif: options.exif,
         sign: options.sign,
+        photoCaption: options.photoCaption,
         dark: options.dark,
         portrait: options.format === 'portrait',
         square: options.format === 'square',
@@ -122,7 +131,7 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = 
       })]
       : kind === 'still'
         ? resolveJobs(folder, options.output ?? null, {
-          exif: options.exif, sign: options.sign, dark: options.dark,
+          exif: options.exif, sign: options.sign, photoCaption: options.photoCaption, dark: options.dark,
           portrait: options.format === 'portrait', square: options.format === 'square',
           filter: options.filter ? {id: options.filter, ...(options.filterIntensity != null ? {intensity: options.filterIntensity} : {})} : null,
         }).jobs.map((job) => job.outPath)

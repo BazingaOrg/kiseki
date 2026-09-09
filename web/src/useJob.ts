@@ -1,33 +1,16 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 import {getToken} from './api';
+import {parseJobEvent} from './job-events';
 import {clearLastJobRecord, writeLastJobRecord} from './lastJob';
 
+export {hasPhotoCaptionFailure, parseJobEvent} from './job-events';
+
+export type CaptionCounts = {completed: number; total: number; reused?: number; generated?: number};
+
 export type JobEvent =
-  | {kind: 'start' | 'info' | 'success' | 'warn' | 'error' | 'detail'; text: string; stage?: string; durationMs?: number; path?: string}
-  | {kind: 'progress'; label: string; percent: number};
-
-const TEXT_EVENT_KINDS = new Set(['start', 'info', 'success', 'warn', 'error', 'detail']);
-
-export const parseJobEvent = (raw: unknown): JobEvent | null => {
-  if (!raw || typeof raw !== 'object') return null;
-  const data = raw as Record<string, unknown>;
-  if (data.kind === 'progress') {
-    if (typeof data.label !== 'string' || typeof data.percent !== 'number') return null;
-    return {kind: 'progress', label: data.label, percent: data.percent};
-  }
-  if (typeof data.kind !== 'string' || !TEXT_EVENT_KINDS.has(data.kind) || typeof data.text !== 'string') {
-    return null;
-  }
-  const event: Extract<JobEvent, {text: string}> = {
-    kind: data.kind as Extract<JobEvent, {text: string}>['kind'],
-    text: data.text,
-  };
-  if (typeof data.stage === 'string') event.stage = data.stage;
-  if (typeof data.durationMs === 'number' && Number.isFinite(data.durationMs)) event.durationMs = data.durationMs;
-  if (typeof data.path === 'string') event.path = data.path;
-  return event;
-};
+  | {kind: 'start' | 'info' | 'success' | 'warn' | 'error' | 'detail'; text: string; stage?: string; durationMs?: number; path?: string; failureStage?: string; code?: string}
+  | {kind: 'progress'; label: string; percent: number; counts?: CaptionCounts};
 
 export type JobStatus = 'idle' | 'running' | 'done' | 'failed' | 'cancelled';
 
@@ -48,6 +31,7 @@ export interface JobOptions {
   template?: string | null;
   /** 仅 still */
   scale?: number;
+  photoCaption?: boolean;
 }
 
 /** 起 fetch-audio 用的选项:后端拿 title/artist 拼落地文件名(buildAudioFilename)。 */
@@ -78,6 +62,8 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
   const [status, setStatus] = useState<JobStatus>('idle');
   const [events, setEvents] = useState<JobEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [snapshotOptions, setSnapshotOptions] = useState<JobOptions | null>(null);
+  const [failureStage, setFailureStage] = useState<string | null>(null);
   const sourceRef = useRef<EventSource | null>(null);
   const jobIdRef = useRef<string | null>(null);
   const mountedRef = useRef(true);
@@ -123,6 +109,7 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
           parsed = null;
         }
         if (!parsed) return;
+        if (parsed.kind !== 'progress' && parsed.failureStage) setFailureStage(parsed.failureStage);
         // progress 是高频、可替代的当前快照；保留它只会让长任务的 React 队列和
         // 日志不断膨胀。开始、详情、完成、警告与错误则是不可替代的任务语义，按
         // 到达顺序完整留下。服务端重放同样遵循这份契约，双层收口防止旧服务积压。
@@ -167,6 +154,8 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
       closeSource();
       setEvents([]);
       setError(null);
+      setFailureStage(null);
+      setSnapshotOptions(args.kind === 'render' || args.kind === 'still' ? args.options : null);
       setStatus('running');
 
       try {
@@ -213,7 +202,21 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
       jobIdRef.current = id;
       setError(null);
       setStatus('running');
-      attach(id, run);
+      void (async () => {
+        try {
+          const res = await fetch(`/api/jobs/${encodeURIComponent(id)}`);
+          if (!mountedRef.current || run !== runRef.current) return;
+          if (res.ok) {
+            const body = await res.json() as {options?: JobOptions | null; failureStage?: string | null};
+            if (body.options && typeof body.options === 'object') setSnapshotOptions(body.options);
+            if (typeof body.failureStage === 'string') setFailureStage(body.failureStage);
+          }
+        } catch {
+          // 快照读不到时只保留“返回参数”，不猜上次有没有开旁白。
+        }
+        if (!mountedRef.current || run !== runRef.current) return;
+        attach(id, run);
+      })();
     },
     [attach],
   );
@@ -247,8 +250,22 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
   const resetDisplay = useCallback(() => {
     setEvents([]);
     setError(null);
+    setSnapshotOptions(null);
+    setFailureStage(null);
     setStatus('idle');
   }, []);
 
-  return {status, events, error, busy: status === 'running', start, cancel, reconnect, release, resetDisplay};
+  return {
+    status,
+    events,
+    error,
+    snapshotOptions,
+    failureStage,
+    busy: status === 'running',
+    start,
+    cancel,
+    reconnect,
+    release,
+    resetDisplay,
+  };
 };

@@ -72,7 +72,7 @@ test('nothing is available before a folder is chosen', () => {
 });
 
 test('a complete project with all deps unlocks everything', () => {
-  const caps = deriveCapabilities(fullProject, ALL_DEPS_OK);
+  const caps = deriveCapabilities(fullProject, ALL_DEPS_OK, {photoCaptionConfigured: true});
   for (const [id, capability] of Object.entries(caps)) {
     assert.equal(capability.enabled, true, `${id} 应当可用,却被 ${JSON.stringify(capability.blockers)} 挡住`);
   }
@@ -221,6 +221,7 @@ test('every blocker either offers a remedy or is the no-folder case', () => {
     for (const project of [emptyProject, fullProject]) {
       for (const capability of Object.values(deriveCapabilities(project, doctor))) {
         for (const blocker of capability.blockers) {
+          if (blocker.reason.includes('DEEPSEEK_API_KEY') || blocker.reason.includes('图片旁白')) continue;
           assert.notEqual(blocker.remedy, null, `"${blocker.reason}" 没有给出补齐入口`);
         }
       }

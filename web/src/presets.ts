@@ -46,6 +46,7 @@ export const savePreset = (folder: string, name: string, options: JobOptions, va
   if (!trimmed) return loadPresets(folder);
   const sanitized = {
     ...options,
+    photoCaption: options.photoCaption === true,
     template: options.template && validTemplateIds.includes(options.template) ? options.template : null,
   };
   const next = [...loadPresets(folder).filter((preset) => preset.name !== trimmed), {

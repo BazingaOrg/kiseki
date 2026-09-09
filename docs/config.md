@@ -29,7 +29,7 @@
 - `outro_text = ""`：默认空字符串；不含换行的双引号字符串。
 - `signature = ""`：默认空字符串；空字符串，或素材夹内存在的相对 `.svg` 路径。
 
-`--portrait`、`--square` 和 `--dark` 只覆盖本次视频或 still 输出，不写回配置或 timeline。`--trim` 只覆盖本次视频运行；交互式自动裁剪选择保存于 `output/metadata/preferences.json`。
+`--portrait`、`--square` 和 `--dark` 只覆盖本次视频或 still 输出，不写回配置或 timeline。`--trim` 只覆盖本次视频运行；交互式自动裁剪选择保存于 `output/metadata/preferences.json`。`--photo-caption` 同样只覆盖本次运行；`DEEPSEEK_API_KEY` 不属于 `kiseki.toml`。可在仓库根目录的 `.env` 里写 `DEEPSEEK_API_KEY=...`（已被 gitignore），启动进程时读入；shell 里已有的同名变量不会被覆盖。
 
 ## 示例
 

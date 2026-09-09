@@ -114,8 +114,19 @@ export const createJobManager =({
    * 记录一条事件并即时推给所有 SSE 订阅者.progress 是可变快照,历史只留最新
    * 一条;其余事件是可审阅的任务语义,必须完整保留并按原顺序重放.
    */
+  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'scale', 'output'];
+  const publicOptions = (options = {}) => {
+    const out = {};
+    for (const key of PUBLIC_OPTION_KEYS) {
+      if (options[key] !== undefined) out[key] = options[key];
+    }
+    return out;
+  };
+
   const emit = (job, event) => {
     job.lastActivityAt = now();
+    if (typeof event.failureStage === 'string') job.failureStage = event.failureStage;
+    if (typeof event.code === 'string') job.failureCode = event.code;
     if (event.kind === 'progress') {
       job.events = [...job.events.filter((item) => item.kind !== 'progress'), event];
     } else {
@@ -212,6 +223,7 @@ export const createJobManager =({
     const spawnedExecutor = executorIdentity(child.pid);
     const job = {
       id, kind, folder, spec, status: 'running', exitCode: null, events: [], child, lease,
+      options: publicOptions(options), failureStage: null, failureCode: null,
       cancelled: false, listeners: new Set(), killTimer: null,
       lastActivityAt: Date.now(),
       stallTimer: null,
@@ -423,7 +435,11 @@ export const createJobManager =({
   const getJob = (id) => {
     const job = jobs.get(id);
     if (!job) return null;
-    return {id: job.id, kind: job.kind, status: job.status, exitCode: job.exitCode, events: [...job.events]};
+    return {
+      id: job.id, kind: job.kind, folder: job.folder, status: job.status, exitCode: job.exitCode,
+      events: [...job.events], options: job.options ?? null,
+      failureStage: job.failureStage ?? null, failureCode: job.failureCode ?? null,
+    };
   };
 
   const subscribeEvents = (id, listener) => {
@@ -713,7 +729,7 @@ export const createJobManager =({
   const getRunningJob = () => {
     if (runningJobId === null) return null;
     const job = jobs.get(runningJobId);
-    return {id: job.id, kind: job.kind, folder: job.folder};
+    return {id: job.id, kind: job.kind, folder: job.folder, options: job.options ?? null};
   };
   const resetIdleState = () => {
     if (runningJobId !== null) throw new Error('任务运行中');

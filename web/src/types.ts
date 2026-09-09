@@ -16,6 +16,7 @@ export type ProjectSelection = 'sandbox' | 'native';
 export interface RuntimeResponse {
   projectSelection: ProjectSelection;
   root: string | null;
+  photoCaptionConfigured?: boolean;
 }
 
 export interface LyricLine {

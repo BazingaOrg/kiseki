@@ -36,6 +36,17 @@ test('render: exif/sign/dark 组合', () => {
   assert.deepEqual(argv, ['/abs/trip', '--exif', '--sign', '--dark']);
 });
 
+test('photoCaption maps after sign', () => {
+  assert.deepEqual(
+    buildJobArgv({kind: 'render', folder: '/f', options: {sign: true, photoCaption: true, dark: true}}),
+    ['/f', '--sign', '--photo-caption', '--dark'],
+  );
+  assert.deepEqual(
+    buildJobArgv({kind: 'still', folder: '/f', options: {photoCaption: true}}),
+    ['still', '/f', '--photo-caption'],
+  );
+});
+
 test('render: format 三态', () => {
   assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {format: 'landscape'}}), ['/f']);
   assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {format: 'portrait'}}), ['/f', '--portrait']);
@@ -1230,10 +1241,43 @@ test('getRunningJob: 无任务时返回 null', () => {
   assert.equal(manager.getRunningJob(), null);
 });
 
-test('getRunningJob: 创建任务后返回 {id, kind, folder}', () => {
+test('getRunningJob: 创建任务后返回 {id, kind, folder, options}', () => {
   const manager = createJobManager({spawnImpl: makeFakeChild});
   const {id} = manager.createJob({kind: 'render', folder: '/f'});
-  assert.deepEqual(manager.getRunningJob(), {id, kind: 'render', folder: '/f'});
+  assert.deepEqual(manager.getRunningJob(), {id, kind: 'render', folder: '/f', options: {}});
+});
+
+test('getJob keeps a public options snapshot and caption failureStage', async () => {
+  const previous = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = 'test-key';
+  let child;
+  try {
+    const spawnImpl = () => {
+      child = makeFakeChild();
+      return child;
+    };
+    const manager = createJobManager({spawnImpl});
+    const {id} = manager.createJob({
+      kind: 'render',
+      folder: '/f',
+      options: {photoCaption: true, sign: true, dark: false},
+    });
+    assert.deepEqual(manager.getJob(id).options, {photoCaption: true, sign: true, dark: false});
+    writeNdjson(child.stdio[3], [{
+      kind: 'error',
+      text: '图片旁白尚未配置',
+      failureStage: 'photo-caption',
+      code: 'caption-failed',
+    }]);
+    await new Promise((resolve) => setImmediate(resolve));
+    const job = manager.getJob(id);
+    assert.equal(job.failureStage, 'photo-caption');
+    assert.equal(job.failureCode, 'caption-failed');
+    child.emit('exit', 1);
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+  }
 });
 
 test('getRunningJob: 任务结束后回到 null', async () => {

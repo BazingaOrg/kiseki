@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {collapseJobEvents, formatElapsedClock, formatJobDuration} from './job-events.ts';
+import {collapseJobEvents, formatElapsedClock, formatJobDuration, hasPhotoCaptionFailure, parseJobEvent} from './job-events.ts';
 import type {JobEvent} from './useJob.ts';
 
 test('start+success same stage collapses to one success row with durationMs', () => {
@@ -53,4 +53,26 @@ test('formatJobDuration matches CLI formatDuration', () => {
 test('formatElapsedClock uses m:ss from zero', () => {
   assert.equal(formatElapsedClock(5000), '0:05');
   assert.equal(formatElapsedClock(65000), '1:05');
+});
+
+test('parseJobEvent keeps failureStage, code, and caption counts', () => {
+  assert.deepEqual(
+    parseJobEvent({kind: 'error', text: '图片旁白尚未配置', failureStage: 'photo-caption', code: 'caption-failed'}),
+    {kind: 'error', text: '图片旁白尚未配置', failureStage: 'photo-caption', code: 'caption-failed'},
+  );
+  assert.deepEqual(
+    parseJobEvent({kind: 'progress', label: 'Photo captions', percent: 40, counts: {completed: 2, total: 5, reused: 1, generated: 1}}),
+    {kind: 'progress', label: 'Photo captions', percent: 40, counts: {completed: 2, total: 5, reused: 1, generated: 1}},
+  );
+});
+
+test('caption fail CTAs only follow a photo-caption failureStage', () => {
+  const events: JobEvent[] = [{kind: 'error', text: '渲染失败了'}];
+  assert.equal(hasPhotoCaptionFailure('failed', null, events), false);
+  assert.equal(hasPhotoCaptionFailure('failed', 'photo-caption', events), true);
+  assert.equal(
+    hasPhotoCaptionFailure('failed', null, [{kind: 'error', text: '旁白失败', failureStage: 'photo-caption'}]),
+    true,
+  );
+  assert.equal(hasPhotoCaptionFailure('running', 'photo-caption', []), false);
 });
