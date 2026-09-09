@@ -35,7 +35,7 @@ export const buildCaptionRequestBody = ({jpegBase64, repairReason = null}) => ({
       role: 'user',
       content: [
         {type: 'text', text: repairReason ? repairUserPrompt(repairReason) : USER_PROMPT},
-        {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${jpegBase64}`, detail: 'low'}},
+        {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${jpegBase64}`, detail: 'high'}},
       ],
     },
   ],

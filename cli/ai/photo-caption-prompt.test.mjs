@@ -10,10 +10,11 @@ import {
   validateCaption,
 } from './photo-caption-prompt.mjs';
 
-test('prompt hash is stable for the frozen first-version text', () => {
+test('prompt hash is stable for the current prompt version', () => {
   assert.equal(promptHash.length, 64);
   assert.match(SYSTEM_PROMPT, /电子相框/);
-  assert.equal(USER_PROMPT, '请基于这张照片，生成一句符合规则的中文文案。');
+  assert.match(SYSTEM_PROMPT, /实际看得见/);
+  assert.equal(USER_PROMPT, '请看着这张照片，写一句符合规则的中文旁白。');
 });
 
 test('validator accepts a 30-code-point sentence and rejects the 31st', () => {

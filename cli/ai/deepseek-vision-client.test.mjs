@@ -18,7 +18,7 @@ test('request body keeps system text-only and puts the image in the user message
   assert.equal(body.messages[0].content, SYSTEM_PROMPT);
   assert.equal(body.messages[1].role, 'user');
   assert.equal(body.messages[1].content[0].text, USER_PROMPT);
-  assert.equal(body.messages[1].content[1].image_url.detail, 'low');
+  assert.equal(body.messages[1].content[1].image_url.detail, 'high');
   assert.match(body.messages[1].content[1].image_url.url, /^data:image\/jpeg;base64,abc$/);
 });
 
