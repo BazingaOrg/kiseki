@@ -15,9 +15,10 @@ interface ResultsProps {
   onRemedy: (target: Remedy['target']) => void;
   assetBusy: boolean;
   onAsset: (item: AssetItem, action: 'rename' | 'delete', stem?: string) => void;
+  onDeleteAll?: (items: AssetItem[]) => void;
 }
 
-export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: ResultsProps) => {
+export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset, onDeleteAll}: ResultsProps) => {
   const initialTab: 'videos' | 'photos' = project.output.videos.length > 0 ? 'videos' : 'photos';
   const [tab, setTab] = useState<'videos' | 'photos'>(initialTab);
   const resultTabValues: ('videos' | 'photos')[] = [
@@ -64,7 +65,21 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
               <Player video={currentVideo?.path ?? null} />
               <aside className={hasVideoPlaylist ? 'result-video-picker' : 'result-video-single-file'} aria-label={hasVideoPlaylist ? '成片播放列表' : '当前成片'}>
                 <div className={hasVideoPlaylist ? 'result-video-picker-inner' : undefined}>
-                  {hasVideoPlaylist && <p className="result-video-position">播放列表 · {videoAssets.items.length} 个</p>}
+                  {hasVideoPlaylist && (
+                    <div className="result-video-position-row">
+                      <p className="result-video-position">播放列表 · {videoAssets.items.length} 个</p>
+                      {onDeleteAll && videoAssets.items.filter((item) => item.manageable !== false).length > 1 && (
+                        <button
+                          type="button"
+                          className="link-button asset-delete"
+                          disabled={assetBusy}
+                          onClick={() => onDeleteAll(videoAssets.items.filter((item) => item.manageable !== false))}
+                        >
+                          全部删除
+                        </button>
+                      )}
+                    </div>
+                  )}
                   <AssetCollection collection={videoAssets} empty="" ambiguous={() => ''} busy={assetBusy} currentId={hasVideoPlaylist ? currentVideo?.id ?? null : null} onSelect={hasVideoPlaylist ? (item) => setCurrentVideoIndex(videoAssets.items.findIndex((candidate) => candidate.id === item.id)) : undefined} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
                 </div>
               </aside>
@@ -85,6 +100,7 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset}: R
                 busy={assetBusy}
                 onRename={(item, stem) => onAsset(item, 'rename', stem)}
                 onDelete={(item) => onAsset(item, 'delete')}
+                onDeleteAll={onDeleteAll}
               />
             </>
           ) : (

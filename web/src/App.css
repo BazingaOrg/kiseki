@@ -1628,6 +1628,13 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   background: var(--color-background);
 }
 
+.result-video-position-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
 .result-video-position {
   margin: 0;
   color: var(--color-secondary-text);
@@ -2420,6 +2427,10 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   align-items: baseline;
   gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.photo-group-delete-all {
+  margin-left: auto;
 }
 
 .photo-group-head h3 {

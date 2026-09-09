@@ -26,6 +26,7 @@ interface PhotoGridProps {
   busy?: boolean;
   onRename?: (item: AssetItem, stem: string) => void;
   onDelete?: (item: AssetItem) => void;
+  onDeleteAll?: (assets: AssetItem[]) => void;
 }
 
 const PhotoItem = ({path, asset, busy, onOpen, onRename, onDelete}: {path: string; asset?: AssetItem; busy: boolean; onOpen: () => void; onRename?: (item: AssetItem, stem: string) => void; onDelete?: (item: AssetItem) => void}) => {
@@ -63,6 +64,9 @@ const PhotoItem = ({path, asset, busy, onOpen, onRename, onDelete}: {path: strin
  * 600px 预取)时再追加一批,直到渲染完。paths 本身不裁剪 —— lightbox 的
  * 导航索引和计数始终基于完整列表,分批只影响 DOM 挂载量。
  */
+const deletableAssets = (group: PhotoGroup): AssetItem[] =>
+  (group.assets ?? []).filter((item) => item.manageable !== false);
+
 const PHOTO_CHUNK_SIZE = 150;
 
 const PhotoChunkGrid = ({paths, assetsByPath, busy, onOpen, onRename, onDelete}: {
@@ -115,7 +119,7 @@ const PhotoChunkGrid = ({paths, assetsByPath, busy, onOpen, onRename, onDelete}:
   );
 };
 
-export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRename, onDelete}: PhotoGridProps) => {
+export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRename, onDelete, onDeleteAll}: PhotoGridProps) => {
   const [open, setOpen] = useState<OpenState | null>(null);
 
   const allGroups: PhotoGroup[] = suppliedGroups ?? [
@@ -140,12 +144,23 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, onRena
     <div className="photo-groups">
       {groups.map((group) => {
         const assetsByPath = new Map(group.assets?.map((item) => [item.path, item]));
+        const removable = deletableAssets(group);
         return <div className="photo-group" key={group.key}>
           {group.showHeader !== false && <div className="photo-group-head">
             <h3>{group.title}</h3>
             <span className="section-meta">
               {group.showCount !== false && `${group.paths.length} 张 · `}{group.hint}
             </span>
+            {onDeleteAll && removable.length > 1 && (
+              <button
+                type="button"
+                className="link-button asset-delete photo-group-delete-all"
+                disabled={busy}
+                onClick={() => onDeleteAll(removable)}
+              >
+                全部删除
+              </button>
+            )}
           </div>}
           <PhotoChunkGrid
             paths={group.paths}

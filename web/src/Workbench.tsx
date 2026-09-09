@@ -237,6 +237,48 @@ export const Workbench = ({
     }
     void performAsset(item, action, stem);
   };
+  const performDeleteAll = async (items: AssetItem[]): Promise<boolean> => {
+    if (assetBusy || jobBusy) return false;
+    const targets = items.filter((item) => item.manageable !== false);
+    if (targets.length === 0) return false;
+    setAssetBusy(true);
+    try {
+      for (const item of targets) {
+        const result = await mutateAsset(project.path, item.id, 'delete');
+        if (!result.ok) {
+          if (result.recoveryUndoId) {
+            setDialog({title: '需要恢复未完成的操作', message: result.message, confirmLabel: '尝试恢复', confirm: async () => { if (await handleRecovery(result.recoveryUndoId!)) setDialog(null); }});
+          } else setDialog({title: '操作未完成', message: result.message});
+          onProjectRefresh();
+          return false;
+        }
+      }
+      onProjectRefresh();
+      return true;
+    } finally {
+      setAssetBusy(false);
+    }
+  };
+  const handleDeleteAll = (items: AssetItem[]) => {
+    const targets = items.filter((item) => item.manageable !== false);
+    if (targets.length === 0) return;
+    const stills = targets.every((item) => item.kind === 'still');
+    const videos = targets.every((item) => item.kind === 'video');
+    const title = stills ? '删除全部静态图？' : videos ? '删除全部成片？' : '删除这些文件？';
+    const message = stills
+      ? `将删除 ${targets.length} 张导出静态图，此操作无法恢复。`
+      : videos
+        ? `将删除 ${targets.length} 个成片，此操作无法恢复。`
+        : `将删除 ${targets.length} 个文件，此操作无法恢复。`;
+    setDialog({
+      title,
+      message,
+      destructive: true,
+      confirm: async () => {
+        if (await performDeleteAll(targets)) setDialog(null);
+      },
+    });
+  };
   const handleRecovery = async (undoId: string): Promise<boolean> => {
     if (assetBusy || jobBusy) return false;
     setAssetBusy(true);
@@ -399,7 +441,7 @@ export const Workbench = ({
             />
           )}
           {section === 'results' && (
-            <Results project={project} capabilities={capabilities} onRemedy={handleRemedy} assetBusy={assetBusy || jobBusy} onAsset={handleAsset} />
+            <Results project={project} capabilities={capabilities} onRemedy={handleRemedy} assetBusy={assetBusy || jobBusy} onAsset={handleAsset} onDeleteAll={handleDeleteAll} />
           )}
         </main>
       </div>

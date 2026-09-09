@@ -20,3 +20,15 @@ test('photo grid loads the lightbox on demand and only preloads one neighbor', a
   assert.match(lightbox, /lightboxSlide/);
   assert.doesNotMatch(lightbox, /mediaUrl/);
 });
+
+test('results stills can offer a bulk delete action', async () => {
+  const grid = await readFile(new URL('./PhotoGrid.tsx', import.meta.url), 'utf8');
+  const results = await readFile(new URL('./Results.tsx', import.meta.url), 'utf8');
+  const make = await readFile(new URL('./Make.tsx', import.meta.url), 'utf8');
+  assert.match(grid, /onDeleteAll/);
+  assert.match(grid, /全部删除/);
+  assert.match(results, /onDeleteAll/);
+  assert.match(make, /图片旁白/);
+  assert.match(make, /STILL_DEFAULTS/);
+  assert.match(make, /photoCaption: false/);
+});
