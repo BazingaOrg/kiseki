@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {resolveSafePath} from './sandbox.mjs';
+import {sourceIdentity} from '../image-identity.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createProcessCompletion} from './process-lifecycle.mjs';
 
@@ -19,22 +20,7 @@ export const normalizeWidth = (raw) => {
   return [128, 256, 400, 640, MAX_WIDTH].find((step) => value <= step) ?? MAX_WIDTH;
 };
 
-const statPart = (stat, nsName, msName) => {
-  if (stat[nsName] !== undefined) return String(stat[nsName]);
-  // 旧 Node/平台没有 *Ns 时仍将毫秒值明确序列化,不能依赖对象字符串化.
-  return String(stat[msName] ?? '');
-};
-
-/** 源身份同时作为缓存键和强 ETag 的输入,不能只看 mtime/大小. */
-export const sourceIdentity = (filePath, stat, width) => [
-  filePath,
-  String(stat.dev ?? ''),
-  String(stat.ino ?? ''),
-  String(stat.size ?? ''),
-  statPart(stat, 'mtimeNs', 'mtimeMs'),
-  statPart(stat, 'ctimeNs', 'ctimeMs'),
-  String(width),
-].join('\0');
+export {sourceIdentity};
 
 export const cacheKey = (filePath, stat, width) =>
   crypto.createHash('sha1').update(sourceIdentity(filePath, stat, width)).digest('hex');
