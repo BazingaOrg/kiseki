@@ -39,3 +39,36 @@ test('invalid stored recent folders fail closed', () => {
     cleanup();
   }
 });
+
+test('stored duplicate paths render only once', () => {
+  const cleanup = installStorage({
+    'kiseki:recent-folders': JSON.stringify([
+      {name: 'latest', path: '/photos/trip'},
+      {name: 'stale', path: '/photos/trip/'},
+      {name: 'older', path: '/photos//trip'},
+      {name: 'other', path: '/photos/other'},
+    ]),
+  });
+  try {
+    assert.deepEqual(loadRecentFolders(), [
+      {name: 'latest', path: '/photos/trip'},
+      {name: 'other', path: '/photos/other'},
+    ]);
+  } finally {
+    cleanup();
+  }
+});
+
+test('Windows path spellings share one recent folder', () => {
+  const cleanup = installStorage({
+    'kiseki:recent-folders': JSON.stringify([
+      {name: 'latest', path: 'C:\\Photos\\Trip'},
+      {name: 'stale', path: 'c:/Photos/./Trip/'},
+    ]),
+  });
+  try {
+    assert.deepEqual(loadRecentFolders(), [{name: 'latest', path: 'C:\\Photos\\Trip'}]);
+  } finally {
+    cleanup();
+  }
+});
