@@ -55,3 +55,14 @@ test('child process restores runtime layout from env and rejects malformed value
     assert.match(failed.stderr, /KISEKI_RUNTIME_LAYOUT/);
   }
 });
+
+
+test('source browser uses Remotion discovery while explicit browser paths survive child serialization', () => {
+  assert.equal(createRuntimeLayout().chromium, null);
+  for (const chromium of [null, path.join(os.tmpdir(), 'bundled browser', 'chrome-headless-shell')]) {
+    const runtime = createRuntimeLayout({chromium});
+    const restored = createRuntimeLayout(JSON.parse(runtimeLayoutEnv(runtime).KISEKI_RUNTIME_LAYOUT));
+    assert.equal(restored.chromium, chromium);
+  }
+  assert.throws(() => createRuntimeLayout({chromium: ''}), /RuntimeLayout\.chromium/);
+});

@@ -58,7 +58,7 @@ export const createRuntimeLayout = (overrides = {}) => {
     tempRoot: overrides.tempRoot ?? os.tmpdir(),
     analyzerEnvRoot: overrides.analyzerEnvRoot ?? path.join(cacheRoot, 'analyzer-env'),
     wheelhouseRoot: overrides.wheelhouseRoot ?? path.join(sourceRoot, 'analyzer', 'wheelhouse'),
-    chromium: overrides.chromium ?? 'chrome-headless-shell',
+    chromium: overrides.chromium ?? null,
     analyzerOffline: overrides.analyzerOffline ?? false,
     python: overrides.python ?? 'python3',
   };
@@ -78,7 +78,7 @@ export const createRuntimeLayout = (overrides = {}) => {
     tempRoot: normalizePath(layout.tempRoot, 'tempRoot'),
     analyzerEnvRoot: normalizePath(layout.analyzerEnvRoot, 'analyzerEnvRoot'),
     wheelhouseRoot: normalizePath(layout.wheelhouseRoot, 'wheelhouseRoot'),
-    chromium: normalizeCommand(layout.chromium, 'chromium'),
+    chromium: layout.chromium === null ? null : normalizePath(layout.chromium, 'chromium'),
     analyzerOffline: Boolean(layout.analyzerOffline),
     python: normalizeCommand(layout.python, 'python'),
   });
