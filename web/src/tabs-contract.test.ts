@@ -10,6 +10,9 @@ test('welcome browser fills the viewport and folder columns follow the newest pa
   assert.match(css, /\.welcome \.folder-picker-browser\s*\{[^}]*flex: 1 1 auto;/s);
   assert.match(css, /\.recent-folders\s*\{[^}]*text-align: left;/s);
   assert.match(css, /\.recent-folder-list\s*\{[^}]*flex-wrap: wrap;/s);
+  assert.match(css, /\.job-log-line\s*\{[^}]*align-items: center;/s);
+  assert.match(css, /\.folder-empty\s*\{[^}]*padding: 0\.7rem 0\.5rem;[^}]*font-size: 0\.95rem;[^}]*line-height: 1\.5;/s);
+  assert.match(css, /\.folder-item\s*\{[^}]*padding: 0\.7rem 0\.5rem;[^}]*font-size: 0\.95rem;[^}]*line-height: 1\.5;/s);
   assert.match(picker, /className=\{runtime\.projectSelection === 'sandbox' \? 'folder-picker folder-picker-browser' : 'folder-picker'\}/);
   assert.match(picker, /columnsRef/);
   assert.match(picker, /scroller\.scrollTo\(\{/);

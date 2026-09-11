@@ -347,9 +347,10 @@
 }
 
 .folder-empty {
-  padding: 1rem 0.25rem;
+  padding: 0.7rem 0.5rem;
   color: var(--color-secondary-text);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
+  line-height: 1.5;
 }
 
 .folder-item {
@@ -359,6 +360,7 @@
   border: none;
   padding: 0.7rem 0.5rem;
   font-size: 0.95rem;
+  line-height: 1.5;
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -1393,7 +1395,7 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .job-log-line {
   display: grid;
   grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: start;
+  align-items: center;
   gap: 0.35rem;
   margin: 0;
 }
