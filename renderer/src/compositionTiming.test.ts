@@ -48,7 +48,7 @@ test('opening recap preroll leaves filmstrip and polaroid fully settled at hando
   assert.equal(polaroid.rotation, -2);
 });
 
-test('photo captions occupy one exclusive interval and skip short clips', () => {
+test('photo captions follow every body photo, including short clips', () => {
   const clips = [
     {kind: 'photo', src: 'a.jpg', start: 0, end: 1},
     {kind: 'photo', src: 'b.jpg', start: 3, end: 8},
@@ -59,7 +59,8 @@ test('photo captions occupy one exclusive interval and skip short clips', () => 
   const short = photoCaptionPresentation({
     clips, frame: Math.round(0.5 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
   });
-  assert.equal(short.visible, false);
+  assert.equal(short.visible, true);
+  assert.equal(short.clip?.src, 'a.jpg');
   const mid = photoCaptionPresentation({
     clips, frame: Math.round(5 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
   });
@@ -69,4 +70,22 @@ test('photo captions occupy one exclusive interval and skip short clips', () => 
     clips, frame: Math.ceil(8 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
   });
   assert.equal(switchFrame.visible, false);
+});
+
+test('photo captions stay hidden during the opening recap', () => {
+  const clips = [
+    {kind: 'photo', src: 'a.jpg', start: 0, end: 3},
+    {kind: 'photo', src: 'b.jpg', start: 3, end: 8},
+  ];
+  const fps = 60;
+  const durationInFrames = 8 * fps;
+  const recap = photoCaptionPresentation({
+    clips, frame: Math.round(1.5 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 2, durationInFrames,
+  });
+  assert.equal(recap.visible, false);
+  const body = photoCaptionPresentation({
+    clips, frame: Math.round(2.5 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 2, durationInFrames,
+  });
+  assert.equal(body.visible, true);
+  assert.equal(body.clip?.src, 'a.jpg');
 });

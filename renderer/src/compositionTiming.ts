@@ -55,7 +55,6 @@ export const photoCaptionPresentation = ({
     const endCandidates = [Math.ceil(clip.end * fps), whiteFadeStartFrame];
     if (next) endCandidates.push(Math.ceil(next.start * fps));
     const endFrame = Math.min(...endCandidates);
-    if (endFrame - startFrame < Math.round(2.5 * fps)) continue;
     if (frame >= startFrame && frame < endFrame) {
       winner = {index, startFrame, endFrame};
     }

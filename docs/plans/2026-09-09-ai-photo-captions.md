@@ -336,11 +336,11 @@ Polaroid：
 
 - 序章闪回、片头、章节卡与片尾不显示图片旁白。
 - 正文进入当前照片后淡入，切换前淡出；交叉淡化期间只允许一条旁白可读，不能两句叠加。
-- 图片正文展示窗口不足 2.5 秒时不渲染旁白，任务继续成功、缓存仍保留，供 still 或后续较长时间线使用。
+- 图片旁白跟随每张正文照片的有效展示窗口；不因照片较短而整体跳过。序章闪回、片头、章节卡和片尾白场仍不显示旁白。
 - 末张照片进入白场前提前结束旁白，不能与谢幕语叠加。
-- 时间规则集中到 `compositionTiming.ts` 的 `photoCaptionPresentation`。输入为原始 visualClips 顺序、frame/fps、实际 showIntro/introEnd、recapEnd、durationInFrames 及 whiteFadeDuration（使用现有 2.5 秒常量）。按实际 frame 边界计算，避免秒浮点重叠。
+- 时间规则集中到 `compositionTiming.ts` 的 `photoCaptionPresentation`。输入为原始 visualClips 顺序、frame/fps、实际 showIntro/introEnd、recapEnd、durationInFrames 及 whiteFadeDuration（使用现有 2.5 秒白场时长）。按实际 frame 边界计算，避免秒浮点重叠。
 - 每张正文照片起点为 `ceil(max(clip.start, showIntro ? introEnd : 0, recapEnd) × fps)`；终点为 `min(ceil(clip.end × fps), ceil(nextVisual.start × fps), whiteFadeStartFrame)`，无 nextVisual 时忽略该项，采用左闭右开区间。chapter 占用的帧强制为空；自定义 timeline 重叠时最后一个符合条件的 photo 在原始数组顺序中获胜，始终最多一条。
-- 2.5 秒阈值按上述裁剪后的区间长度判断，长度不足返回空。淡入和淡出均为 `round(0.2 × fps)` 帧并钳入独占区间；caption 归属不随模板照片淡化沿延伸。测试切换前一帧、切换帧、后一帧、chapter、recap、白场及低 fps。
+- 不设置照片旁白的最小时长阈值。淡入和淡出均为 `round(0.2 × fps)` 帧并钳入独占区间；caption 归属不随模板照片淡化沿延伸。测试短 clip、切换前一帧、切换帧、后一帧、chapter、recap、白场及低 fps。
 
 ### 7.3 静态图布局
 
@@ -585,9 +585,9 @@ API Key 只由本地服务/CLI 进程从环境读取。`/api/runtime` 的 `Runti
 | still | 展签 | 竖版 | 开 | 开 | 不适用 | 明 | 照片→旁白→EXIF 安全区 |
 | still | 默认 | 方形 | 关 | 关 | 不适用 | 暗 | 24–30 字单行与最小字号 |
 
-每项记录画布尺寸、元素 bounding box、最小间距、是否溢出和关键帧截图。视觉验收必须包含 8 字、24 字和 30 字样本，以及 2.5 秒附近的短 clip。
+每项记录画布尺寸、元素 bounding box、最小间距、是否溢出和关键帧截图。视觉验收必须包含 8 字、24 字和 30 字样本，以及短 clip。
 
-补充边界：photoScale=1、合法极小 photoScale、超窄竖图、横图放入竖画布、Polaroid 最大旋转、最长 EXIF/签名、chapter 与白场裁剪后不足 2.5 秒。预检返回 null 时，成片必须正常完成并正确汇总旁白省略数。
+补充边界：photoScale=1、合法极小 photoScale、超窄竖图、横图放入竖画布、Polaroid 最大旋转、最长 EXIF/签名、短 clip、chapter 与白场裁剪。预检返回 null 时，成片必须正常完成并正确汇总旁白省略数。
 
 ## 13. 完成标准
 

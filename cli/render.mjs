@@ -204,16 +204,12 @@ export const applyCaptionLayouts = async (timeline, {page, templateId = null, mo
   const height = timeline.meta.height;
   const visualScale = Math.min(width, height) / 1080;
   let skippedLayout = 0;
-  let skippedShort = 0;
   const next = [];
   for (const photo of timeline.photos ?? []) {
     if ((photo.kind !== undefined && photo.kind !== 'photo') || !photo.caption) {
       const {captionPreview: _preview, ...rest} = photo;
       next.push(rest);
       continue;
-    }
-    if (typeof photo.start === 'number' && typeof photo.end === 'number' && photo.end - photo.start < 2.5) {
-      skippedShort += 1;
     }
     const captionLayout = await fitTopCaption({
       text: photo.caption,
@@ -235,7 +231,7 @@ export const applyCaptionLayouts = async (timeline, {page, templateId = null, mo
     next.push({...rest, captionLayout});
   }
   timeline.photos = next;
-  return {skippedLayout, skippedShort};
+  return {skippedLayout};
 };
 
 const main = async () => {
@@ -321,13 +317,12 @@ const main = async () => {
         assertUnchangedSources(publicDir, captionSources, loadCaptionCache(captionsPathFor(publicDir)));
       }
       const page = await captionPageFromBrowser(browser, bundled.serveUrl);
-      const {skippedLayout, skippedShort} = await applyCaptionLayouts(inputProps, {
+      const {skippedLayout} = await applyCaptionLayouts(inputProps, {
         page,
         templateId: flags.template,
         motionZoom: templateMotionZoom(flags.template),
       });
       if (skippedLayout > 0) progress.println(`└ 旁白排版跳过 ${skippedLayout} 张`);
-      if (skippedShort > 0) progress.println(`└ 短镜头跳过 ${skippedShort} 张`);
     }
     const totalFrames = composition.durationInFrames;
     // 这里已拿到最终 composition;紧邻 renderMedia 输出,CLI 和 Web fd3 日志看见
