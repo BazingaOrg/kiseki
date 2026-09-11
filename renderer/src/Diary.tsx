@@ -15,13 +15,13 @@ import {ChapterCard} from './ChapterCard';
 import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
-import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, getPalette, getVisualScale} from './theme';
+import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
 import {getFadeDuration, resolvePhotoTransition} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
-import {resolveTemplatePresentation} from './templates';
+import {templateById, resolveTemplatePresentation} from './templates';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 
@@ -38,7 +38,8 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const frame = useCurrentFrame();
   const {fps, width, height, durationInFrames} = useVideoConfig();
   const t = frame / fps;
-  const palette = getPalette(meta.background);
+  const defaultStyle = !templateById(meta.templateId);
+  const palette = defaultStyle ? defaultVideoPalette(getPalette(meta.background)) : getPalette(meta.background);
   // 呈现层模板:只覆盖照片转场与字幕/章节卡长相;缺省(无 templateId)全部回落现有常量
   const template = resolveTemplatePresentation(meta.templateId);
   ensureFonts(template.fontFamily);
@@ -172,6 +173,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           palette={palette}
           fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
           opacity={captionState.opacity}
+          fontWeight={defaultStyle ? 400 : undefined}
         />
       ) : null}
       {visibleSubtitles.map((l) => (

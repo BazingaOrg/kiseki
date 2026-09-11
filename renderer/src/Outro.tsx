@@ -11,7 +11,7 @@ export const Outro: React.FC<{
   opacity: number;
   palette: Palette;
   fontFamily?: FontFamily;
-}> = ({text, scale, opacity, palette, fontFamily = 'serif'}) => {
+}> = ({text, scale, opacity, palette, fontFamily = 'sans'}) => {
   if (!text || opacity <= 0) return null;
 
   return (

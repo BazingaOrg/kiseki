@@ -46,6 +46,7 @@ export function layoutTopBandCaption(args: {
   maxTextWidth: number;
   measuredAtMax: number;
   codePoints: number;
+  tracking?: number;
 }): CaptionLayout | null;
 export function layoutStillCaption(args: {
   canvasWidth: number;

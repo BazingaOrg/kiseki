@@ -82,3 +82,19 @@ test('measureCaptionWidth requires a browser page', async () => {
     letterSpacing: '0.08em',
   }), /caption-measure-unavailable/);
 });
+
+
+test('default video measures multilingual captions using the rendered font and tracking', async () => {
+  for (const [text, family] of [['午后的光', 'Noto Sans SC'], ['午後の光', 'Noto Sans JP'], ['Afternoon light', 'Noto Sans']]) {
+    let measured;
+    const layout = await fitTopCaption({
+      text, canvasWidth: 1920, canvasHeight: 1080, photoScale: 0.8,
+      imageWidth: 640, imageHeight: 480, visualScale: 1,
+      measureWidth: async (args) => { measured = args; return 500; },
+    });
+    assert.ok(measured.fontFamily.startsWith(`'${family}'`));
+    assert.equal(measured.fontWeight, 400);
+    assert.equal(layout.letterSpacing, measured.letterSpacing);
+    assert.equal(layout.fontSize, measured.fontSize);
+  }
+});

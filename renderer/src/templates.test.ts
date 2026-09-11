@@ -37,7 +37,7 @@ test('resolveTemplatePresentation resolves a known template and falls back witho
   assert.equal(cinema.fontFamily, 'serif', 'slow-cinema 保持衬线');
 
   const plain = resolveTemplatePresentation(undefined);
-  assert.deepEqual(plain, {transition: undefined, motion: undefined, fontFamily: 'serif', captions: undefined, chapterCard: undefined});
+  assert.deepEqual(plain, {transition: undefined, motion: undefined, fontFamily: 'sans', captions: undefined, chapterCard: undefined});
 
   // 未知 id 同样回落为"不应用模板",不会让渲染崩溃
   assert.deepEqual(resolveTemplatePresentation('nope'), plain);

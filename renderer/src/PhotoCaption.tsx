@@ -9,7 +9,8 @@ export const PhotoCaption: React.FC<{
   fontFamily: string;
   opacity?: number;
   flow?: boolean;
-}> = ({text, layout, palette, fontFamily, opacity = 1, flow = false}) => {
+  fontWeight?: number;
+}> = ({text, layout, palette, fontFamily, opacity = 1, flow = false, fontWeight = CAPTION_FONT_WEIGHT}) => {
   const resolved = layout && typeof layout === 'object' && 'x' in layout && 'fontSize' in layout
     ? layout as CaptionLayout
     : null;
@@ -28,7 +29,7 @@ export const PhotoCaption: React.FC<{
         color: palette.text,
         fontFamily,
         fontSize: resolved.fontSize,
-        fontWeight: CAPTION_FONT_WEIGHT,
+        fontWeight,
         letterSpacing: resolved.letterSpacing,
         lineHeight: 1.35,
         whiteSpace: 'nowrap',

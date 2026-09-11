@@ -38,7 +38,22 @@ export const PALETTES = {
   },
 } as const;
 
-export type Palette = (typeof PALETTES)[keyof typeof PALETTES];
+export interface Palette {
+  text: string;
+  secondaryText: string;
+  divider: string;
+  photoOutline: string;
+  photoShadowLayers: readonly {x: number; y: number; blur: number; spread: number; color: string}[];
+}
+
+export const defaultVideoPalette = (palette: Palette): Palette => ({
+  ...palette,
+  text: palette.text === PALETTES.light.text ? '#1D1D1F' : '#F5F5F7',
+  secondaryText: palette.text === PALETTES.light.text ? '#6E6E73' : '#A1A1A6',
+  divider: 'transparent',
+  photoOutline: 'transparent',
+  photoShadowLayers: [],
+});
 
 const getHexLuminance = (color: string): number | null => {
   const match = color.trim().match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
@@ -86,20 +101,20 @@ export const getPhotoShadow = (scale: number, palette: Palette): string =>
       ({x, y, blur, spread, color}) =>
         `${x * scale}px ${y * scale}px ${blur * scale}px ${spread * scale}px ${color}`,
     )
-    .join(', ');
+    .join(', ') || 'none';
 
 export const SUBTITLE = {
   // 低干扰的摄影画展题签:纤细、小字号、缓入缓出,避免抢夺照片视觉焦点。
-  fontSize: 36,
-  fontWeight: 500,
-  letterSpacing: '0.12em',
-  letterSpacingCompact: '0.06em', // 单行超过约 18 个全角字符时回退
+  fontSize: 30,
+  fontWeight: 400,
+  letterSpacing: '0.02em',
+  letterSpacingCompact: '0em', // 单行超过约 18 个全角字符时回退
   compactThreshold: 18, // 全角字符等效数
   confidenceThreshold: 0.6, // Whisper 段置信度低于此值不渲染
   fadeInDuration: 0.35,
   fadeOutDuration: 0.25,
-  riseDistance: 6,
-  exitRise: 4,
+  riseDistance: 0,
+  exitRise: 0,
 } as const;
 
 export const INFO_BAR = {
@@ -133,11 +148,11 @@ export const INTRO = {
 export const OUTRO = {
   // 片尾谢幕语:淡场过半后居中浮现,持续到最后一帧;字族随模板走 FONT_FAMILY
   text: 'Thanks for watching :)',
-  fontSize: 36,
+  fontSize: 32,
   fontWeight: 500,
-  letterSpacing: '0.12em',
+  letterSpacing: '0em',
   fadeRange: [0.5, 0.85] as const, // 随白场进度淡入的区间
-  riseDistance: 6,
+  riseDistance: 0,
 } as const;
 
 /** 字族 × 语言路由:serif(展陈题签)与 sans(新闻/现代)两套,模板声明用哪套。 */

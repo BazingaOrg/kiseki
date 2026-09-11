@@ -20,6 +20,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
 }) => {
   const t = STILL.typography;
   const face = FONT_FAMILY[fontFamily].mixed;
+  const letterSpacing = fontFamily === 'sans' ? '0.02em' : t.letterSpacing;
   const line = (text: string | undefined, fontSize: number, color: string, weight = 500) =>
     text ? (
       <div
@@ -27,7 +28,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
           fontFamily: face,
           fontSize: fontSize * scale,
           fontWeight: weight,
-          letterSpacing: t.letterSpacing,
+          letterSpacing,
           color,
           lineHeight: 1.35,
           marginBottom: t.lineGap * scale,
@@ -56,7 +57,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
         <>
           <div style={{width: `${t.dividerWidth * 100}%`, height: scale, background: palette.divider, marginBottom: t.groupGap * scale}} />
           {exif.params.map((param) => (
-            <div key={param} style={{fontFamily: face, fontSize: t.paramsFontSize * scale, fontWeight: 500, letterSpacing: t.letterSpacing, color: palette.text, lineHeight: 1.2, marginBottom: t.paramsLineGap * scale}}>{param}</div>
+            <div key={param} style={{fontFamily: face, fontSize: t.paramsFontSize * scale, fontWeight: 500, letterSpacing, color: palette.text, lineHeight: 1.2, marginBottom: t.paramsLineGap * scale}}>{param}</div>
           ))}
         </>
       ) : null}

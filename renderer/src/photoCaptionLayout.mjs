@@ -46,10 +46,11 @@ export const layoutTopBandCaption = ({
   maxTextWidth,
   measuredAtMax,
   codePoints,
+  tracking,
 }) => {
   const pad = CAPTION_EDGE_PAD * visualScale;
   const gap = CAPTION_EDGE_PAD * visualScale;
-  const letterSpacing = letterSpacingFor(codePoints);
+  const letterSpacing = tracking ?? letterSpacingFor(codePoints);
   const fontSize = chooseFontSize({measuredAtMax, maxWidth: maxTextWidth, visualScale});
   if (fontSize == null) return null;
   const lineHeight = CAPTION_LINE_HEIGHT * fontSize;

@@ -1,3 +1,5 @@
+import {readFile} from 'node:fs/promises';
+import {normalizeTemplateId} from '../templates.mjs';
 import {
   CAPTION_FONT_SIZE,
   CAPTION_FONT_WEIGHT,
@@ -58,17 +60,38 @@ export const captionPageFromBrowser = async (browser) => {
   return page;
 };
 
-const measuredWidth = async ({page, measureWidth, text, visualScale, codePoints}) => {
-  const fontSize = CAPTION_FONT_SIZE * visualScale;
-  const letterSpacing = `${letterSpacingFor(codePoints)}em`;
-  if (typeof measureWidth === 'function') {
-    return measureWidth({text, fontFamily: CAPTION_FONT_FAMILY, fontSize, fontWeight: CAPTION_FONT_WEIGHT, letterSpacing});
+const sansFontPages = new WeakMap();
+
+const ensureSansCaptionFonts = async (page) => {
+  if (!page?.evaluate) throw new Error('caption-measure-unavailable');
+  if (!sansFontPages.has(page)) {
+    const loading = Promise.all(['NotoSans', 'NotoSansSC', 'NotoSansJP'].map(async (name) => ({
+      family: name === 'NotoSans' ? 'Noto Sans' : name === 'NotoSansSC' ? 'Noto Sans SC' : 'Noto Sans JP',
+      data: (await readFile(new URL(`../../renderer/src/fonts/${name}-VF.woff2`, import.meta.url))).toString('base64'),
+    }))).then((fonts) => page.evaluate(async (fonts) => {
+      for (const {family, data} of fonts) {
+        const face = new FontFace(family, `url(data:font/woff2;base64,${data})`, {weight: '200 900'});
+        document.fonts.add(await face.load());
+      }
+    }, fonts));
+    sansFontPages.set(page, loading);
   }
+  await sansFontPages.get(page);
+};
+
+const measuredWidth = async ({page, measureWidth, text, visualScale, codePoints, defaultStyle = false, fontFamily = CAPTION_FONT_FAMILY}) => {
+  const fontSize = CAPTION_FONT_SIZE * visualScale;
+  const letterSpacing = `${defaultStyle ? 0.02 : letterSpacingFor(codePoints)}em`;
+  const fontWeight = defaultStyle ? 400 : CAPTION_FONT_WEIGHT;
+  if (typeof measureWidth === 'function') {
+    return measureWidth({text, fontFamily, fontSize, fontWeight, letterSpacing});
+  }
+  if (defaultStyle) await ensureSansCaptionFonts(page);
   return measureCaptionWidth(page, {
     text,
-    fontFamily: CAPTION_FONT_FAMILY,
+    fontFamily,
     fontSize,
-    fontWeight: CAPTION_FONT_WEIGHT,
+    fontWeight,
     letterSpacing,
   });
 };
@@ -96,7 +119,11 @@ export const fitTopCaption = async ({
   const regionWidth = hasExif && templateId !== 'filmstrip' && templateId !== 'polaroid'
     ? captionMaxTextWidth(canvasWidth * 0.52, visualScale)
     : captionMaxTextWidth(canvasWidth, visualScale);
-  const measuredAtMax = await measuredWidth({page, measureWidth, text, visualScale, codePoints});
+  const defaultStyle = !normalizeTemplateId(templateId);
+  const fontFamily = defaultStyle
+    ? (/^[ -ɏ -⁯]*$/u.test(text) ? "'Noto Sans', sans-serif" : /[぀-ヿ]/u.test(text) ? "'Noto Sans JP', 'Noto Sans SC', 'Noto Sans', sans-serif" : "'Noto Sans SC', 'Noto Sans JP', 'Noto Sans', sans-serif")
+    : CAPTION_FONT_FAMILY;
+  const measuredAtMax = await measuredWidth({page, measureWidth, text, visualScale, codePoints, defaultStyle, fontFamily});
   return layoutTopBandCaption({
     canvasWidth,
     canvasHeight,
@@ -105,6 +132,7 @@ export const fitTopCaption = async ({
     maxTextWidth: regionWidth,
     measuredAtMax,
     codePoints,
+    tracking: defaultStyle ? 0.02 : undefined,
   });
 };
 

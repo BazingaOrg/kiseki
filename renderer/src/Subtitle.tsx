@@ -7,6 +7,7 @@ import type {TemplateCaptionsStyle} from './templates';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 const easeOut = {...clamp, easing: Easing.out(Easing.cubic)} as const;
+const MUSICAL_NOTE = '♪';
 
 export const Subtitle: React.FC<{
   line: SubtitleLine;
@@ -18,7 +19,7 @@ export const Subtitle: React.FC<{
   captions?: TemplateCaptionsStyle;
   /** 模板声明的字族;缺省衬线(展陈题签) */
   fontFamily?: FontFamily;
-}> = ({line, scale, bandCenterFromBottom, sideInset = 0, palette, captions, fontFamily = 'serif'}) => {
+}> = ({line, scale, bandCenterFromBottom, sideInset = 0, palette, captions, fontFamily = 'sans'}) => {
   const frame = useCurrentFrame();
   const {fps, width} = useVideoConfig();
   const t = frame / fps;
@@ -41,13 +42,14 @@ export const Subtitle: React.FC<{
     fullwidthLength(line.text) > style.compactThreshold
       ? style.letterSpacingCompact
       : style.letterSpacing;
+  const subtitleText = `${MUSICAL_NOTE} ${line.text} ${MUSICAL_NOTE}`;
 
   // 超宽兜底:analyze 层已按词拆行,但手改 timeline 等场景仍可能出现超长行,
   // 按估算宽度等比缩小字号,保证不溢出画布(估算:全角 1em、半角 0.5em + 字距)
   const spacingEm = parseFloat(letterSpacing);
-  const units = fullwidthLength(line.text);
+  const units = fullwidthLength(subtitleText);
   const baseSize = style.fontSize * scale;
-  const estWidth = baseSize * (units + line.text.length * spacingEm);
+  const estWidth = baseSize * (units + subtitleText.length * spacingEm);
   const maxWidth = Math.min(width * 0.86, Math.max(1, width - sideInset * 2));
   const fontSize = estWidth > maxWidth ? baseSize * (maxWidth / estWidth) : baseSize;
 
@@ -62,7 +64,7 @@ export const Subtitle: React.FC<{
         right: 0,
         bottom,
         textAlign: 'center',
-        opacity,
+        opacity: opacity * (captions ? 1 : 0.76),
         transform: `translateY(${rise}px)`,
       }}
     >
@@ -79,7 +81,7 @@ export const Subtitle: React.FC<{
           whiteSpace: 'nowrap',
         }}
       >
-        {line.text}
+        {subtitleText}
       </span>
     </div>
   );

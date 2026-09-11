@@ -147,7 +147,7 @@ export interface ResolvedTemplatePresentation {
 export const resolveTemplatePresentation = (templateId: string | undefined): ResolvedTemplatePresentation => {
   const template = templateById(templateId);
   if (!template) {
-    return {transition: undefined, motion: undefined, fontFamily: 'serif', captions: undefined, chapterCard: undefined};
+    return {transition: undefined, motion: undefined, fontFamily: 'sans', captions: undefined, chapterCard: undefined};
   }
   return {
     transition: {type: template.transition, duration: TEMPLATE_TRANSITION_DURATIONS[template.transition]},
