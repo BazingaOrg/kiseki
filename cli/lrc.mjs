@@ -14,12 +14,12 @@ export const parseLrc = (text, {keepGaps = false} = {}) => {
   const source = String(text ?? '');
   const extended = /\[kiseki:translation:zh-CN\]/i.test(source);
   const offsetMatch = source.match(/^\s*\[offset:([+-]?\d+)\]\s*$/im);
-  const offset = extended && offsetMatch ? Number(offsetMatch[1]) / 1000 : 0;
+  const offset = offsetMatch ? Number(offsetMatch[1]) / 1000 : 0;
   const originals = new Map();
   const toTime = (tag) => {
     const seconds = Number(tag[2]);
     if (extended && seconds >= 60) throw new Error('双语 LRC 含无效时间戳');
-    return Math.max(0, Number(tag[1]) * 60 + seconds + offset);
+    return Math.round(Math.max(0, Number(tag[1]) * 60 + seconds + offset) * 1000) / 1000;
   };
   for (const raw of source.split(/\r?\n/)) {
     const tags = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
@@ -32,19 +32,19 @@ export const parseLrc = (text, {keepGaps = false} = {}) => {
       for (const tag of tags) {
         const time = toTime(tag);
         const existing = translations.get(time);
-        if (extended && existing && existing !== content) throw new Error('双语 LRC 同一时间戳有不同中文译文');
+        if (extended && existing !== undefined && existing !== content) throw new Error('双语 LRC 同一时间戳有不同中文译文');
         translations.set(time, content);
       }
       continue;
     }
-    if (!content && !keepGaps) continue;
     for (const tag of tags) {
       const time = toTime(tag);
-      if (extended) {
-        const existing = originals.get(time);
-        if (existing && existing !== content) throw new Error('双语 LRC 同一时间戳有不同原文');
-        originals.set(time, content);
+      const existing = originals.get(time);
+      if (existing !== undefined && existing !== content) {
+        throw new Error(extended ? '双语 LRC 同一时间戳有不同原文' : 'LRC 同一时间戳有不同原文');
       }
+      originals.set(time, content);
+      if (!content && !keepGaps) continue;
       entries.push({time, text: content});
     }
   }

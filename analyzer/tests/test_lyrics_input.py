@@ -87,6 +87,10 @@ def test_translation_without_original_or_with_ambiguous_duplicate_is_rejected(tm
     with pytest.raises(LrcError, match="相同时间戳"):
         parse_lrc(duplicate, audio_name="song.mp3", duration=3.0)
 
+    blank = write_lrc(tmp_path, "[00:01.00]\n[00:01.00][kiseki:translation:zh-CN]间奏\n")
+    with pytest.raises(LrcError, match="空白时间边界"):
+        parse_lrc(blank, audio_name="song.mp3", duration=3.0)
+
 
 def test_translation_uses_the_same_offset_as_original(tmp_path: Path):
     path = write_lrc(

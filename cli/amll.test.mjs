@@ -12,6 +12,7 @@ test('AMLL normalizes candidates and emits paired extended LRC', () => {
   assert.deepEqual(normalizeAmllCandidate({id: 7, musicName: 'Song', artists: 'Artist', albumName: 'Album'}), {
     id: '7', provider: 'amll', trackName: 'Song', artistName: 'Artist', albumName: 'Album', duration: null,
   });
+  assert.equal(normalizeAmllCandidate({id: 7, filename: '7.ttml'}).filename, '7.ttml');
   const result = parseAmllLyrics({id: 7, musicName: 'Song', artists: 'Artist', albumName: 'Album', format: 'ttml', lyrics: ttml});
   assert.equal(result.lineCount, 1);
   assert.equal(result.translationCount, 1);
@@ -39,6 +40,26 @@ test('AMLL preserves word boundaries, writes gaps from end, and rejects unsafe t
   const injected = gaps.replace('Again', '&#10;[00:00.000]injected');
   assert.throws(() => parseAmllLyrics({format: 'ttml', lyrics: injected}), /不能写入 LRC/);
   assert.throws(() => parseAmllLyrics({format: 'ttml', lyrics: '<tt><body><p begin="1s" end="2s">x</body></tt>'}), /无效/);
+});
+
+test('AMLL drops Chinese translation on empty original rows', () => {
+  const emptyTranslated = '<?xml version="1.0"?><tt xmlns:ttm="urn:ttm" xmlns:itunes="urn:itunes"><head><metadata><iTunesMetadata><translations><translation xml:lang="zh-CN"><text for="L2">间奏</text></translation></translations></iTunesMetadata></metadata></head><body><p begin="1s" end="2s">Hello</p><p begin="2s" end="3s" itunes:key="L2"><span ttm:role="x-translation" xml:lang="zh-CN">间奏</span></p></body></tt>';
+  const result = parseAmllLyrics({format: 'ttml', lyrics: emptyTranslated});
+  assert.equal(result.lineCount, 1);
+  assert.equal(result.translationCount, 0);
+  assert.match(result.syncedLyrics, /\[00:02\.000\]\n/);
+  assert.doesNotMatch(result.syncedLyrics, /\[kiseki:translation:zh-CN\]/);
+  assert.deepEqual(parseLrc(result.syncedLyrics, {keepGaps: true}), [
+    {time: 1, text: 'Hello'},
+    {time: 2, text: ''},
+    {time: 3, text: ''},
+  ]);
+  assert.ok(result.warnings.includes('部分歌词没有中文译文'));
+  const fullyTranslated = '<?xml version="1.0"?><tt xmlns:ttm="urn:ttm"><body><p begin="1s" end="2s">Hello<span ttm:role="x-translation" xml:lang="zh-CN">你好</span></p><p begin="2s" end="3s"></p></body></tt>';
+  const complete = parseAmllLyrics({format: 'ttml', lyrics: fullyTranslated});
+  assert.equal(complete.lineCount, 1);
+  assert.equal(complete.translationCount, 1);
+  assert.equal(complete.warnings.includes('部分歌词没有中文译文'), false);
 });
 
 test('AMLL production samples parse without emitting their lyric text', {skip: !process.env.AMLL_SAMPLE_DIR}, () => {

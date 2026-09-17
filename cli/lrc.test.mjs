@@ -83,3 +83,12 @@ test('extended LRC applies offset and rejects invalid translation pairings', () 
   assert.throws(() => parseLrc('[00:01.00][kiseki:translation:zh-CN]孤儿'), /没有对应原文/);
   assert.throws(() => parseLrc('[00:01.00]One\n[00:01.00][kiseki:translation:zh-CN]一\n[00:01.00][kiseki:translation:zh-CN]二'), /不同中文译文/);
 });
+
+test('parseLrc always applies offset and pairs translations on 3-decimal timestamps', () => {
+  assert.deepEqual(parseLrc('[offset:+500]\n[00:01.000]原文'), [{time: 1.5, text: '原文'}]);
+  assert.deepEqual(parseLrc('[00:01.2341]原文\n[00:01.2344][kiseki:translation:zh-CN]译文'), [
+    {time: 1.234, text: '原文', translation: {text: '译文', lang: 'zh'}},
+  ]);
+  assert.throws(() => parseLrc('[00:01.2341]One\n[00:01.2344]Two'), /不同原文/);
+  assert.throws(() => parseLrc('[00:01.00]\n[00:01.00][kiseki:translation:zh-CN]间奏'), /空白时间边界/);
+});

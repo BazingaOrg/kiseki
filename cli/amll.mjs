@@ -85,6 +85,7 @@ export const normalizeAmllCandidate = (item) => {
   const source = item?.data ?? item ?? {};
   const metadata = source.metadata ?? {};
   const first = (value) => Array.isArray(value) ? value.find((part) => typeof part === 'string' && part.trim()) ?? '' : value ?? '';
+  const filename = [source.filename, item?.filename].find((value) => typeof value === 'string' && value.trim());
   return {
     id: String(source.id ?? item?.id ?? ''),
     provider: 'amll',
@@ -92,6 +93,7 @@ export const normalizeAmllCandidate = (item) => {
     artistName: first(source.artistNames ?? source.artists ?? source.artistName ?? source.artist ?? metadata.artists),
     albumName: first(source.albumNames ?? source.albumName ?? source.album ?? metadata.album),
     duration: null,
+    ...(filename ? {filename: filename.trim()} : {}),
   };
 };
 
@@ -121,7 +123,12 @@ export const parseAmllLyrics = (record) => {
     const key = attr(paragraph, 'itunes:key') || attr(paragraph, 'key');
     const inline = elements(paragraph, 'span').filter((span) => role(span) === 'x-translation').map((span) => ({lang: attr(span, 'xml:lang') || attr(span, 'lang'), text: safeLrcText(auxiliaryText(span), '中文译文')}));
     const translation = oneChineseTranslation([...inline, ...(headerTranslations.get(key) ?? [])], `AMLL 第 ${rows.length + 1} 行`);
-    rows.push({start: Math.round(start * 1000) / 1000, end: Math.round(end * 1000) / 1000, original, translation});
+    rows.push({
+      start: Math.round(start * 1000) / 1000,
+      end: Math.round(end * 1000) / 1000,
+      original,
+      translation: original ? translation : null,
+    });
   }
   if (!rows.length) throw new Error('AMLL TTML 没有歌词行');
   rows.sort((a, b) => a.start - b.start);
@@ -156,7 +163,7 @@ export const parseAmllLyrics = (record) => {
     if (!next || row.end < next.start) lines.push(`[${lrcTime(row.end)}]`);
   }
   const warnings = [];
-  if (rows.some((row) => !row.translation)) warnings.push('部分歌词没有中文译文');
+  if (rows.filter((row) => row.original).some((row) => !row.translation)) warnings.push('部分歌词没有中文译文');
   if (truncatedOverlaps) warnings.push('部分重叠歌词已在下一句开始时清屏');
   return {syncedLyrics: `${lines.join('\n')}\n`, translationCount: rows.filter((row) => row.translation).length, lineCount: rows.filter((row) => row.original).length, warnings};
 };
