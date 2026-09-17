@@ -10,23 +10,66 @@ export const PREVIEW_LINES = 12;
  */
 export const parseLrc = (text, {keepGaps = false} = {}) => {
   const entries = [];
-  for (const raw of String(text ?? '').split(/\r?\n/)) {
+  const translations = new Map();
+  const source = String(text ?? '');
+  const extended = /\[kiseki:translation:zh-CN\]/i.test(source);
+  const offsetMatch = source.match(/^\s*\[offset:([+-]?\d+)\]\s*$/im);
+  const offset = extended && offsetMatch ? Number(offsetMatch[1]) / 1000 : 0;
+  const originals = new Map();
+  const toTime = (tag) => {
+    const seconds = Number(tag[2]);
+    if (extended && seconds >= 60) throw new Error('双语 LRC 含无效时间戳');
+    return Math.max(0, Number(tag[1]) * 60 + seconds + offset);
+  };
+  for (const raw of source.split(/\r?\n/)) {
     const tags = [...raw.matchAll(/\[(\d+):(\d+(?:\.\d+)?)\]/g)];
     if (tags.length === 0) continue;
+    const translation = /\[kiseki:translation:zh-CN\]/i.test(raw);
     const content = raw.replace(/\[[^\]]*\]/g, '').trim();
+    if (translation) {
+      if (extended && !content) throw new Error('双语 LRC 中文译文为空');
+      if (!content) continue;
+      for (const tag of tags) {
+        const time = toTime(tag);
+        const existing = translations.get(time);
+        if (extended && existing && existing !== content) throw new Error('双语 LRC 同一时间戳有不同中文译文');
+        translations.set(time, content);
+      }
+      continue;
+    }
     if (!content && !keepGaps) continue;
     for (const tag of tags) {
-      entries.push({time: Number(tag[1]) * 60 + Number(tag[2]), text: content});
+      const time = toTime(tag);
+      if (extended) {
+        const existing = originals.get(time);
+        if (existing && existing !== content) throw new Error('双语 LRC 同一时间戳有不同原文');
+        originals.set(time, content);
+      }
+      entries.push({time, text: content});
     }
   }
-  return entries.sort((a, b) => a.time - b.time);
+  if (extended) {
+    for (const time of translations.keys()) {
+      if (!originals.has(time)) throw new Error('双语 LRC 中文译文没有对应原文');
+      if (!originals.get(time)) throw new Error('双语 LRC 中文译文不能对应空白时间边界');
+    }
+  }
+  const counts = new Map();
+  for (const entry of entries) counts.set(entry.time, (counts.get(entry.time) ?? 0) + 1);
+  return entries.sort((a, b) => a.time - b.time).map((entry) => {
+    const translation = translations.get(entry.time);
+    return translation && counts.get(entry.time) === 1
+      ? {...entry, translation: {text: translation, lang: 'zh'}}
+      : entry;
+  });
 };
 
 export const formatLrcPreview = (entries, {offset = 0, limit = PREVIEW_LINES} = {}) => {
-  const lines = entries.slice(offset, offset + limit).map((e) => {
+  const lines = entries.slice(offset, offset + limit).flatMap((e) => {
     const minutes = Math.floor(e.time / 60);
     const seconds = (e.time - minutes * 60).toFixed(1).padStart(4, '0');
-    return `[${String(minutes).padStart(2, '0')}:${seconds}] ${e.text}`;
+    const original = `[${String(minutes).padStart(2, '0')}:${seconds}] ${e.text}`;
+    return e.translation ? [original, `       ${e.translation.text}`] : [original];
   });
   return lines;
 };
@@ -60,8 +103,11 @@ const getSimplifiedChineseConverter = () => {
 export const preferSimplifiedChineseLrc = async (lrc) => {
   const lyrics = String(lrc ?? '');
   const script = detectLyricsScript(lyrics);
-  if (script !== 'zh') return {lyrics, script, converted: false};
+  const hasChineseTranslation = /\[kiseki:translation:zh-CN\]/i.test(lyrics);
+  if (script !== 'zh' && !hasChineseTranslation) return {lyrics, script, converted: false};
   const converter = await getSimplifiedChineseConverter();
-  const simplified = converter(lyrics);
+  const simplified = script === 'zh'
+    ? converter(lyrics)
+    : lyrics.replace(/(\[kiseki:translation:zh-CN\])([^\r\n]*)/gi, (_, tag, body) => `${tag}${converter(body)}`);
   return {lyrics: simplified, script, converted: simplified !== lyrics};
 };

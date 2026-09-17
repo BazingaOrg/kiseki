@@ -57,6 +57,9 @@ export const formatLyricsPreview = (lyrics, {confidenceThreshold = RENDER_CONFID
       });
     } else {
       lines.push({kind: 'line', text: `${range} ${segment.text}`});
+      if (segment.translation?.lang === 'zh' && segment.translation.text?.trim()) {
+        lines.push({kind: 'line', text: `                      ${segment.translation.text}`});
+      }
     }
   }
   return lines;

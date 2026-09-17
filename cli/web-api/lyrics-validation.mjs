@@ -92,7 +92,7 @@ export const shiftLrc = (lrc, offsetSeconds) => String(lrc ?? '').replace(
   (_match, minutes, seconds) => {
     const shifted = Math.max(0, Number(minutes) * 60 + Number(seconds) + offsetSeconds);
     const nextMinutes = Math.floor(shifted / 60);
-    const nextSeconds = (shifted - nextMinutes * 60).toFixed(2).padStart(5, '0');
+    const nextSeconds = (shifted - nextMinutes * 60).toFixed(3).padStart(6, '0');
     return `[${String(nextMinutes).padStart(2, '0')}:${nextSeconds}]`;
   },
 );

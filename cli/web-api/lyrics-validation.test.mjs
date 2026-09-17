@@ -45,6 +45,9 @@ test('repeated chorus matches the nearby occurrence instead of a later repeat', 
   assert.deepEqual(result.anchors.map(({offset}) => offset), [4, 4, 4, 4, 4, 4]);
 });
 
-test('shiftLrc preserves text and clamps timestamps at zero', () => {
-  assert.equal(shiftLrc('[00:01.00]A\n[01:02.50]B', -2), '[00:00.00]A\n[01:00.50]B');
+test('shiftLrc preserves text, milliseconds, paired translations, and clamps timestamps at zero', () => {
+  assert.equal(
+    shiftLrc('[00:01.000]A\n[00:01.000][kiseki:translation:zh-CN]甲\n[01:02.500]B\n[01:03.000]', -2),
+    '[00:00.000]A\n[00:00.000][kiseki:translation:zh-CN]甲\n[01:00.500]B\n[01:01.000]',
+  );
 });

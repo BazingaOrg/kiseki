@@ -7,7 +7,7 @@ import path from 'node:path';
 import {listDirs} from './web-api/dirs.mjs';
 import {createDoctorService} from './web-api/doctor.mjs';
 import {getExif} from './web-api/exif.mjs';
-import {resetFetchState, runProcess, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
+import {fetchLyricsPreview, resetFetchState, runProcess, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
 import {AssetMutationError, clearRecognizedLyrics, mutateAsset, resetAssetMutationState, undoAssetDelete} from './web-api/assets.mjs';
 import {getProject} from './web-api/project.mjs';
@@ -156,6 +156,7 @@ const JOB_CANCEL_RE = /^\/api\/jobs\/([^/]+)\/cancel$/;
 const ASSET_UNDO_RE = /^\/api\/assets\/undo$/;
 const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 const VALIDATE_LYRICS_PATH = '/api/fetch/lyrics-validate';
+const LYRICS_PREVIEW_PATH = '/api/fetch/lyrics-preview';
 
 // 仅这些路径接受 POST；其他方法必须在进入 SPA fallback 前被拒绝。
 const isAllowedPostRoute = (method, pathname) =>
@@ -452,7 +453,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     // 这两条 GET 会 spawn 外部进程(yt-dlp / ffprobe / curl),所以**破例也要校验
     // token**.Host 校验只挡 DNS rebinding,挡不住任意网页直接请求 localhost ——
     // 那样一个页面就能无限起进程把机器拖垮.其余只读 GET 不需要这道闸.
-    if (url.pathname === '/api/fetch/lyrics-search' || url.pathname === '/api/fetch/audio-search') {
+    if (url.pathname === '/api/fetch/lyrics-search' || url.pathname === LYRICS_PREVIEW_PATH || url.pathname === '/api/fetch/audio-search') {
       if (!checkToken(req, res)) return;
     }
     if (url.pathname === '/api/fetch/lyrics-search') {
@@ -462,6 +463,14 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         () => searchLyricsCandidates(root, url.searchParams.get('folder'), {...fetchDeps, query: url.searchParams.get('q')}),
         (result) => sendJson(res, result),
         () => sendJson(res, {status: 500, body: {error: '搜索歌词失败'}}),
+      );
+      return;
+    }
+    if (url.pathname === LYRICS_PREVIEW_PATH) {
+      handleAsync(
+        () => fetchLyricsPreview(root, url.searchParams.get('folder'), url.searchParams.get('id'), url.searchParams.get('provider'), fetchDeps),
+        (result) => sendJson(res, result),
+        () => sendJson(res, {status: 500, body: {error: '读取歌词预览失败'}}),
       );
       return;
     }

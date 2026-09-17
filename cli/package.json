@@ -10,6 +10,7 @@
     "kiseki": "./kiseki.mjs"
   },
   "dependencies": {
+    "@xmldom/xmldom": "^0.8.15",
     "exifr": "^7.1.3",
     "opencc-js": "^1.4.0"
   }

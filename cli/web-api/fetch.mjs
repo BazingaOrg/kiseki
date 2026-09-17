@@ -10,11 +10,13 @@ import {
   durationDelta,
   filterSyncedRecords,
   installDownloadedLyrics,
-  LYRICS_SEARCH_LIMIT,
   parseCurlResponse,
   probeAudio,
   searchLyricsRecords,
+  searchAmllItems,
+  selectLyricsCandidatesBySource,
 } from '../fetch.mjs';
+import {normalizeAmllCandidate, parseAmllLyrics} from '../amll.mjs';
 import {preferSimplifiedChineseLrc} from '../lrc.mjs';
 import {parseLrc} from '../lrc.mjs';
 import {scanFolderLoose} from '../project.mjs';
@@ -28,6 +30,7 @@ import {createNodeCommandResolver} from '../command-resolver.mjs';
 import {createProcessCompletion} from './process-lifecycle.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
+const AMLL_BASE = 'https://api.amll.dev/v1/lyrics';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
 const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 const DEFAULT_TIMEOUT_MS = 20000;
@@ -134,10 +137,12 @@ const textMatchScore = (candidate, expected) => {
 
 export const rankWebLyricsCandidates = (records, {audioDuration, title, artist}) => {
   const seen = new Set();
-  const candidates = filterSyncedRecords(records).flatMap((record, index) => {
+  const candidates = (Array.isArray(records) ? records : []).flatMap((record, index) => {
+    if (record?.provider !== 'amll' && filterSyncedRecords([record]).length === 0) return [];
     const id = canonicalLyricsId(record.id);
-    if (id === null || seen.has(id)) return [];
-    seen.add(id);
+    const identity = id === null ? null : `${record.provider ?? 'lrclib'}:${id}`;
+    if (identity === null || seen.has(identity)) return [];
+    seen.add(identity);
     const titleScore = textMatchScore(record.trackName, title);
     const artistScore = textMatchScore(record.artistName, artist);
     return [{record, id, delta: durationDelta(record.duration, audioDuration), matchScore: titleScore * 2 + artistScore, index}];
@@ -148,7 +153,7 @@ export const rankWebLyricsCandidates = (records, {audioDuration, title, artist})
     if (right.delta === null) return -1;
     return left.delta - right.delta || left.index - right.index;
   });
-  return candidates.slice(0, LYRICS_SEARCH_LIMIT);
+  return selectLyricsCandidatesBySource(candidates, ({record}) => record.provider ?? 'lrclib');
 };
 
 /** 复用 probeAudio 的 tag/时长解析(同样靠注入 spawn 把同步调用换成异步取值). */
@@ -208,6 +213,52 @@ export const createLrclibFetch = (run = runProcess, runtime = sourceRuntimeLayou
   return JSON.parse(parsed.body);
 };
 
+export const createAmllFetch = (run = runProcess, runtime = sourceRuntimeLayout) => async (pathname, params = {}) => {
+  const url = new URL(`${AMLL_BASE}${pathname}`);
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== null && value !== undefined) url.searchParams.set(key, value);
+  }
+  const result = await run(runtime.curl, [
+    '-sS', '--max-time', '20', '--max-filesize', '1048576', '-w', '\n%{http_code}', url.toString(),
+  ]);
+  const parsed = parseCurlResponse(result.stdout);
+  if (result.status !== 0 || !parsed) throw new Error((result.stderr ?? '').trim().split('\n').pop() || '请求失败');
+  if (parsed.status === 404) return null;
+  if (parsed.status < 200 || parsed.status >= 300) throw new Error(`AMLL 返回 ${parsed.status}`);
+  const payload = JSON.parse(parsed.body);
+  if (payload?.status !== undefined && payload.status !== 200) throw new Error(`AMLL 返回 ${payload.status}`);
+  return payload?.data ?? payload;
+};
+
+const normalizeLyricsProvider = (provider) => {
+  if (provider === undefined || provider === null || provider === '') return 'lrclib';
+  return provider === 'lrclib' || provider === 'amll' ? provider : null;
+};
+
+const sourceNameFor = (provider) => provider === 'amll' ? 'AMLL' : 'LRCLIB';
+
+const fetchCandidateDetail = async (provider, requestedId, {fetcher, amllFetcher, run, runtime}) => {
+  if (provider === 'lrclib') {
+    const record = await (fetcher ?? createLrclibFetch(run, runtime))(`/get/${requestedId}`, {});
+    if (filterSyncedRecords(record ? [record] : []).length === 0) return null;
+    if (canonicalLyricsId(record.id) !== requestedId) throw new Error('LRCLIB 返回的记录 id 与请求不一致');
+    const lines = parseLrc(record.syncedLyrics);
+    return {
+      ...record,
+      provider: 'lrclib',
+      sourceName: sourceNameFor('lrclib'),
+      translationCount: lines.filter(({translation}) => translation).length,
+      lineCount: lines.length,
+    };
+  }
+  const raw = await (amllFetcher ?? createAmllFetch(run, runtime))('/get', {id: requestedId});
+  if (!raw || canonicalLyricsId(raw.id) !== requestedId) throw new Error('AMLL 返回的记录 id 与请求不一致');
+  const parsed = parseAmllLyrics(raw);
+  if (!parsed.syncedLyrics) return null;
+  const authors = Array.isArray(raw.authorUsernames) ? raw.authorUsernames : [raw.authorUsernames];
+  return {...normalizeAmllCandidate(raw), ...parsed, provider: 'amll', sourceName: sourceNameFor('amll'), authors: authors.filter((author) => typeof author === 'string' && author.trim())};
+};
+
 /** 三个端点共用:把 folder 过沙箱并确认是目录,顺带定位唯一音频. */
 const resolveAudioFolder = (root, folderParam) => {
   const folder = resolveSafePath(root, folderParam);
@@ -254,7 +305,7 @@ const resolveAudioFolder = (root, folderParam) => {
  * q 是必要的补救路径:文件名乱七八糟时自动推断必然猜错,CLI 里也允许重新输关键词
  * 再搜一次,没有它用户就只能去改文件名.
  */
-export const searchLyricsCandidates = async (root, folderParam, {run = runProcess, fetcher, query: queryOverride, runtime = sourceRuntimeLayout} = {}) => {
+export const searchLyricsCandidates = async (root, folderParam, {run = runProcess, fetcher, amllFetcher, query: queryOverride, runtime = sourceRuntimeLayout} = {}) => {
   const resolved = resolveAudioFolder(root, folderParam);
   if (resolved.error) return resolved.error;
   const {folder, audio} = resolved;
@@ -265,19 +316,40 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   const expectedArtist = probe.artist || inferred.artist;
   const override = normalizeSearchQuery(queryOverride);
   const query = override || normalizeSearchQuery(buildLyricsQuery({title: expectedTitle, artist: expectedArtist, audioFile: audio}));
-  let records;
-  try {
-    records = await searchLyricsRecords(
+  const useInjectedFetchers = fetcher !== undefined || amllFetcher !== undefined;
+  const requests = [];
+  if (!useInjectedFetchers || fetcher !== undefined) {
+    requests.push(['lrclib', async () => searchLyricsRecords(
       // customized 必须跟着用户是否手输关键词走:searchLyricsRecords 在
       // !customized 且 tag 齐全时会先打 /get 精确查询并直接返回,query 根本用不上.
       // tag 写错(标题是专辑名、翻唱版本)恰恰是用户要手动改词的主要场景,
       // 不传这个标志的话"再找一次"永远返回同一批错结果.
       {query, title: probe.title, artist: probe.artist, duration: probe.duration, customized: Boolean(override), requireValidId: true},
       fetcher ?? createLrclibFetch(run, runtime),
-    );
-  } catch (error) {
-    // 网络/代理问题是这个端点最常见的失败,原文透给前端比一句"失败了"有用.
-    return {status: 502, body: {error: `歌词搜索失败: ${error.message}`}};
+    )]);
+  }
+  if (!useInjectedFetchers || amllFetcher !== undefined) {
+    requests.push(['amll', async () => {
+      const items = await searchAmllItems(amllFetcher ?? createAmllFetch(run, runtime), {
+        query,
+        title: probe.title,
+        artist: probe.artist,
+        customized: Boolean(override),
+      });
+      return items.map(normalizeAmllCandidate);
+    }]);
+  }
+  const settled = await Promise.all(requests.map(async ([provider, request]) => {
+    try {
+      return {provider, status: 'fulfilled', records: await request()};
+    } catch (error) {
+      return {provider, status: 'rejected', error};
+    }
+  }));
+  const records = settled.flatMap(({status, records: sourceRecords}) => status === 'fulfilled' ? sourceRecords : []);
+  const warnings = settled.flatMap(({status, provider, error}) => status === 'rejected' ? [`${sourceNameFor(provider)} 搜索失败: ${error.message}`] : []);
+  if (records.length === 0 && settled.every(({status}) => status === 'rejected')) {
+    return {status: 502, body: {error: `歌词搜索失败: ${warnings.join('；')}`}};
   }
 
   const synced = rankWebLyricsCandidates(records, {audioDuration: probe.duration, title: expectedTitle, artist: expectedArtist});
@@ -285,8 +357,10 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
     status: 200,
     body: {
       query,
+      ...(warnings.length > 0 ? {warnings} : {}),
       candidates: synced.map(({record, id, delta, matchScore}) => ({
         id,
+        ...(record.provider === 'amll' ? {provider: 'amll', sourceName: sourceNameFor('amll'), ...(record.albumName ? {album: record.albumName} : {})} : {}),
         title: record.trackName,
         artist: record.artistName,
         duration: record.duration,
@@ -302,20 +376,21 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
 };
 
 /** POST /api/fetch/lyrics-validate {folder,id}:保存前用本地人声锚点验证候选版本。 */
-export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, recognize, isJobRunning, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {}) => {
+export const validateLyricsCandidate = async (root, body, {run = runProcess, fetcher, amllFetcher, recognize, isJobRunning, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {}) => {
   const requestedId = canonicalLyricsId(body?.id);
   if (requestedId === null) return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
+  const provider = normalizeLyricsProvider(body?.provider);
+  if (provider === null) return {status: 400, body: {error: 'provider 不支持', field: 'provider'}};
   const resolved = resolveAudioFolder(root, body?.folder);
   if (resolved.error) return resolved.error;
   if (isJobRunning?.()) return {status: 409, body: {error: '任务运行中，暂不校验歌词'}};
   let record;
   try {
-    record = await (fetcher ?? createLrclibFetch(run, runtime))(`/get/${requestedId}`, {});
+    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
-  if (filterSyncedRecords(record ? [record] : []).length === 0) return {status: 404, body: {error: '这条记录没有同步歌词'}};
-  if (canonicalLyricsId(record.id) !== requestedId) return {status: 502, body: {error: 'LRCLIB 返回的记录 id 与请求不一致'}};
+  if (!record) return {status: 404, body: {error: '这条记录没有同步歌词'}};
   let segments;
   try {
     if (recognize) segments = await recognize(path.join(resolved.folder, resolved.audio), run);
@@ -336,34 +411,65 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
   return {status: 200, body: {...validation, anchorCount: validation.anchors.length}};
 };
 
+export const fetchLyricsPreview = async (root, folderParam, id, providerParam, {run = runProcess, fetcher, amllFetcher, runtime = sourceRuntimeLayout} = {}) => {
+  const requestedId = canonicalLyricsId(id);
+  if (requestedId === null) return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
+  const provider = normalizeLyricsProvider(providerParam);
+  if (provider === null) return {status: 400, body: {error: 'provider 不支持', field: 'provider'}};
+  const resolved = resolveAudioFolder(root, folderParam);
+  if (resolved.error) return resolved.error;
+  let record;
+  try {
+    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime});
+  } catch (error) {
+    return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
+  }
+  if (!record) return {status: 404, body: {error: '这条记录没有同步歌词'}};
+  const preferred = await preferSimplifiedChineseLrc(record.syncedLyrics);
+  const timeline = parseLrc(preferred.lyrics, {keepGaps: true});
+  const lines = timeline.flatMap((entry, index) => entry.text ? [{
+    time: entry.time,
+    text: entry.text,
+    ...(entry.translation ? {translation: entry.translation} : {}),
+    ...(Number.isFinite(timeline[index + 1]?.time) ? {until: timeline[index + 1].time} : {}),
+  }] : []);
+  return {status: 200, body: {
+    lines,
+    provider,
+    translationCount: record.translationCount ?? lines.filter(({translation}) => translation).length,
+    lineCount: record.lineCount ?? lines.length,
+    sourceName: record.sourceName ?? sourceNameFor(provider),
+    ...(Array.isArray(record.authors) && record.authors.length > 0 ? {authors: record.authors} : {}),
+    ...(Array.isArray(record.warnings) && record.warnings.length > 0 ? {warnings: record.warnings} : {}),
+  }};
+};
+
 /**
  * POST /api/fetch/lyrics {folder, id}
  * id 是 LRCLIB 记录 id,按 id 重新取一次歌词正文(不在服务端缓存搜索结果),
  * 与 CLI 一样做繁转简,最后复用 installDownloadedLyrics 落到 audio/.
  */
-export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRunning, leaseManager = createTaskLeaseManager(), runtime = sourceRuntimeLayout} = {}) => {
+export const saveLyrics = async (root, body, {run = runProcess, fetcher, amllFetcher, isJobRunning, leaseManager = createTaskLeaseManager(), runtime = sourceRuntimeLayout} = {}) => {
   const id = body?.id;
   const requestedId = canonicalLyricsId(id);
   if (requestedId === null) {
     return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
   }
+  const provider = normalizeLyricsProvider(body?.provider);
+  if (provider === null) return {status: 400, body: {error: 'provider 不支持', field: 'provider'}};
   const resolved = resolveAudioFolder(root, body?.folder);
   if (resolved.error) return resolved.error;
   const {folder, audio, audioIdentity, existingLrc, lrcIdentity} = resolved;
 
   let record;
   try {
-    record = await (fetcher ?? createLrclibFetch(run, runtime))(`/get/${requestedId}`, {});
+    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
-  if (filterSyncedRecords(record ? [record] : []).length === 0) {
+  if (!record) {
     return {status: 404, body: {error: '这条记录没有同步歌词'}};
   }
-  if (canonicalLyricsId(record.id) !== requestedId) {
-    return {status: 502, body: {error: 'LRCLIB 返回的记录 id 与请求不一致'}};
-  }
-
   const requestedOffset = Number(body?.offset ?? 0);
   if (!Number.isFinite(requestedOffset) || Math.abs(requestedOffset) > 30) {
     return {status: 400, body: {error: '歌词偏移必须在 ±30 秒内', field: 'offset'}};
@@ -393,7 +499,7 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, isJobRu
         existing: existingLrc,
         task: {lease, manager: leaseManager},
       });
-      return {status: 200, body: {ok: true, file, converted: preferred.converted}};
+      return {status: 200, body: {ok: true, file, converted: preferred.converted, provider, translationCount: record.translationCount ?? 0}};
     });
   } catch (error) {
     if (error instanceof ProjectBusyError) response = {status: 409, body: {error: '项目已有任务在执行'}};

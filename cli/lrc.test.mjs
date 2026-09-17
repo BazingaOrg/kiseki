@@ -54,3 +54,32 @@ test('English and Japanese lyrics bypass Chinese conversion', async () => {
     converted: false,
   });
 });
+
+test('parseLrc attaches Chinese translation to its original without creating another active row', () => {
+  const source = '[00:01.234]君の歌\n[00:01.234][kiseki:translation:zh-CN]你的歌\n[00:03.000]\n';
+  assert.deepEqual(parseLrc(source, {keepGaps: true}), [
+    {time: 1.234, text: '君の歌', translation: {text: '你的歌', lang: 'zh'}},
+    {time: 3, text: ''},
+  ]);
+});
+
+test('formatLrcPreview prints the paired Chinese translation below its original', () => {
+  assert.deepEqual(formatLrcPreview([{time: 1.234, text: '君の歌', translation: {text: '你的歌', lang: 'zh'}}]), [
+    '[00:01.2] 君の歌',
+    '       你的歌',
+  ]);
+});
+
+test('preferSimplifiedChineseLrc preserves Japanese originals and converts only translation', async () => {
+  const source = '[00:01.00]君と見た空\n[00:01.00][kiseki:translation:zh-CN]與妳看過的天空';
+  const result = await preferSimplifiedChineseLrc(source);
+  assert.equal(result.script, 'ja');
+  assert.equal(result.lyrics, '[00:01.00]君と見た空\n[00:01.00][kiseki:translation:zh-CN]与你看过的天空');
+});
+
+test('extended LRC applies offset and rejects invalid translation pairings', () => {
+  const shifted = '[offset:+500]\n[00:01.000]原文\n[00:01.000][kiseki:translation:zh-CN]译文';
+  assert.deepEqual(parseLrc(shifted), [{time: 1.5, text: '原文', translation: {text: '译文', lang: 'zh'}}]);
+  assert.throws(() => parseLrc('[00:01.00][kiseki:translation:zh-CN]孤儿'), /没有对应原文/);
+  assert.throws(() => parseLrc('[00:01.00]One\n[00:01.00][kiseki:translation:zh-CN]一\n[00:01.00][kiseki:translation:zh-CN]二'), /不同中文译文/);
+});

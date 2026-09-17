@@ -11,6 +11,7 @@ import {createTaskLeaseManager} from './task-lease.mjs';
 
 import {
   buildAudioFilename,
+  buildAmllSearchParams,
   buildLyricsQuery,
   buildNextStepMessage,
   canonicalLyricsId,
@@ -29,6 +30,7 @@ import {
   runFetch,
   sanitizeFilePart,
   searchLyricsRecords,
+  searchAmllItems,
 } from './fetch.mjs';
 
 const originalTermTask = term.task;
@@ -69,6 +71,31 @@ test('buildLyricsQuery prefers tags and falls back to a cleaned filename', () =>
   assert.equal(buildLyricsQuery({title: '晴天', artist: null}), '晴天');
   assert.equal(buildLyricsQuery({audioFile: 'jay_chou-qing.tian.mp3'}), 'jay chou qing tian');
   assert.equal(buildLyricsQuery({audioFile: '晴天 - 周杰伦.m4a'}), '晴天 周杰伦');
+});
+
+test('AMLL uses title and artist only for reliable automatic matching', () => {
+  assert.deepEqual(buildAmllSearchParams({query: 'Lemon 米津玄師', title: 'Lemon', artist: '米津玄師'}), {
+    musicName: 'Lemon', artistName: '米津玄師', pageSize: 20,
+  });
+  assert.deepEqual(buildAmllSearchParams({query: 'Lemon 米津玄師', title: 'Lemon', artist: null}), {
+    q: 'Lemon 米津玄師', pageSize: 20,
+  });
+  assert.deepEqual(buildAmllSearchParams({query: 'Lemon 米津玄師', title: 'Lemon', artist: '米津玄師', customized: true}), {
+    q: 'Lemon 米津玄師', pageSize: 20,
+  });
+});
+
+test('AMLL falls back to a title-only search when the strict artist filter has no result', async () => {
+  const params = [];
+  const items = await searchAmllItems(async (_pathname, received) => {
+    params.push(received);
+    return params.length === 1 ? {items: []} : {items: [{id: 1}]};
+  }, {query: 'Lemon 米津玄師', title: 'Lemon', artist: '米津玄師'});
+  assert.deepEqual(params, [
+    {musicName: 'Lemon', artistName: '米津玄師', pageSize: 20},
+    {musicName: 'Lemon', pageSize: 20},
+  ]);
+  assert.deepEqual(items, [{id: 1}]);
 });
 
 test('durationDelta compares only when both durations are known', () => {

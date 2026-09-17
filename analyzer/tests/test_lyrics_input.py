@@ -57,6 +57,48 @@ def test_duplicate_timestamp_with_different_text_is_rejected(tmp_path: Path):
         parse_lrc(path, audio_name="song.mp3", duration=3.0)
 
 
+def test_attaches_chinese_translation_and_preserves_blank_boundary(tmp_path: Path):
+    path = write_lrc(
+        tmp_path,
+        "[00:01.234]君の歌\n[00:01.234][kiseki:translation:zh-CN]你的歌\n[00:03.000]\n",
+    )
+
+    result = parse_lrc(path, audio_name="song.mp3", duration=5.0)
+
+    assert result["segments"] == [{
+        "text": "君の歌",
+        "lang": "ja",
+        "start": 1.234,
+        "end": 3.0,
+        "confidence": 1.0,
+        "translation": {"text": "你的歌", "lang": "zh"},
+    }]
+
+
+def test_translation_without_original_or_with_ambiguous_duplicate_is_rejected(tmp_path: Path):
+    orphan = write_lrc(tmp_path, "[00:01.00][kiseki:translation:zh-CN]中文\n")
+    with pytest.raises(LrcError, match="没有对应原文"):
+        parse_lrc(orphan, audio_name="song.mp3", duration=3.0)
+
+    duplicate = write_lrc(
+        tmp_path,
+        "[00:01.00]One\n[00:01.00]Two\n[00:01.00][kiseki:translation:zh-CN]中文\n",
+    )
+    with pytest.raises(LrcError, match="相同时间戳"):
+        parse_lrc(duplicate, audio_name="song.mp3", duration=3.0)
+
+
+def test_translation_uses_the_same_offset_as_original(tmp_path: Path):
+    path = write_lrc(
+        tmp_path,
+        "[offset:+500]\n[00:01.000]原文\n[00:01.000][kiseki:translation:zh-CN]译文\n[00:02.000]\n",
+    )
+    result = parse_lrc(path, audio_name="song.mp3", duration=4.0)
+    assert result["segments"][0]["start"] == 1.5
+    assert result["segments"][0]["end"] == 2.5
+    assert result["segments"][0]["translation"] == {"text": "译文", "lang": "zh"}
+
+
 @pytest.mark.parametrize("content", ["[ar:Only metadata]\n", "[00:01.00]\n"])
 def test_requires_displayable_timed_lyrics(tmp_path: Path, content: str):
     path = write_lrc(tmp_path, content)

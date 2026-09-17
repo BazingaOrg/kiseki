@@ -11,6 +11,7 @@ import {AUDIO_DIR} from '../project.mjs';
 import {createTaskLeaseManager} from '../task-lease.mjs';
 import {
   checkYtDlpAsync,
+  fetchLyricsPreview,
   runProcess,
   saveLyrics,
   searchAudioCandidates,
@@ -671,4 +672,99 @@ test('lyrics-search:tag 齐全时 /get 的传输或协议错误直接报错,不�
     assert.match(result.body.error, new RegExp(error.message));
     assert.deepEqual(paths, ['/get']);
   }
+});
+
+test('lyrics-search:注入 LRCLIB fetcher 时不触碰默认 AMLL 网络', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  let curlCalls = 0;
+  const result = await searchLyricsCandidates(root, folder, {
+    fetcher: async () => [SYNCED_RECORD],
+    run: async (command) => {
+      if (command === 'curl') curlCalls += 1;
+      return {status: null, stdout: '', stderr: ''};
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(curlCalls, 0, 'AMLL 未注入时不应发起 curl');
+});
+
+test('lyrics-search:AMLL 失败不阻断 LRCLIB，并把失败作为 warning', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const result = await searchLyricsCandidates(root, folder, {
+    fetcher: async () => [SYNCED_RECORD],
+    amllFetcher: async () => { throw new Error('AMLL offline'); },
+    run: fakeRun({}),
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.candidates.map(({id}) => id), ['42']);
+  assert.match(result.body.warnings[0], /AMLL offline/);
+});
+
+test('AMLL preview and save preserve an attached translation through offsetting', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const detail = {
+    id: '2052764288757058',
+    musicNames: ['Lemon'],
+    artistNames: ['米津玄師'],
+    albumNames: ['Lemon'],
+    authorUsernames: ['lyric-author'],
+    lyrics: '<tt><body><div><p begin="1.234" end="2.000"><span>夢ならば</span><span ttm:role="x-translation" xml:lang="zh-CN">與妳看過的天空</span></p><p begin="3.456" end="4.500">もう一度</p></div></body></tt>',
+  };
+  const amllFetcher = async (pathname, params) => {
+    assert.equal(pathname, '/get');
+    assert.equal(params.id, '2052764288757058');
+    return detail;
+  };
+  const preview = await fetchLyricsPreview(root, folder, '2052764288757058', 'amll', {run: fakeRun({}), amllFetcher});
+  assert.equal(preview.status, 200);
+  assert.deepEqual(preview.body.lines[0], {time: 1.234, text: '夢ならば', translation: {text: '与你看过的天空', lang: 'zh'}, until: 2});
+  assert.deepEqual(preview.body.lines[1], {time: 3.456, text: 'もう一度', until: 4.5});
+  assert.equal(preview.body.translationCount, 1);
+  assert.deepEqual(preview.body.authors, ['lyric-author']);
+  const saved = await saveLyricsWithIsolatedLease(root, {folder, id: '2052764288757058', provider: 'amll', offset: 0.001}, {run: fakeRun({}), amllFetcher});
+  assert.equal(saved.status, 200);
+  const contents = fs.readFileSync(path.join(folder, AUDIO_DIR, 'Song - Artist.lrc'), 'utf8');
+  assert.match(contents, /\[00:01\.235\]夢ならば\n\[00:01\.235\]\[kiseki:translation:zh-CN\]与你看过的天空/);
+});
+
+test('LRCLIB preview counts translations encoded in the extended LRC contract', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const preview = await fetchLyricsPreview(root, folder, '42', 'lrclib', {
+    run: fakeRun({}),
+    fetcher: async (pathname, id) => {
+      assert.equal(pathname, '/get/42');
+      assert.deepEqual(id, {});
+      return {
+        ...SYNCED_RECORD,
+        syncedLyrics: '[00:01.00]hello\n[00:01.00][kiseki:translation:zh-CN]你好\n',
+      };
+    },
+  });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.translationCount, 1);
+  assert.equal(preview.body.lineCount, 1);
+  assert.deepEqual(preview.body.lines[0].translation, {text: '你好', lang: 'zh'});
+});
+
+test('lyrics-search uses constrained AMLL fields only for tagged automatic searches', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const tagged = fakeRun({
+    ffprobe: {status: 0, stdout: JSON.stringify({format: {duration: '244', tags: {title: 'Lemon', artist: '米津玄師'}}}), stderr: ''},
+  });
+  const params = [];
+  const amllFetcher = async (_pathname, received) => {
+    params.push(received);
+    return {items: received.musicName ? [{id: 1, musicNames: ['Lemon'], artistNames: ['米津玄師']}] : []};
+  };
+  await searchLyricsCandidates(root, folder, {run: tagged, fetcher: async () => [], amllFetcher});
+  await searchLyricsCandidates(root, folder, {run: tagged, fetcher: async () => [], amllFetcher, query: 'Lemon 米津玄師'});
+  assert.deepEqual(params, [
+    {musicName: 'Lemon', artistName: '米津玄師', pageSize: 20},
+    {q: 'Lemon 米津玄師', pageSize: 20},
+  ]);
 });

@@ -47,7 +47,7 @@ export const withGapEnds = (entries) => {
   const out = [];
   for (const entry of entries) {
     if (entry.text) {
-      out.push({time: entry.time, text: entry.text, until: null});
+      out.push({time: entry.time, text: entry.text, until: null, ...(entry.translation ? {translation: entry.translation} : {})});
       continue;
     }
     // 空行:标记上一句的结束.开头就是空行则无事可做.

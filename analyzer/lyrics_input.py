@@ -12,6 +12,7 @@ class LrcError(ValueError):
 
 _TIMESTAMP_RE = re.compile(r"\[(\d+):([0-5]?\d)(?:\.(\d{1,3}))?\]")
 _OFFSET_RE = re.compile(r"^\s*\[offset:([+-]?\d+)\]\s*$", re.IGNORECASE)
+_TRANSLATION_RE = re.compile(r"\[kiseki:translation:zh-CN\]", re.IGNORECASE)
 _KANA_RE = re.compile(r"[\u3040-\u30ff]")
 _CJK_RE = re.compile(r"[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff]")
 _LATIN_RE = re.compile(r"[A-Za-z]")
@@ -58,19 +59,26 @@ def parse_lrc(path: Path, *, audio_name: str, duration: float) -> dict:
             offset_ms = int(offset_match.group(1))
 
     events: list[tuple[float, str, int]] = []
+    translations: list[tuple[float, str, int]] = []
     for line_number, line in enumerate(lines, start=1):
         matches = list(_TIMESTAMP_RE.finditer(line))
         if not matches:
             continue
         text = line[matches[-1].end():].strip()
+        is_translation = bool(_TRANSLATION_RE.search(text))
+        if is_translation:
+            text = _TRANSLATION_RE.sub("", text).strip()
         for match in matches:
             start = _timestamp_seconds(match) + offset_ms / 1000
             if start < 0:
                 start = 0.0
             if start <= duration:
-                events.append((start, text, line_number))
+                if is_translation:
+                    translations.append((start, text, line_number))
+                else:
+                    events.append((start, text, line_number))
 
-    if not events:
+    if not events and not translations:
         raise LrcError(f"{path.name} 没有有效的 LRC 时间戳")
 
     grouped: dict[float, tuple[str, int]] = {}
@@ -83,6 +91,22 @@ def parse_lrc(path: Path, *, audio_name: str, duration: float) -> dict:
             )
         grouped[key] = (text, line_number)
 
+    grouped_translations: dict[float, tuple[str, int]] = {}
+    for start, text, line_number in translations:
+        key = round(start, 3)
+        if not text:
+            raise LrcError(f"{path.name}:{line_number} 中文译文为空")
+        if key not in grouped:
+            raise LrcError(f"{path.name}:{line_number} 中文译文没有对应原文")
+        if not grouped[key][0]:
+            raise LrcError(f"{path.name}:{line_number} 中文译文不能对应空白时间边界")
+        existing = grouped_translations.get(key)
+        if existing and existing[0] != text:
+            raise LrcError(
+                f"{path.name}:{line_number} 与第 {existing[1]} 行使用相同时间戳但中文译文不同"
+            )
+        grouped_translations[key] = (text, line_number)
+
     ordered = sorted((start, value[0]) for start, value in grouped.items())
     japanese_context = any(_KANA_RE.search(text) for _, text in ordered if text)
     segments = []
@@ -90,13 +114,17 @@ def parse_lrc(path: Path, *, audio_name: str, duration: float) -> dict:
         end = ordered[index + 1][0] if index + 1 < len(ordered) else duration
         if not text or end <= start:
             continue
-        segments.append({
+        segment = {
             "text": text,
             "lang": _language(text, japanese_context=japanese_context),
             "start": round(start, 3),
             "end": round(end, 3),
             "confidence": 1.0,
-        })
+        }
+        translation = grouped_translations.get(start)
+        if translation:
+            segment["translation"] = {"text": translation[0], "lang": "zh"}
+        segments.append(segment)
 
     if not segments:
         raise LrcError(f"{path.name} 没有可显示的歌词行")
