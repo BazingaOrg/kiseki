@@ -27,6 +27,8 @@ const LRCLIB_BASE = 'https://lrclib.net/api';
 // LRCLIB 要求调用方带可识别的 User-Agent
 const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 const AMLL_BASE = 'https://api.amll.dev/v1/lyrics';
+export const AMLL_TTML_MAX_BYTES = 1024 * 1024;
+const AMLL_RAW_STDOUT_MAX_BUFFER = AMLL_TTML_MAX_BYTES + 64;
 // 歌词与音频时长差超过这个秒数,大概率是不同版本(live/剪辑),时间轴会错位
 export const DURATION_WARN_SECONDS = 3;
 export const LYRICS_SEARCH_LIMIT = 10;
@@ -83,6 +85,88 @@ export const durationDelta = (candidateSeconds, audioSeconds) => {
   return Math.abs(candidateSeconds - audioSeconds);
 };
 
+export const compareLyricsDurationDelta = (leftDelta, rightDelta) => {
+  const rank = (delta) => {
+    if (delta === null) return 1;
+    if (delta <= DURATION_WARN_SECONDS) return 0;
+    return 2;
+  };
+  const leftRank = rank(leftDelta);
+  const rightRank = rank(rightDelta);
+  if (leftRank !== rightRank) return leftRank - rightRank;
+  if (leftDelta !== null && rightDelta !== null) return leftDelta - rightDelta;
+  return 0;
+};
+
+export const safeAmllLyricsFilename = (filename) => {
+  const value = String(filename ?? '');
+  return /^[0-9A-Za-z._-]+\.ttml$/.test(value) ? value : null;
+};
+
+export const amllRawLyricsUrls = (filename) => {
+  const safe = safeAmllLyricsFilename(filename);
+  if (!safe) return [];
+  return [
+    `https://cdn.jsdelivr.net/gh/amll-dev/amll-ttml-db@main/raw-lyrics/${safe}`,
+    `https://raw.githubusercontent.com/amll-dev/amll-ttml-db/refs/heads/main/raw-lyrics/${safe}`,
+  ];
+};
+
+const amllRawCurlArgs = (url) => ['-sS', '--max-time', '20', '--max-filesize', String(AMLL_TTML_MAX_BYTES), '-w', '\n%{http_code}', url];
+
+export const requestAmllRawLyrics = (url, runtime = sourceRuntimeLayout) =>
+  spawnSync(runtime.curl, amllRawCurlArgs(url), {encoding: 'utf8', maxBuffer: AMLL_RAW_STDOUT_MAX_BUFFER});
+
+export const readAmllRawTtml = async (filename, request) => {
+  for (const url of amllRawLyricsUrls(filename)) {
+    let result;
+    try {
+      result = await request(url);
+    } catch {
+      continue;
+    }
+    const parsed = parseCurlResponse(result?.stdout);
+    if (result?.status !== 0 || !parsed) continue;
+    if (parsed.status < 200 || parsed.status >= 300) continue;
+    if (typeof parsed.body !== 'string' || !parsed.body.trim()) continue;
+    try {
+      parseAmllLyrics({format: 'ttml', lyrics: parsed.body});
+    } catch {
+      continue;
+    }
+    return parsed.body;
+  }
+  return null;
+};
+
+export const resolveAmllLyrics = async (candidate, {amllFetcher, requestUrl}) => {
+  const requestedId = canonicalLyricsId(candidate?.id);
+  let raw = null;
+  let getError = null;
+  try {
+    raw = await amllFetcher('/get', {id: requestedId});
+  } catch (error) {
+    getError = error;
+  }
+  const lyrics = raw?.lyrics ?? raw?.ttml;
+  if (raw && canonicalLyricsId(raw.id) === requestedId && typeof lyrics === 'string' && lyrics.trim()) {
+    return {raw, parsed: parseAmllLyrics(raw)};
+  }
+  const ttml = requestUrl ? await readAmllRawTtml(candidate?.filename, requestUrl) : null;
+  if (ttml) {
+    const fallbackSource = {
+      ...(raw && typeof raw === 'object' ? raw : candidate),
+      format: 'ttml',
+      lyrics: ttml,
+      id: raw?.id ?? candidate?.id ?? requestedId,
+    };
+    return {raw: fallbackSource, parsed: parseAmllLyrics(fallbackSource)};
+  }
+  if (getError) throw getError;
+  if (!raw || canonicalLyricsId(raw.id) !== requestedId) throw new Error('AMLL 返回的记录 id 与请求不一致');
+  throw new Error('AMLL 未返回 TTML 歌词');
+};
+
 export const formatLyricsCandidate = (record, audioSeconds) => {
   const delta = durationDelta(record.duration, audioSeconds);
   const source = record.provider === 'amll' ? ' [AMLL]' : '';
@@ -120,7 +204,7 @@ export const selectLyricsCandidatesBySource = (records, sourceOf = (record) => r
   return records.filter((_, index) => selected.has(index));
 };
 
-export const limitLyricsCandidates = (records) => {
+export const limitLyricsCandidates = (records, audioDuration) => {
   const seen = new Set();
   const unique = (Array.isArray(records) ? records : []).filter((record) => record?.provider === 'amll' || filterSyncedRecords([record]).length > 0)
     .filter((record) => {
@@ -130,7 +214,13 @@ export const limitLyricsCandidates = (records) => {
       const identity = id === null ? null : `${record.provider ?? 'lrclib'}:${id}`;
       return identity === null || (!seen.has(identity) && seen.add(identity));
     });
-  return selectLyricsCandidatesBySource(unique);
+  const ranked = unique.map((record, index) => ({
+    record,
+    index,
+    delta: durationDelta(record.duration, audioDuration),
+  }));
+  ranked.sort((left, right) => compareLyricsDurationDelta(left.delta, right.delta) || left.index - right.index);
+  return selectLyricsCandidatesBySource(ranked.map(({record}) => record));
 };
 
 /** 解析 `curl -w '\n%{http_code}'` 的输出:末行是状态码,其余是 body. */
@@ -395,6 +485,7 @@ export const lyricsFlow = async (
     confirmedArtist = null,
     fetcher = lrclibFetch,
     amllFetcher,
+    requestUrl,
     task = null,
     runtime = sourceRuntimeLayout,
   } = {},
@@ -454,7 +545,7 @@ export const lyricsFlow = async (
     lyricsSearchTask.succeed();
     for (const warning of warnings) term.warn(warning);
 
-    const synced = limitLyricsCandidates(sources.flatMap(([, records]) => records));
+    const synced = limitLyricsCandidates(sources.flatMap(([, records]) => records), probe.duration);
     if (synced.length === 0) {
       term.warn(`未找到「${query}」的同步歌词`);
       if (!(await ask.confirm('换个关键词再搜?', {
@@ -474,23 +565,29 @@ export const lyricsFlow = async (
       const picked = synced[choice.index];
 
       let selected = picked;
+      let preferred;
+      let entries;
       try {
-        if (picked.provider === 'amll') {
-          const detail = await amllFetcher('/get', {id: canonicalLyricsId(picked.id)});
-          if (!detail || canonicalLyricsId(detail.id) !== canonicalLyricsId(picked.id)) throw new Error('AMLL 返回的记录 id 与请求不一致');
-          selected = {...picked, ...parseAmllLyrics(detail)};
+        if (picked.provider === 'amll' && !picked.syncedLyrics) {
+          const {parsed} = await resolveAmllLyrics(picked, {
+            amllFetcher,
+            requestUrl: requestUrl ?? ((url) => requestAmllRawLyrics(url, runtime)),
+          });
+          selected = {...picked, ...parsed};
+          Object.assign(picked, selected);
         }
+        if (!selected.syncedLyrics) {
+          term.warn('这条记录没有同步歌词');
+          continue;
+        }
+        preferred = await preferSimplifiedChineseLrc(selected.syncedLyrics);
+        if (preferred.converted) term.info('中文歌词已转为简体,以下为最终保存预览');
+        entries = parseLrc(preferred.lyrics);
+        for (const warning of selected.warnings ?? []) term.warn(warning);
       } catch (error) {
         term.error(`取歌词失败: ${error.message}`);
         continue;
       }
-      if (!selected.syncedLyrics) {
-        term.warn('这条记录没有同步歌词');
-        continue;
-      }
-      const preferred = await preferSimplifiedChineseLrc(selected.syncedLyrics);
-      if (preferred.converted) term.info('中文歌词已转为简体,以下为最终保存预览');
-      const entries = parseLrc(preferred.lyrics);
       let previewBack = false;
       for (let offset = 0; offset < entries.length; offset += PREVIEW_LINES) {
         term.info(formatLrcPageTitle(entries.length, offset));
@@ -512,6 +609,13 @@ export const lyricsFlow = async (
       if (!(await ask.confirm(`歌词正确并保存为 ${relativeLrc}?`, {
         defaultLabel: '保存', alternateKey: 'r', alternateLabel: '返回候选',
       }))) continue;
+
+      try {
+        parseLrc(preferred.lyrics, {keepGaps: true});
+      } catch (error) {
+        term.error(`取歌词失败: ${error.message}`);
+        continue;
+      }
 
       const installed = installDownloadedLyrics({
         lyrics: preferred.lyrics,

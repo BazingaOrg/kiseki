@@ -7,16 +7,20 @@ import {FIXES} from '../dependencies.mjs';
 import {
   buildLyricsQuery,
   canonicalLyricsId,
+  compareLyricsDurationDelta,
   durationDelta,
   filterSyncedRecords,
+  AMLL_TTML_MAX_BYTES,
   installDownloadedLyrics,
   parseCurlResponse,
   probeAudio,
+  resolveAmllLyrics,
+  safeAmllLyricsFilename,
   searchLyricsRecords,
   searchAmllItems,
   selectLyricsCandidatesBySource,
 } from '../fetch.mjs';
-import {normalizeAmllCandidate, parseAmllLyrics} from '../amll.mjs';
+import {normalizeAmllCandidate} from '../amll.mjs';
 import {preferSimplifiedChineseLrc} from '../lrc.mjs';
 import {parseLrc} from '../lrc.mjs';
 import {scanFolderLoose} from '../project.mjs';
@@ -35,7 +39,13 @@ const AMLL_BASE = 'https://api.amll.dev/v1/lyrics';
 const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 const DEFAULT_TIMEOUT_MS = 20000;
 const validationRecognitionCache = new Map();
-export const resetFetchState = () => validationRecognitionCache.clear();
+const candidateDetailCache = new Map();
+const amllFilenameById = new Map();
+export const resetFetchState = () => {
+  validationRecognitionCache.clear();
+  candidateDetailCache.clear();
+  amllFilenameById.clear();
+};
 
 /**
  * 异步跑一个外部命令,把结果整理成 spawnSync 那样的 {status, stdout, stderr},
@@ -149,9 +159,7 @@ export const rankWebLyricsCandidates = (records, {audioDuration, title, artist})
   });
   candidates.sort((left, right) => {
     if (left.matchScore !== right.matchScore) return right.matchScore - left.matchScore;
-    if (left.delta === null) return right.delta === null ? left.index - right.index : 1;
-    if (right.delta === null) return -1;
-    return left.delta - right.delta || left.index - right.index;
+    return compareLyricsDurationDelta(left.delta, right.delta) || left.index - right.index;
   });
   return selectLyricsCandidatesBySource(candidates, ({record}) => record.provider ?? 'lrclib');
 };
@@ -237,7 +245,13 @@ const normalizeLyricsProvider = (provider) => {
 
 const sourceNameFor = (provider) => provider === 'amll' ? 'AMLL' : 'LRCLIB';
 
-const fetchCandidateDetail = async (provider, requestedId, {fetcher, amllFetcher, run, runtime}) => {
+const rememberAmllFilename = (id, filename) => {
+  const safe = safeAmllLyricsFilename(filename);
+  if (id && safe) amllFilenameById.set(id, safe);
+  return safe;
+};
+
+const loadCandidateDetail = async (provider, requestedId, {fetcher, amllFetcher, run, runtime, filename}) => {
   if (provider === 'lrclib') {
     const record = await (fetcher ?? createLrclibFetch(run, runtime))(`/get/${requestedId}`, {});
     if (filterSyncedRecords(record ? [record] : []).length === 0) return null;
@@ -251,12 +265,39 @@ const fetchCandidateDetail = async (provider, requestedId, {fetcher, amllFetcher
       lineCount: lines.length,
     };
   }
-  const raw = await (amllFetcher ?? createAmllFetch(run, runtime))('/get', {id: requestedId});
-  if (!raw || canonicalLyricsId(raw.id) !== requestedId) throw new Error('AMLL 返回的记录 id 与请求不一致');
-  const parsed = parseAmllLyrics(raw);
+  const {raw, parsed} = await resolveAmllLyrics(
+    {id: requestedId, filename},
+    {
+      amllFetcher: amllFetcher ?? createAmllFetch(run, runtime),
+      requestUrl: (url) => run(runtime.curl, ['-sS', '--max-time', '20', '--max-filesize', String(AMLL_TTML_MAX_BYTES), '-w', '\n%{http_code}', url]),
+    },
+  );
   if (!parsed.syncedLyrics) return null;
   const authors = Array.isArray(raw.authorUsernames) ? raw.authorUsernames : [raw.authorUsernames];
-  return {...normalizeAmllCandidate(raw), ...parsed, provider: 'amll', sourceName: sourceNameFor('amll'), authors: authors.filter((author) => typeof author === 'string' && author.trim())};
+  return {
+    ...normalizeAmllCandidate(raw),
+    ...parsed,
+    provider: 'amll',
+    sourceName: sourceNameFor('amll'),
+    authors: authors.filter((author) => typeof author === 'string' && author.trim()),
+  };
+};
+
+const fetchCandidateDetail = async (provider, requestedId, {fetcher, amllFetcher, run, runtime, filename} = {}) => {
+  const safeFilename = rememberAmllFilename(requestedId, filename) ?? amllFilenameById.get(requestedId);
+  const cacheKey = `${provider}:${requestedId}`;
+  const cached = candidateDetailCache.get(cacheKey);
+  if (cached) return cached;
+  const pending = (async () => {
+    try {
+      return await loadCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime, filename: safeFilename});
+    } catch (error) {
+      candidateDetailCache.delete(cacheKey);
+      throw error;
+    }
+  })();
+  candidateDetailCache.set(cacheKey, pending);
+  return pending;
 };
 
 /** 三个端点共用:把 folder 过沙箱并确认是目录,顺带定位唯一音频. */
@@ -358,19 +399,27 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
     body: {
       query,
       ...(warnings.length > 0 ? {warnings} : {}),
-      candidates: synced.map(({record, id, delta, matchScore}) => ({
-        id,
-        ...(record.provider === 'amll' ? {provider: 'amll', sourceName: sourceNameFor('amll'), ...(record.albumName ? {album: record.albumName} : {})} : {}),
-        title: record.trackName,
-        artist: record.artistName,
-        duration: record.duration,
-        delta,
-        metadataMatch: matchScore >= 4,
+      candidates: synced.map(({record, id, delta, matchScore}) => {
+        const filename = record.provider === 'amll' ? rememberAmllFilename(id, record.filename) : null;
+        return {
+          id,
+          ...(record.provider === 'amll' ? {
+            provider: 'amll',
+            sourceName: sourceNameFor('amll'),
+            ...(record.albumName ? {album: record.albumName} : {}),
+            ...(filename ? {filename} : {}),
+          } : {}),
+          title: record.trackName,
+          artist: record.artistName,
+          duration: record.duration,
+          delta,
+          metadataMatch: matchScore >= 4,
           // filterSyncedRecords 之后一定是带时间轴的,这个字段恒为 true,留着是为了
           // 前端不必假设过滤规则.不下发 CLI 那句成品文案:那是终端排版,网页拿
           // delta 自己组织更合适,多一个没人消费的字段只会变成漂移源.
-        synced: true,
-      })),
+          synced: true,
+        };
+      }),
     },
   };
 };
@@ -386,7 +435,7 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
   if (isJobRunning?.()) return {status: 409, body: {error: '任务运行中，暂不校验歌词'}};
   let record;
   try {
-    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime});
+    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime, filename: body?.filename});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
@@ -411,7 +460,7 @@ export const validateLyricsCandidate = async (root, body, {run = runProcess, fet
   return {status: 200, body: {...validation, anchorCount: validation.anchors.length}};
 };
 
-export const fetchLyricsPreview = async (root, folderParam, id, providerParam, {run = runProcess, fetcher, amllFetcher, runtime = sourceRuntimeLayout} = {}) => {
+export const fetchLyricsPreview = async (root, folderParam, id, providerParam, {run = runProcess, fetcher, amllFetcher, runtime = sourceRuntimeLayout, filename} = {}) => {
   const requestedId = canonicalLyricsId(id);
   if (requestedId === null) return {status: 400, body: {error: 'id 必须是数字', field: 'id'}};
   const provider = normalizeLyricsProvider(providerParam);
@@ -420,7 +469,7 @@ export const fetchLyricsPreview = async (root, folderParam, id, providerParam, {
   if (resolved.error) return resolved.error;
   let record;
   try {
-    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime});
+    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime, filename});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
@@ -463,7 +512,7 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, amllFet
 
   let record;
   try {
-    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime});
+    record = await fetchCandidateDetail(provider, requestedId, {fetcher, amllFetcher, run, runtime, filename: body?.filename});
   } catch (error) {
     return {status: 502, body: {error: `取歌词失败: ${error.message}`}};
   }
@@ -474,7 +523,13 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, amllFet
   if (!Number.isFinite(requestedOffset) || Math.abs(requestedOffset) > 30) {
     return {status: 400, body: {error: '歌词偏移必须在 ±30 秒内', field: 'offset'}};
   }
-  const preferred = await preferSimplifiedChineseLrc(shiftLrc(record.syncedLyrics, requestedOffset));
+  let preferred;
+  try {
+    preferred = await preferSimplifiedChineseLrc(shiftLrc(record.syncedLyrics, requestedOffset));
+    parseLrc(preferred.lyrics, {keepGaps: true});
+  } catch (error) {
+    return {status: 502, body: {error: error.message}};
+  }
   const filename = `${path.basename(audio, path.extname(audio))}.lrc`;
   let lease;
   let response;

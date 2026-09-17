@@ -67,11 +67,26 @@ test('both download surfaces retain an AMLL candidate when LRCLIB fills the resu
   }));
   const bilingual = {id: 0, provider: 'amll', trackName: 'Song', artistName: 'Artist', duration: null};
   const records = [...originals, bilingual];
-  const cli = limitLyricsCandidates(records);
+  const cli = limitLyricsCandidates(records, 180);
   const web = rankWebLyricsCandidates(records, {audioDuration: 180, title: 'Song', artist: 'Artist'});
   assert.equal(cli.length, 10);
   assert.equal(web.length, 10);
   assert.equal(cli.at(-1), bilingual);
   assert.equal(web.at(-1).record, bilingual);
   assert.deepEqual(cli.slice(0, 9), originals.slice(0, 9));
+});
+
+test('AMLL without duration is not sorted behind a large LRCLIB duration mismatch', () => {
+  const originals = Array.from({length: 12}, (_, id) => ({
+    id, trackName: 'Song', artistName: 'Artist', duration: 200, syncedLyrics: '[00:01.000]Original',
+  }));
+  const bilingual = {id: 99, provider: 'amll', trackName: 'Song', artistName: 'Artist', duration: null};
+  const records = [...originals, bilingual];
+  const cli = limitLyricsCandidates(records, 180);
+  const web = rankWebLyricsCandidates(records, {audioDuration: 180, title: 'Song', artist: 'Artist'});
+  assert.equal(cli.length, 10);
+  assert.equal(web.length, 10);
+  assert.equal(cli[0], bilingual);
+  assert.equal(web[0].record, bilingual);
+  assert.ok(web.every(({record}) => record === bilingual || record.duration === 200));
 });

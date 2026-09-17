@@ -12,6 +12,7 @@ import {createTaskLeaseManager} from '../task-lease.mjs';
 import {
   checkYtDlpAsync,
   fetchLyricsPreview,
+  resetFetchState,
   runProcess,
   saveLyrics,
   searchAudioCandidates,
@@ -19,6 +20,8 @@ import {
   searchYtDlpAsync,
   validateLyricsCandidate,
 } from './fetch.mjs';
+
+test.beforeEach(() => resetFetchState());
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-web-fetch-'));
 const saveLyricsWithIsolatedLease = (root, body, options) => saveLyrics(root, body, {
@@ -358,7 +361,7 @@ test('lyrics-search:Web 候选过滤缺失 id,并以 canonical id 下发', async
   assert.deepEqual(result.body.candidates.map(({id}) => id), ['42']);
 });
 
-test('lyrics-search:comparable local durations sort by delta while missing durations stay last', async () => {
+test('lyrics-search:close duration matches outrank unknown duration, which outranks large mismatches', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);
   const run = fakeRun({
@@ -371,7 +374,7 @@ test('lyrics-search:comparable local durations sort by delta while missing durat
     {...SYNCED_RECORD, id: 4, duration: 179},
   ];
   const result = await searchLyricsCandidates(root, folder, {run, fetcher: async () => records, query: 'manual'});
-  assert.deepEqual(result.body.candidates.map(({id}) => id), ['2', '4', '1', '3']);
+  assert.deepEqual(result.body.candidates.map(({id}) => id), ['2', '4', '3', '1']);
 });
 
 test('lyrics-search:equal duration deltas retain provider order, and missing local duration does not reorder', async () => {
@@ -748,6 +751,110 @@ test('LRCLIB preview counts translations encoded in the extended LRC contract', 
   assert.equal(preview.body.translationCount, 1);
   assert.equal(preview.body.lineCount, 1);
   assert.deepEqual(preview.body.lines[0].translation, {text: '你好', lang: 'zh'});
+});
+
+test('preview then save reuses AMLL detail without refetching', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const detail = {
+    id: '8',
+    musicNames: ['Song'],
+    artistNames: ['Artist'],
+    lyrics: '<tt><body><div><p begin="1s" end="2s">Hello</p></div></body></tt>',
+  };
+  let gets = 0;
+  const amllFetcher = async (pathname, params) => {
+    gets += 1;
+    assert.equal(pathname, '/get');
+    assert.equal(params.id, '8');
+    return detail;
+  };
+  const preview = await fetchLyricsPreview(root, folder, '8', 'amll', {run: fakeRun({}), amllFetcher});
+  const saved = await saveLyricsWithIsolatedLease(root, {folder, id: '8', provider: 'amll'}, {run: fakeRun({}), amllFetcher});
+  assert.equal(preview.status, 200);
+  assert.equal(saved.status, 200);
+  assert.equal(gets, 1);
+});
+
+test('AMLL get failure falls back to jsDelivr then GitHub raw TTML', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const ttml = '<tt><body><div><p begin="1s" end="2s">Hello</p></div></body></tt>';
+  const urls = [];
+  const run = async (command, args) => {
+    if (command === 'ffprobe') {
+      return {status: 0, stdout: JSON.stringify({format: {duration: '10'}}), stderr: ''};
+    }
+    urls.push(args.at(-1));
+    if (String(args.at(-1)).includes('jsdelivr')) {
+      return {status: 0, stdout: '<html>cdn error</html>\n200', stderr: ''};
+    }
+    return {status: 0, stdout: `${ttml}\n200`, stderr: ''};
+  };
+  const preview = await fetchLyricsPreview(root, folder, '9', 'amll', {
+    run,
+    amllFetcher: async () => {
+      throw new Error('api down');
+    },
+    filename: 'ok.ttml',
+  });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.lines[0].text, 'Hello');
+  assert.equal(urls.length, 2);
+  assert.match(urls[0], /cdn\.jsdelivr\.net\/gh\/amll-dev\/amll-ttml-db@main\/raw-lyrics\/ok\.ttml$/);
+  assert.match(urls[1], /raw\.githubusercontent\.com\/amll-dev\/amll-ttml-db\/refs\/heads\/main\/raw-lyrics\/ok\.ttml$/);
+});
+
+test('AMLL fallback ignores path-like filenames', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  let curlCalls = 0;
+  const run = async (command) => {
+    if (command === 'ffprobe') {
+      return {status: 0, stdout: JSON.stringify({format: {duration: '10'}}), stderr: ''};
+    }
+    curlCalls += 1;
+    return {status: 0, stdout: '<tt/>\n200', stderr: ''};
+  };
+  const result = await fetchLyricsPreview(root, folder, '10', 'amll', {
+    run,
+    amllFetcher: async () => {
+      throw new Error('api down');
+    },
+    filename: '../secret.ttml',
+  });
+  assert.equal(result.status, 502);
+  assert.match(result.body.error, /api down/);
+  assert.equal(curlCalls, 0);
+});
+
+test('save rejects lyrics that parseLrc would not accept', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const saved = await saveLyricsWithIsolatedLease(root, {folder, id: 11}, {
+    run: fakeRun({}),
+    fetcher: async () => ({
+      ...SYNCED_RECORD,
+      id: 11,
+      syncedLyrics: '[00:59.9996]hello\n[00:59.9996][kiseki:translation:zh-CN]你好\n',
+    }),
+  });
+  assert.equal(saved.status, 502);
+  assert.match(saved.body.error, /双语 LRC 含无效时间戳/);
+  assert.equal(fs.existsSync(path.join(folder, AUDIO_DIR, 'Song - Artist.lrc')), false);
+});
+
+test('lyrics-search keeps a safe AMLL filename on candidates', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const result = await searchLyricsCandidates(root, folder, {
+    run: fakeRun({}),
+    fetcher: async () => [],
+    amllFetcher: async () => ({items: [{id: 12, musicNames: ['Song'], artistNames: ['Artist'], filename: '12.ttml'}]}),
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.candidates[0].filename, '12.ttml');
+  assert.equal(result.body.candidates[0].provider, 'amll');
 });
 
 test('lyrics-search uses constrained AMLL fields only for tagged automatic searches', async () => {

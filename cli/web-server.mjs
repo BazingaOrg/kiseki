@@ -468,7 +468,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     }
     if (url.pathname === LYRICS_PREVIEW_PATH) {
       handleAsync(
-        () => fetchLyricsPreview(root, url.searchParams.get('folder'), url.searchParams.get('id'), url.searchParams.get('provider'), fetchDeps),
+        () => fetchLyricsPreview(root, url.searchParams.get('folder'), url.searchParams.get('id'), url.searchParams.get('provider'), {...fetchDeps, filename: url.searchParams.get('filename')}),
         (result) => sendJson(res, result),
         () => sendJson(res, {status: 500, body: {error: '读取歌词预览失败'}}),
       );

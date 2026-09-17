@@ -16,8 +16,11 @@ import {
   buildNextStepMessage,
   canonicalLyricsId,
   chooseSingleAudio,
+  compareLyricsDurationDelta,
   durationDelta,
   filterSyncedRecords,
+  readAmllRawTtml,
+  safeAmllLyricsFilename,
   formatDuration,
   formatLyricsCandidate,
   installDownloadedAudio,
@@ -102,6 +105,38 @@ test('durationDelta compares only when both durations are known', () => {
   assert.equal(durationDelta(269, 272), 3);
   assert.equal(durationDelta(null, 272), null);
   assert.equal(durationDelta(269, undefined), null);
+});
+
+test('unknown duration ranks after close matches but before large mismatches', () => {
+  assert.ok(compareLyricsDurationDelta(null, 2) > 0);
+  assert.ok(compareLyricsDurationDelta(null, 3) > 0);
+  assert.ok(compareLyricsDurationDelta(null, 4) < 0);
+  assert.ok(compareLyricsDurationDelta(1, 2) < 0);
+  assert.equal(compareLyricsDurationDelta(null, null), 0);
+  assert.ok(compareLyricsDurationDelta(20, null) > 0);
+});
+
+test('AMLL raw fallback only accepts a safe TTML basename', async () => {
+  const urls = [];
+  assert.equal(safeAmllLyricsFilename('../x.ttml'), null);
+  assert.equal(safeAmllLyricsFilename('dir/x.ttml'), null);
+  assert.equal(safeAmllLyricsFilename('ok.ttml'), 'ok.ttml');
+  assert.equal(await readAmllRawTtml('../x.ttml', async (url) => {
+    urls.push(url);
+    return {status: 0, stdout: '<tt/>\n200'};
+  }), null);
+  assert.deepEqual(urls, []);
+  const ttml = '<tt><body><div><p begin="1s" end="2s">Hello</p></div></body></tt>';
+  const fallbackUrls = [];
+  assert.equal(await readAmllRawTtml('ok.ttml', async (url) => {
+    fallbackUrls.push(url);
+    if (url.includes('jsdelivr')) return {status: 0, stdout: '<html>cdn error</html>\n200'};
+    return {status: 0, stdout: `${ttml}\n200`};
+  }), ttml);
+  assert.equal(fallbackUrls.length, 2);
+  const source = fs.readFileSync(new URL('./fetch.mjs', import.meta.url), 'utf8');
+  assert.match(source, /maxBuffer: AMLL_RAW_STDOUT_MAX_BUFFER/);
+  assert.match(source, /AMLL_RAW_STDOUT_MAX_BUFFER = AMLL_TTML_MAX_BYTES \+ 64/);
 });
 
 test('formatLyricsCandidate warns when the duration gap exceeds the threshold', () => {
@@ -278,6 +313,92 @@ test('multiple lyric candidates default to previewing the first on enter', async
     });
     assert.equal(saved, false);
   } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
+test('lyricsFlow treats a bilingual parse error as a candidate failure', async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
+  fs.writeFileSync(path.join(folder, 'song.wav'), Buffer.alloc(44));
+  const errors = [];
+  const originalError = term.error;
+  term.error = (message) => errors.push(message);
+  let pickCount = 0;
+  try {
+    const saved = await lyricsFlow({
+      line: async () => 'song',
+      pick: async () => {
+        pickCount += 1;
+        return pickCount === 1 ? {index: 0} : null;
+      },
+      confirm: async () => true,
+    }, {write: () => {}}, folder, 'song.wav', {
+      fetcher: async () => [{
+        trackName: 'Song', artistName: 'Artist', duration: 13,
+        syncedLyrics: '[00:01.00]hello\n[00:02.00][kiseki:translation:zh-CN]你好\n',
+        instrumental: false,
+      }],
+    });
+    assert.equal(saved, false);
+    assert.equal(pickCount, 2);
+    assert.match(errors[0], /取歌词失败: 双语 LRC 中文译文没有对应原文/);
+  } finally {
+    term.error = originalError;
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
+test('lyricsFlow falls back to raw TTML when official get fails', async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
+  fs.writeFileSync(path.join(folder, 'song.wav'), Buffer.alloc(44));
+  const urls = [];
+  const ttml = '<tt><body><div><p begin="1s" end="2s">Hello</p></div></body></tt>';
+  try {
+    const saved = await lyricsFlow({
+      line: async () => 'song',
+      pick: async () => ({index: 0}),
+      confirm: async () => true,
+    }, {write: () => {}}, folder, 'song.wav', {
+      fetcher: async () => [],
+      amllFetcher: async (pathname) => {
+        if (pathname === '/search') return {items: [{id: 1, musicNames: ['Song'], filename: '1.ttml'}]};
+        throw new Error('api down');
+      },
+      requestUrl: async (url) => {
+        urls.push(url);
+        return {status: 0, stdout: `${ttml}\n200`};
+      },
+    });
+    assert.equal(saved, true);
+    assert.match(urls[0], /cdn\.jsdelivr\.net\/gh\/amll-dev\/amll-ttml-db@main\/raw-lyrics\/1\.ttml$/);
+    assert.match(fs.readFileSync(path.join(folder, 'audio', 'song.lrc'), 'utf8'), /Hello/);
+  } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
+test('lyricsFlow prints AMLL parse warnings after a successful get', async () => {
+  const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-fetch-test-'));
+  fs.writeFileSync(path.join(folder, 'song.wav'), Buffer.alloc(44));
+  const warnings = [];
+  const originalWarn = term.warn;
+  term.warn = (message) => warnings.push(message);
+  const ttml = '<?xml version="1.0"?><tt xmlns:ttm="urn:ttm"><body><p begin="1s" end="2s">Hello<span ttm:role="x-translation" xml:lang="zh-CN">你好</span></p><p begin="3s" end="4s">Again</p></body></tt>';
+  try {
+    const saved = await lyricsFlow({
+      line: async () => 'song',
+      pick: async () => ({index: 0}),
+      confirm: async () => true,
+    }, {write: () => {}}, folder, 'song.wav', {
+      fetcher: async () => [],
+      amllFetcher: async (pathname) => pathname === '/search'
+        ? {items: [{id: 1, musicNames: ['Song'], artistNames: ['Artist']}]}
+        : {id: 1, format: 'ttml', lyrics: ttml},
+    });
+    assert.equal(saved, true);
+    assert.ok(warnings.some((warning) => warning.includes('部分歌词没有中文译文')));
+  } finally {
+    term.warn = originalWarn;
     fs.rmSync(folder, {recursive: true, force: true});
   }
 });
