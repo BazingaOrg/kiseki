@@ -39,7 +39,8 @@ export const OpeningRecap: React.FC<{
   photos: PhotoClip[];
   palette: Palette;
   variant: OpeningRecapVariant;
-}> = ({meta, photos, palette, variant}) => {
+  photoScale?: number;
+}> = ({meta, photos, palette, variant, photoScale = meta.photo_scale}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const spec = meta.opening_recap;
@@ -113,8 +114,8 @@ export const OpeningRecap: React.FC<{
   if (!clip) return null;
 
   if (variant === 'polaroid') {
-    const safeWidth = meta.width * meta.photo_scale;
-    const safeHeight = meta.height * meta.photo_scale;
+    const safeWidth = meta.width * photoScale;
+    const safeHeight = meta.height * photoScale;
     const rotation = (hashString(clip.src) % 9) - 4 + direction * entry * 3;
     return (
       <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center'}}>
@@ -133,7 +134,7 @@ export const OpeningRecap: React.FC<{
   }
 
   if (variant === 'filmstrip') {
-    const mainScale = meta.photo_scale * 0.92;
+    const mainScale = photoScale * 0.92;
     const stripHeight = height * 0.09;
     const activeIndex = state.photoIndices[0] ?? 0;
     const stripIndices = state.settled
@@ -197,8 +198,8 @@ export const OpeningRecap: React.FC<{
       <div style={motionStyle}>
         <FramedPhoto
           src={toStatic(clip.src)}
-          maxWidth={meta.width * meta.photo_scale}
-          maxHeight={meta.height * meta.photo_scale}
+          maxWidth={meta.width * photoScale}
+          maxHeight={meta.height * photoScale}
           renderScale={scale}
           palette={palette}
           filter={clip.filter ?? meta.filter}

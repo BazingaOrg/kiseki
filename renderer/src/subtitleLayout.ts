@@ -84,3 +84,24 @@ export const assertSubtitleSafeHeight = ({
     throw new Error('双语字幕安全区不足，请调整照片安全框或改用原文显示');
   }
 };
+
+export const fitDiaryPhotoScale = ({
+  photoScale,
+  canvasHeight,
+  fontSize,
+  scale,
+  riseDistance = 0,
+  exitRise = 0,
+}: {
+  photoScale: number;
+  canvasHeight: number;
+  fontSize: number;
+  scale: number;
+  riseDistance?: number;
+  exitRise?: number;
+}): number => {
+  if (!(canvasHeight > 0) || !(photoScale >= 0)) return photoScale;
+  const blockHeight = subtitleBlockHeight({fontSize: fontSize * scale, bilingual: true, scale});
+  const requiredBand = blockHeight + Math.abs(riseDistance) * scale + Math.abs(exitRise) * scale;
+  return Math.max(0, Math.min(photoScale, 1 - (2 * requiredBand) / canvasHeight));
+};

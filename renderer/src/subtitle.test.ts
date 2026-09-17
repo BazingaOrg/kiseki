@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {resolveFontFamily} from './fontFamily.ts';
-import {assertSubtitleSafeHeight, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, subtitleBlockHeight, subtitleVisibilityEnd} from './subtitleLayout.ts';
+import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, subtitleBlockHeight, subtitleVisibilityEnd} from './subtitleLayout.ts';
 
 test('resolveFontFamily routes by script within the serif family by default', () => {
   assert.match(resolveFontFamily('hello', 'en'), /Noto Serif/);
@@ -49,6 +49,51 @@ test('bilingual block must fit inside the supplied safe subtitle band', () => {
     () => assertSubtitleSafeHeight({blockHeight: 70.8, bandBottomFromBottom: 97, bandTopFromBottom: 150, riseDown: 6, riseUp: 0, bilingual: true}),
     /安全区不足/,
   );
+  const newsCutScale = 1;
+  const newsCutBlock = subtitleBlockHeight({fontSize: 44 * newsCutScale, bilingual: true, scale: newsCutScale});
+  assert.throws(
+    () => assertSubtitleSafeHeight({
+      blockHeight: newsCutBlock,
+      bandBottomFromBottom: 0,
+      bandTopFromBottom: 1080 * (1 - 0.85) / 2,
+      riseDown: 4 * newsCutScale,
+      riseUp: 0,
+      bilingual: true,
+    }),
+    /安全区不足/,
+  );
+});
+
+test('fitDiaryPhotoScale shrinks a 0.85 photo so news-cut bilingual captions fit 1080p', () => {
+  const scale = 1;
+  const fontSize = 44;
+  const riseDistance = 4;
+  const fitted = fitDiaryPhotoScale({
+    photoScale: 0.85,
+    canvasHeight: 1080,
+    fontSize,
+    scale,
+    riseDistance,
+  });
+  assert.ok(fitted < 0.85);
+  assert.doesNotThrow(() => assertSubtitleSafeHeight({
+    blockHeight: subtitleBlockHeight({fontSize: fontSize * scale, bilingual: true, scale}),
+    bandBottomFromBottom: 0,
+    bandTopFromBottom: 1080 * (1 - fitted) / 2,
+    riseDown: Math.abs(riseDistance * scale),
+    riseUp: 0,
+    bilingual: true,
+  }));
+});
+
+test('fitDiaryPhotoScale keeps default 30px captions at photo_scale 0.8', () => {
+  const fitted = fitDiaryPhotoScale({
+    photoScale: 0.8,
+    canvasHeight: 1080,
+    fontSize: 30,
+    scale: 1,
+  });
+  assert.equal(fitted, 0.8);
 });
 
 test('bilingual adjacent lines do not share a fade-out window, including a missing translation', () => {

@@ -15,7 +15,7 @@ import {ChapterCard} from './ChapterCard';
 import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
-import {resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
+import {fitDiaryPhotoScale, resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
@@ -47,12 +47,24 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   // 视觉规格以 1080p 为基准,非 1080p 输出等比缩放
   const scale = getVisualScale(width, height);
-  const safeWidth = meta.width * meta.photo_scale;
-  const safeHeight = meta.height * meta.photo_scale;
+  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const captionsStyle = {...SUBTITLE, ...template.captions};
+  const photoScale = bilingual
+    ? fitDiaryPhotoScale({
+        photoScale: meta.photo_scale,
+        canvasHeight: meta.height,
+        fontSize: captionsStyle.fontSize,
+        scale,
+        riseDistance: captionsStyle.riseDistance,
+        exitRise: captionsStyle.exitRise,
+      })
+    : meta.photo_scale;
+  const safeWidth = meta.width * photoScale;
+  const safeHeight = meta.height * photoScale;
 
   // 字幕带:照片安全框下缘到画布底部,行框垂直居中于此
-  const bandCenterFromBottom = (meta.height * (1 - meta.photo_scale)) / 4;
-  const subtitleBandTop = (meta.height * (1 - meta.photo_scale)) / 2;
+  const bandCenterFromBottom = (meta.height * (1 - photoScale)) / 4;
+  const subtitleBandTop = (meta.height * (1 - photoScale)) / 2;
 
   // 只挂载当前可见的照片(含淡化前后沿)
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
@@ -84,7 +96,6 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     }
   }
 
-  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
   const visibleSubtitles = subtitles.flatMap((line, index) => {
     const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
@@ -202,6 +213,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         photos={photoClips}
         palette={palette}
         variant={meta.templateId === 'news-cut' ? 'cut' : 'diary'}
+        photoScale={photoScale}
       />
       {whiteFade > 0 ? (
         <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} />
