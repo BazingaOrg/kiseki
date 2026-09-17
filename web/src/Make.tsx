@@ -9,7 +9,7 @@ import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
 import {thumbUrl} from './media';
 import {deletePreset, loadPresets, savePreset, type RenderPreset} from './presets';
-import type {ProjectResponse} from './types';
+import {LYRICS_MODE_EVENT, lyricsModeStorageKey, type ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import {FieldHelp} from './FieldHelp';
 import type {JobOptions} from './useJob';
@@ -444,16 +444,16 @@ const ActionCard = ({
   const optionsPanelRef = useRef<HTMLDivElement>(null);
   // 呈现模板按素材夹记忆:同一种风格反复迭代时不用每次重选
   const templateStorageKey = `kiseki-template:${folder}`;
-  const lyricsModeStorageKey = `kiseki-lyrics-mode:${folder}`;
+  const lyricsModeKey = lyricsModeStorageKey(folder);
 
   useEffect(() => {
     if (kind !== 'render') return;
     let lyricsMode: 'original' | 'bilingual' = 'bilingual';
     try {
-      if (localStorage.getItem(lyricsModeStorageKey) === 'original') lyricsMode = 'original';
+      if (localStorage.getItem(lyricsModeKey) === 'original') lyricsMode = 'original';
     } catch {}
     setOptions((previous) => ({...previous, lyricsMode}));
-  }, [kind, lyricsModeStorageKey]);
+  }, [kind, lyricsModeKey]);
 
   useEffect(() => {
     // 挂载后回填上次选择的模板;只在用户尚未手动选过时生效
@@ -470,7 +470,8 @@ const ActionCard = ({
   const handleOptionsChange = (next: JobOptions) => {
     if (kind === 'render' && next.lyricsMode !== options.lyricsMode) {
       try {
-        localStorage.setItem(lyricsModeStorageKey, next.lyricsMode === 'original' ? 'original' : 'bilingual');
+        localStorage.setItem(lyricsModeKey, next.lyricsMode === 'original' ? 'original' : 'bilingual');
+        window.dispatchEvent(new Event(LYRICS_MODE_EVENT));
       } catch {}
     }
     if (kind === 'render' && next.template !== options.template) {

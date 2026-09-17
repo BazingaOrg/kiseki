@@ -112,11 +112,17 @@ export const getProject = (root, requestedPath) => {
       const segments = recognized?.segments ?? [];
       const normalized = segments
         .filter((segment) => typeof segment?.start === 'number' && typeof segment?.text === 'string')
-        .map((segment) => ({
-          time: segment.start,
-          text: segment.text.trim(),
-          confidence: typeof segment.confidence === 'number' ? segment.confidence : null,
-        }))
+        .map((segment) => {
+          const translationText = segment.translation?.lang === 'zh' && typeof segment.translation.text === 'string'
+            ? segment.translation.text.trim()
+            : '';
+          return {
+            time: segment.start,
+            text: segment.text.trim(),
+            confidence: typeof segment.confidence === 'number' ? segment.confidence : null,
+            ...(translationText ? {translation: {text: translationText, lang: 'zh'}} : {}),
+          };
+        })
         // parseLrc 自己会排序,识别产物则原样保留 whisper 的输出顺序;
         // 前端找当前行是"遇到第一个更晚的就停",乱序会让高亮卡住
         .sort((a, b) => a.time - b.time);

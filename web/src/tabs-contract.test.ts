@@ -35,7 +35,7 @@ test('music and lyrics share one materials panel with a single audio player', as
   assert.match(materials, /className="material-song-lyrics"/);
   assert.match(materials, /<audio \{\.\.\.audioProps\} aria-hidden="true" \/>/);
   assert.ok(materials.indexOf('<audio') < materials.indexOf("getPanelProps('photos')"));
-  assert.match(materials, /<Lyrics lyrics=\{project\.lyrics!\} currentTime=\{state\.currentTime\} onSeek=\{seekTo\} \/>/);
+  assert.match(materials, /<Lyrics lyrics=\{project\.lyrics!\} currentTime=\{state\.currentTime\} onSeek=\{seekTo\} mode=\{lyricsMode\} \/>/);
   assert.match(materials, /const playableAudio = audioAssets\.state === 'ready' \? audios\[0\] \?\? null : null/);
   assert.ok(materials.indexOf('className="material-song-audio"') < materials.indexOf('className="material-song-lyrics"'));
 });

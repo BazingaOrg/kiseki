@@ -56,7 +56,11 @@ test('lyric preview keeps provider and id together in its request', async () => 
   });
   try {
     await fetchLyricsPreview('/project', 'track / id', 'amll');
-    assert.deepEqual(urls, ['/api/fetch/lyrics-preview?folder=%2Fproject&id=track+%2F+id&provider=amll']);
+    await fetchLyricsPreview('/project', '12', 'amll', '12.ttml');
+    assert.deepEqual(urls, [
+      '/api/fetch/lyrics-preview?folder=%2Fproject&id=track+%2F+id&provider=amll',
+      '/api/fetch/lyrics-preview?folder=%2Fproject&id=12&provider=amll&filename=12.ttml',
+    ]);
   } finally {
     Object.assign(globalThis, {fetch: originalFetch, document: originalDocument});
   }
@@ -78,11 +82,24 @@ test('Materials previews a selected source before validation and keys candidates
   const materials = await source('Materials.tsx');
   const lyricsSearch = lyricsSearchSource(materials);
   assert.match(materials, /const lyricsCandidateKey = \(candidate: LyricsCandidate\) => `\$\{candidate\.provider \?\? 'lrclib'\}:\$\{candidate\.id\}`/);
-  assert.match(lyricsSearch, /const outcome = await fetchLyricsPreview\(project\.path, candidate\.id, candidate\.provider\);/);
+  assert.match(lyricsSearch, /const outcome = await fetchLyricsPreview\(project\.path, candidate\.id, candidate\.provider, candidate\.filename\);/);
+  assert.match(lyricsSearch, /const outcome = await validateLyrics\(project\.path, candidate\.id, candidate\.provider, candidate\.filename\);/);
+  assert.match(lyricsSearch, /const outcome = await installLyrics\(project\.path, candidate\.id, candidate\.provider, offset, candidate\.filename\);/);
   assert.match(lyricsSearch, /generation !== previewGeneration\.current/);
   assert.match(lyricsSearch, /disabled=\{!preview \|\| locked \|\| validating !== null \|\| installing !== null\}/);
   assert.match(lyricsSearch, /含 \$\{preview\.translationCount\}\/\$\{preview\.lineCount\} 句中文译文，保存时会一起保存。/);
   assert.match(lyricsSearch, /此版本暂无中文译文，保存后将显示原文。/);
+  assert.match(lyricsSearch, /candidate\.provider === 'amll' && <span className="fetch-warn">可能含中文译文<\/span>/);
+});
+
+test('Materials follow-along lyrics honor Make lyrics mode in the same tab', async () => {
+  const [make, materials, lyrics] = await Promise.all([source('Make.tsx'), source('Materials.tsx'), source('Lyrics.tsx')]);
+  assert.match(make, /localStorage\.setItem\(lyricsModeKey, next\.lyricsMode === 'original' \? 'original' : 'bilingual'\)/);
+  assert.match(make, /window\.dispatchEvent\(new Event\(LYRICS_MODE_EVENT\)\)/);
+  assert.match(materials, /const lyricsMode = useLyricsMode\(project\.path\)/);
+  assert.match(materials, /<Lyrics lyrics=\{project\.lyrics!\} currentTime=\{state\.currentTime\} onSeek=\{seekTo\} mode=\{lyricsMode\} \/>/);
+  assert.match(lyrics, /window\.addEventListener\('storage', sync\)/);
+  assert.match(lyrics, /window\.addEventListener\(LYRICS_MODE_EVENT, sync\)/);
 });
 
 test('native folder picker releases its busy state when the dialog is cancelled', async () => {

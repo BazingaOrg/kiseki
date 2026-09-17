@@ -19,6 +19,12 @@ export interface RuntimeResponse {
   photoCaptionConfigured?: boolean;
 }
 
+export type LyricsMode = 'original' | 'bilingual';
+
+export const LYRICS_MODE_EVENT = 'kiseki-lyrics-mode';
+
+export const lyricsModeStorageKey = (folder: string) => `kiseki-lyrics-mode:${folder}`;
+
 export interface LyricLine {
   time: number;
   text: string;
@@ -136,6 +142,7 @@ export interface LyricsCandidate {
   provider?: 'lrclib' | 'amll';
   sourceName?: string;
   album?: string;
+  filename?: string;
   warnings?: string[];
   title: string;
   artist: string;

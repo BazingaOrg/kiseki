@@ -41,8 +41,11 @@ test('photo hover and progress updates avoid layout-moving animation', async () 
   const [appCss, jobPanel] = await Promise.all([source('App.css'), source('JobPanel.tsx')]);
   assert.match(appCss, /@media \(hover: hover\) and \(pointer: fine\) \{\s*\.photo-card:hover/);
   assert.doesNotMatch(appCss, /\.photo-card:hover\s*\{[^}]*(translateY|shadow-photo-large)/);
+  assert.doesNotMatch(appCss, /\.asset-name:active/);
+  assert.match(appCss, /\.result-video-picker \.asset-name::before/);
   assert.doesNotMatch(appCss, /transition: width/);
   assert.match(jobPanel, /role="progressbar"/);
+  assert.match(jobPanel, /job-context/);
   assert.match(jobPanel, /scaleX\(/);
 });
 

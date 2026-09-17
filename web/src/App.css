@@ -61,8 +61,7 @@
 
 .link-button:active:not(:disabled),
 .primary-button:active:not(:disabled),
-.fetch-button:active:not(:disabled),
-.asset-name:active {
+.fetch-button:active:not(:disabled) {
   transform: scale(0.98);
 }
 
@@ -747,7 +746,7 @@
 .asset-row { display: flex; align-items: center; gap: var(--space-row); min-height: var(--control-height); border-bottom: 1px solid var(--color-divider); word-break: break-all; }
 .asset-row-current { color: var(--color-text); }
 .asset-name { flex: 1; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; text-align: left; overflow-wrap: anywhere; }
-button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color 0.16s ease-out; }
+button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 .asset-actions { display: inline-flex; flex-shrink: 0; gap: 0.55rem; }
 .asset-actions .link-button { display: inline-grid; min-width: 2rem; min-height: 2rem; place-items: center; padding-inline: 0.25rem; }
 .asset-actions .link-button:disabled { opacity: 0.4; cursor: not-allowed; }
@@ -1338,6 +1337,14 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   font-size: 0.85rem;
 }
 
+.job-context {
+  margin: 0.45rem 0 0;
+  color: var(--color-text);
+  font-size: 0.86rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
 .job-status-done {
   animation: job-done-in 220ms cubic-bezier(0.23, 1, 0.32, 1) both;
 }
@@ -1716,13 +1723,19 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   background: var(--color-surface);
 }
 
-.result-video-picker .asset-row-current .asset-name::before {
+.result-video-picker .asset-name::before {
   content: '▶';
   display: inline-block;
+  width: 0.62rem;
   margin-right: 0.45rem;
-  color: var(--color-text);
   font-size: 0.62rem;
   transform: translateY(-0.04em);
+  visibility: hidden;
+}
+
+.result-video-picker .asset-row-current .asset-name::before {
+  color: var(--color-text);
+  visibility: visible;
 }
 
 @media (max-width: 760px) {

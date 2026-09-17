@@ -152,6 +152,27 @@ test('missing confidence becomes null rather than being dropped', () => {
   assert.equal(body.lyrics[0].confidence, null);
 });
 
+test('recognized fallback keeps Chinese translation on follow-along lines', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  writeRecognized(root, [{
+    start: 1.5,
+    text: 'hello',
+    confidence: 0.9,
+    translation: {text: '你好', lang: 'zh'},
+  }]);
+
+  const {body} = getProject(root, root);
+  assert.equal(body.lyricsSource, 'recognized');
+  assert.equal(body.lyricsFile, null);
+  assert.deepEqual(body.lyrics, [{
+    time: 1.5,
+    text: 'hello',
+    confidence: 0.9,
+    translation: {text: '你好', lang: 'zh'},
+  }]);
+});
+
 test('lrc 里只有时间戳的空行转成上一句的 until,不再自己占一行', () => {
   // 这类行是"上一句到此为止"的标记(间奏、留白).丢掉它,间奏那十几秒里
   // 上一句会一直挂着高亮不消失;把它当成一行歌词,列表里又会多出一堆 ⋯.

@@ -1,7 +1,7 @@
 import {useEffect, useRef, useState} from 'react';
 
-import type {LyricLine} from './types';
-import {RENDER_CONFIDENCE_THRESHOLD} from './types';
+import type {LyricLine, LyricsMode} from './types';
+import {LYRICS_MODE_EVENT, lyricsModeStorageKey, RENDER_CONFIDENCE_THRESHOLD} from './types';
 
 /**
  * 已按时间升序,找最后一条 time <= currentTime 的行。
@@ -25,11 +25,34 @@ const SCROLL_DURATION_MS = 420;
 const prefersReducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
+export const readLyricsMode = (folder: string): LyricsMode => {
+  try {
+    return localStorage.getItem(lyricsModeStorageKey(folder)) === 'original' ? 'original' : 'bilingual';
+  } catch {
+    return 'bilingual';
+  }
+};
+
+export const useLyricsMode = (folder: string): LyricsMode => {
+  const [mode, setMode] = useState<LyricsMode>(() => readLyricsMode(folder));
+  useEffect(() => {
+    const sync = () => setMode(readLyricsMode(folder));
+    sync();
+    window.addEventListener('storage', sync);
+    window.addEventListener(LYRICS_MODE_EVENT, sync);
+    return () => {
+      window.removeEventListener('storage', sync);
+      window.removeEventListener(LYRICS_MODE_EVENT, sync);
+    };
+  }, [folder]);
+  return mode;
+};
+
 interface LyricsProps {
   lyrics: LyricLine[];
   currentTime: number;
   onSeek: (seconds: number) => void;
-  mode?: 'original' | 'bilingual';
+  mode?: LyricsMode;
 }
 
 export const Lyrics = ({lyrics, currentTime, onSeek, mode = 'bilingual'}: LyricsProps) => {

@@ -55,12 +55,13 @@ export const installLyrics = async (
   id: LyricsCandidate['id'],
   provider: LyricsCandidate['provider'],
   offset = 0,
+  filename?: string,
 ): Promise<ApiResult<{file: string}>> => {
   try {
     const res = await fetch('/api/fetch/lyrics', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Kiseki-Token': getToken()},
-      body: JSON.stringify({folder, id, provider, offset}),
+      body: JSON.stringify({folder, id, provider, offset, ...(filename ? {filename} : {})}),
     });
     if (!res.ok) return await readFailure(res);
     return {ok: true, data: (await res.json()) as {file: string}};
@@ -77,12 +78,13 @@ const postAsset = async <T>(url: string, body: object): Promise<ApiResult<T>> =>
   } catch { return {ok: false, message: '连不上 kiseki 服务，确认它还在跑。', fix: null}; }
 };
 
-export const validateLyrics = (folder: string, id: LyricsCandidate['id'], provider: LyricsCandidate['provider']) =>
-  postAsset<LyricsValidation>('/api/fetch/lyrics-validate', {folder, id, provider});
+export const validateLyrics = (folder: string, id: LyricsCandidate['id'], provider: LyricsCandidate['provider'], filename?: string) =>
+  postAsset<LyricsValidation>('/api/fetch/lyrics-validate', {folder, id, provider, ...(filename ? {filename} : {})});
 
-export const fetchLyricsPreview = (folder: string, id: LyricsCandidate['id'], provider: LyricsCandidate['provider']) => {
+export const fetchLyricsPreview = (folder: string, id: LyricsCandidate['id'], provider: LyricsCandidate['provider'], filename?: string) => {
   const params = new URLSearchParams({folder, id: String(id)});
   if (provider) params.set('provider', provider);
+  if (filename) params.set('filename', filename);
   return getJson<LyricsPreview>(`/api/fetch/lyrics-preview?${params}`);
 };
 

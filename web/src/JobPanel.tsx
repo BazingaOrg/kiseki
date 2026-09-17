@@ -79,6 +79,8 @@ const rowClass = (state: CollapsedJobRow['state']): string => {
 interface JobPanelProps {
   /** 拼进"正在○○…",如"渲染"/"下载" */
   verb: string;
+  /** 当前任务正在处理的具体素材,如下载中的歌名与作者 */
+  context?: ReactNode;
   status: JobStatus;
   events: JobEvent[];
   error: string | null;
@@ -92,6 +94,7 @@ interface JobPanelProps {
 
 export const JobPanel = ({
   verb,
+  context,
   status,
   events,
   error,
@@ -158,6 +161,8 @@ export const JobPanel = ({
           <span className="job-elapsed">{formatJobDuration(lastSuccessDuration)}</span>
         )}
       </div>
+
+      {context && <p className="job-context">{context}</p>}
 
       {status === 'running' &&
         (lastProgress ? (

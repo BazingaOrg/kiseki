@@ -6,7 +6,7 @@ import type {ApiResult} from './api';
 import {fetchLyricsPreview, installLyrics, normalizeSearchQuery, searchAudio, searchLyrics, validateLyrics} from './api';
 import type {Capabilities, Remedy} from './capabilities';
 import {JobPanel} from './JobPanel';
-import {Lyrics} from './Lyrics';
+import {Lyrics, useLyricsMode} from './Lyrics';
 import {basename, mediaUrl} from './media';
 import {MediaTimeline} from './MediaTimeline';
 import {PhotoGrid} from './PhotoGrid';
@@ -84,6 +84,7 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
     return (
       <JobPanel
         verb="下载"
+        context={job.status === 'running' ? <>《{title}》 · {artist}</> : undefined}
         status={job.status}
         events={job.events}
         error={job.error}
@@ -228,7 +229,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
     if (locked || installing !== null) return;
     const key = lyricsCandidateKey(candidate);
     setInstalling(key);
-    const outcome = await installLyrics(project.path, candidate.id, candidate.provider, offset);
+    const outcome = await installLyrics(project.path, candidate.id, candidate.provider, offset, candidate.filename);
     setInstalling(null);
     // 成功后不必收拾本地状态:歌词到位,这整块 UI 会被 onDone 触发的刷新换掉
     if (outcome.ok) onDone();
@@ -240,7 +241,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
     const key = lyricsCandidateKey(candidate);
     setValidating(key);
     setFailure(null);
-    const outcome = await validateLyrics(project.path, candidate.id, candidate.provider);
+    const outcome = await validateLyrics(project.path, candidate.id, candidate.provider, candidate.filename);
     setValidating(null);
     if (selectedKeyRef.current === key) {
       if (outcome.ok) setValidation(outcome.data);
@@ -258,7 +259,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
     setPreview(null);
     setPreviewFailure(null);
     setPreviewing(true);
-    const outcome = await fetchLyricsPreview(project.path, candidate.id, candidate.provider);
+    const outcome = await fetchLyricsPreview(project.path, candidate.id, candidate.provider, candidate.filename);
     if (generation !== previewGeneration.current) return;
     setPreviewing(false);
     if (outcome.ok) setPreview(outcome.data);
@@ -324,6 +325,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
                   <span className="fetch-candidate-title">{candidate.title}</span>
                   <span className="fetch-candidate-meta">
                     {candidate.artist} · {candidateDuration(candidate.duration)} · {candidate.sourceName ?? (candidate.provider === 'amll' ? 'AMLL' : 'LRCLIB')}
+                    {candidate.provider === 'amll' && <span className="fetch-warn">可能含中文译文</span>}
                     {candidate.delta !== null &&
                       (off ? (
                         <span className="fetch-warn">
@@ -523,6 +525,7 @@ export const Materials = ({
   const songNeedsAttention = audioAssets.state !== 'ready' || lyricsAssets.state === 'ambiguous' || lyricLines === 0;
   const initialTab = songBusy || songNeedsAttention ? 'music' : 'photos';
   const [tab, setTab] = useState<'photos' | 'music'>(initialTab);
+  const lyricsMode = useLyricsMode(project.path);
   const tabsBehavior = useTabs({values: ['photos', 'music'] as const, value: tab, onValueChange: setTab, idPrefix: 'materials'});
   const playableAudio = audioAssets.state === 'ready' ? audios[0] ?? null : null;
   const {mediaProps: audioProps, state, toggle, seekTo, setVolume, toggleMute} = useAudioPlayer<HTMLAudioElement>(playableAudio ? mediaUrl(playableAudio) : null);
@@ -642,7 +645,7 @@ export const Materials = ({
             {activeKind === 'lyrics' && job.status !== 'idle' ? (
               <JobPanel verb="识别" status={job.status} events={job.events} error={job.error} onCancel={job.cancel} onReset={onReset} resetLabel="收起" />
             ) : lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
-              <Lyrics lyrics={project.lyrics!} currentTime={state.currentTime} onSeek={seekTo} />
+              <Lyrics lyrics={project.lyrics!} currentTime={state.currentTime} onSeek={seekTo} mode={lyricsMode} />
             ) : (
               <LyricsFetch
                 project={project}
