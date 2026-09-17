@@ -3,7 +3,7 @@ import type {FormEvent} from 'react';
 import {Pause, Play, Search, Volume2, VolumeX} from 'lucide-react';
 
 import type {ApiResult} from './api';
-import {installLyrics, normalizeSearchQuery, searchAudio, searchLyrics, validateLyrics} from './api';
+import {fetchLyricsPreview, installLyrics, normalizeSearchQuery, searchAudio, searchLyrics, validateLyrics} from './api';
 import type {Capabilities, Remedy} from './capabilities';
 import {JobPanel} from './JobPanel';
 import {Lyrics} from './Lyrics';
@@ -11,7 +11,7 @@ import {basename, mediaUrl} from './media';
 import {MediaTimeline} from './MediaTimeline';
 import {PhotoGrid} from './PhotoGrid';
 import {AssetCollection, fallbackAssetCollection} from './AssetCollection';
-import type {AssetItem, AudioCandidate, LyricsCandidate, LyricsValidation, ProjectResponse} from './types';
+import type {AssetItem, AudioCandidate, LyricsCandidate, LyricsPreview, LyricsSearchResult, LyricsValidation, ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import {FieldHelp} from './FieldHelp';
 import type {JobRequest} from './useJob';
@@ -23,6 +23,8 @@ type MaterialJob = Extract<JobRequest, {kind: 'fetch-audio'} | {kind: 'lyrics'}>
 
 /** 与 cli/fetch.mjs 的 DURATION_WARN_SECONDS 一致:差得比这多就可能整段字幕错位。 */
 const DURATION_WARN_SECONDS = 3;
+
+const lyricsCandidateKey = (candidate: LyricsCandidate) => `${candidate.provider ?? 'lrclib'}:${candidate.id}`;
 
 /** yt-dlp 给的是 "3:45" 这样的字符串;万一按秒给,也按秒格式化。 */
 const candidateDuration = (value: string | number | null): string =>
@@ -187,23 +189,33 @@ const AudioFetch = ({project, job, isActive, busy, onStart, onReset}: FetchProps
 /** 在线找歌词:空输入由后端自动匹配，手输内容走关键词搜索。 */
 const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; locked: boolean; onDone: () => void}) => {
   const [searching, setSearching] = useState(false);
-  const [result, setResult] = useState<ApiResult<{candidates: LyricsCandidate[]; query: string}> | null>(null);
-  const [installing, setInstalling] = useState<LyricsCandidate['id'] | null>(null);
-  const [validating, setValidating] = useState(false);
+  const [result, setResult] = useState<ApiResult<LyricsSearchResult> | null>(null);
+  const [installing, setInstalling] = useState<string | null>(null);
+  const [validating, setValidating] = useState<string | null>(null);
   const [validation, setValidation] = useState<LyricsValidation | null>(null);
   const [failure, setFailure] = useState<{message: string; fix: string | null} | null>(null);
   const [selected, setSelected] = useState<LyricsCandidate | null>(null);
+  const [preview, setPreview] = useState<LyricsPreview | null>(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [previewFailure, setPreviewFailure] = useState<{message: string; fix: string | null} | null>(null);
   // 保留原始用户输入；空串始终表示自动匹配，不能被推断词改写成手动搜索。
   const [query, setQuery] = useState('');
   const searchGeneration = useRef(0);
+  const previewGeneration = useRef(0);
+  const selectedKeyRef = useRef<string | null>(null);
   const queryRef = useRef(query);
 
   const search = async () => {
     const querySnapshot = queryRef.current;
     const normalized = normalizeSearchQuery(querySnapshot);
     const generation = ++searchGeneration.current;
+    previewGeneration.current += 1;
+    selectedKeyRef.current = null;
     setSelected(null);
     setResult(null);
+    setPreview(null);
+    setPreviewFailure(null);
+    setValidation(null);
     setSearching(true);
     setFailure(null);
     const outcome = await searchLyrics(project.path, normalized);
@@ -214,8 +226,9 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
 
   const install = async (candidate: LyricsCandidate, offset = 0) => {
     if (locked || installing !== null) return;
-    setInstalling(candidate.id);
-    const outcome = await installLyrics(project.path, candidate.id, offset);
+    const key = lyricsCandidateKey(candidate);
+    setInstalling(key);
+    const outcome = await installLyrics(project.path, candidate.id, candidate.provider, offset);
     setInstalling(null);
     // 成功后不必收拾本地状态:歌词到位,这整块 UI 会被 onDone 触发的刷新换掉
     if (outcome.ok) onDone();
@@ -224,12 +237,32 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
 
   const validate = async (candidate: LyricsCandidate) => {
     if (locked || validating || installing !== null) return;
-    setValidating(true);
+    const key = lyricsCandidateKey(candidate);
+    setValidating(key);
     setFailure(null);
-    const outcome = await validateLyrics(project.path, candidate.id);
-    setValidating(false);
-    if (outcome.ok) setValidation(outcome.data);
-    else setFailure({message: outcome.message, fix: outcome.fix});
+    const outcome = await validateLyrics(project.path, candidate.id, candidate.provider);
+    setValidating(null);
+    if (selectedKeyRef.current === key) {
+      if (outcome.ok) setValidation(outcome.data);
+      else setFailure({message: outcome.message, fix: outcome.fix});
+    }
+  };
+
+  const selectCandidate = async (candidate: LyricsCandidate) => {
+    const key = lyricsCandidateKey(candidate);
+    const generation = ++previewGeneration.current;
+    selectedKeyRef.current = key;
+    setSelected(candidate);
+    setValidation(null);
+    setFailure(null);
+    setPreview(null);
+    setPreviewFailure(null);
+    setPreviewing(true);
+    const outcome = await fetchLyricsPreview(project.path, candidate.id, candidate.provider);
+    if (generation !== previewGeneration.current) return;
+    setPreviewing(false);
+    if (outcome.ok) setPreview(outcome.data);
+    else setPreviewFailure({message: outcome.message, fix: outcome.fix});
   };
 
   const candidates = result?.ok ? result.data.candidates : null;
@@ -240,13 +273,18 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
         <input
           className="fetch-input"
           value={query}
-          placeholder="留空自动匹配，也可输入歌名 歌手"
+          placeholder="留空自动匹配，手动搜索优先只输入歌名"
           onChange={(event) => {
             searchGeneration.current += 1;
+            previewGeneration.current += 1;
+            selectedKeyRef.current = null;
             queryRef.current = event.target.value;
             setQuery(event.target.value);
             setResult(null);
             setSelected(null);
+            setPreview(null);
+            setPreviewFailure(null);
+            setPreviewing(false);
             setValidation(null);
             setFailure(null);
             setSearching(false);
@@ -265,6 +303,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
       {result && !result.ok && <Failure message={result.message} fix={result.fix} />}
       {failure && <Failure message={failure.message} fix={failure.fix} />}
       {result?.ok && <p className="hint">{normalizeSearchQuery(query) ? '手动关键词' : '自动匹配'}：按「{result.data.query}」搜索。</p>}
+      {result?.ok && result.data.warnings?.map((warning) => <p className="hint fetch-warn" key={warning}>{warning}</p>)}
       {candidates?.length === 0 && (
         <p className="hint">没找到对得上的。音频文件名写成「歌名 - 歌手」通常更容易匹配。</p>
       )}
@@ -274,16 +313,17 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
           {candidates.map((candidate) => {
             const off = candidate.delta !== null && candidate.delta > DURATION_WARN_SECONDS;
             const uncertain = !candidate.metadataMatch;
+            const key = lyricsCandidateKey(candidate);
             return (
-              <li key={candidate.id}>
+              <li key={key}>
                 <button
-                  className={candidate.id === selected?.id ? 'fetch-candidate fetch-candidate-selected' : 'fetch-candidate'}
+                  className={key === (selected ? lyricsCandidateKey(selected) : '') ? 'fetch-candidate fetch-candidate-selected' : 'fetch-candidate'}
                   disabled={installing !== null}
-                  onClick={() => { setSelected(candidate); setValidation(null); }}
+                  onClick={() => { void selectCandidate(candidate); }}
                 >
                   <span className="fetch-candidate-title">{candidate.title}</span>
                   <span className="fetch-candidate-meta">
-                    {candidate.artist} · {candidateDuration(candidate.duration)}
+                    {candidate.artist} · {candidateDuration(candidate.duration)} · {candidate.sourceName ?? (candidate.provider === 'amll' ? 'AMLL' : 'LRCLIB')}
                     {candidate.delta !== null &&
                       (off ? (
                         <span className="fetch-warn">
@@ -293,7 +333,8 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
                         <span> · 时长吻合</span>
                       ))}
                     {uncertain && <span className="fetch-warn"> · 歌名或歌手未完全对上</span>}
-                    {installing === candidate.id && <span> · 正在写入…</span>}
+                    {candidate.warnings?.map((warning) => <span className="fetch-warn" key={warning}>{warning}</span>)}
+                    {installing === key && <span> · 正在写入…</span>}
                   </span>
                 </button>
               </li>
@@ -306,7 +347,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
         <div className="audio-confirm" role="dialog" aria-label="确认歌词">
           <p className="audio-confirm-title">{selected.title}</p>
           <p className="hint">
-            {selected.artist} · {candidateDuration(selected.duration)}
+            {selected.artist} · {candidateDuration(selected.duration)} · {selected.sourceName ?? (selected.provider === 'amll' ? 'AMLL' : 'LRCLIB')}
             {selected.delta !== null &&
               (selected.delta > DURATION_WARN_SECONDS ? (
                 <span className="fetch-warn">与音频差 {Math.round(selected.delta)}s，时间轴可能错位</span>
@@ -315,20 +356,42 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
               ))}
             {!selected.metadataMatch && <span className="fetch-warn"> · 请确认歌名和歌手，同时长也可能是其他版本</span>}
           </p>
+          {previewing && <p className="hint">正在获取歌词与中文译文…</p>}
+          {previewFailure && <Failure message={previewFailure.message} fix={previewFailure.fix} />}
+          {preview && (
+            <>
+              <p className="hint">
+                {preview.translationCount > 0 ? `含 ${preview.translationCount}/${preview.lineCount} 句中文译文，保存时会一起保存。` : '此版本暂无中文译文，保存后将显示原文。'}
+              </p>
+              {preview.authors && preview.authors.length > 0 && <p className="hint">歌词来源署名：{preview.authors.join('、')}</p>}
+              {preview.warnings?.map((warning) => <p className="hint fetch-warn" key={warning}>{warning}</p>)}
+              <ol className="lyrics-preview-list">
+                {preview.lines.map((line, index) => (
+                  <li key={`${line.time}-${index}`}>
+                    <span className="lyrics-preview-time">{formatTime(line.time)}</span>
+                    <span className="lyrics-preview-copy">
+                      <span>{line.text || '⋯'}</span>
+                      {line.translation?.text && <span className="lyrics-preview-translation">{line.translation.text}</span>}
+                    </span>
+                  </li>
+                ))}
+              </ol>
+            </>
+          )}
           {validation?.status === 'matched' && <p className="lyrics-validation lyrics-validation-ok">已用本地人声校验 {validation.anchorCount} 个锚点，时间轴基本吻合。</p>}
           {validation?.status === 'offset' && <p className="lyrics-validation lyrics-validation-warn">检测到稳定偏移 {validation.recommendedOffset! >= 0 ? '+' : ''}{validation.recommendedOffset!.toFixed(1)}s，保存时会自动校准。</p>}
           {validation?.status === 'mismatch' && <p className="lyrics-validation lyrics-validation-error">锚点偏移不断变化，这很可能是另一个演唱或编曲版本，不建议保存。</p>}
           {validation?.status === 'inconclusive' && <p className="lyrics-validation lyrics-validation-warn">可匹配的人声锚点不足，无法可靠判断这份时间轴。</p>}
           <div className="audio-confirm-actions">
-            <button className="link-button" onClick={() => setSelected(null)}>取消</button>
-            {validation && !['matched', 'offset'].includes(validation.status) && <button className="link-button" disabled={locked || installing !== null} onClick={() => { install(selected); setSelected(null); }}>仍然保存</button>}
+            <button className="link-button" onClick={() => { previewGeneration.current += 1; selectedKeyRef.current = null; setSelected(null); }}>取消</button>
+            {preview && validation && !['matched', 'offset'].includes(validation.status) && <button className="link-button" disabled={locked || installing !== null} onClick={() => { void install(selected); setSelected(null); }}>仍然保存</button>}
             {validation && ['matched', 'offset'].includes(validation.status) ? (
-              <button className="fetch-button" disabled={locked || installing !== null} onClick={() => {
-                install(selected, validation.status === 'offset' ? (validation.recommendedOffset ?? 0) : 0);
+              <button className="fetch-button" disabled={!preview || locked || installing !== null} onClick={() => {
+                void install(selected, validation.status === 'offset' ? (validation.recommendedOffset ?? 0) : 0);
                 setSelected(null);
               }}>{installing !== null ? '正在写入…' : validation.status === 'offset' ? '校准并保存' : '保存这份歌词'}</button>
             ) : (
-              <button className="fetch-button" disabled={locked || validating || installing !== null} onClick={() => validate(selected)}>
+              <button className="fetch-button" disabled={!preview || locked || validating !== null || installing !== null} onClick={() => { void validate(selected); }}>
                 {validating ? '正在识别人声…' : '校验时间轴'}
               </button>
             )}

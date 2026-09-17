@@ -127,9 +127,11 @@ const stripRuntimeCaptions = (timeline) => {
 
 export const applyRenderVariants = async (
   timeline,
-  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null} = {},
+  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null, lyricsMode = 'bilingual'} = {},
   {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null} = {},
 ) => {
+  if (!['original', 'bilingual'].includes(lyricsMode)) throw new Error('--lyrics-mode 必须是 original 或 bilingual');
+  timeline.meta = {...timeline.meta, lyrics_mode: lyricsMode};
   if (portrait && square) throw new Error('--portrait 与 --square 不能同时使用');
   if (portrait) timeline.meta = {...timeline.meta, width: 1080, height: 1920};
   if (square) timeline.meta = {...timeline.meta, width: 1080, height: 1080};
@@ -245,6 +247,7 @@ const main = async () => {
   const filterIndex = flagArgs.indexOf('--filter');
   const filterIntensityIndex = flagArgs.indexOf('--filter-intensity');
   const templateIndex = flagArgs.indexOf('--template');
+  const lyricsModeIndex = flagArgs.indexOf('--lyrics-mode');
   const flags = {
     exif: flagArgs.includes('--exif'),
     sign: flagArgs.includes('--sign'),
@@ -260,6 +263,7 @@ const main = async () => {
         }
       : null,
     template: templateIndex >= 0 ? flagArgs[templateIndex + 1] : null,
+    lyricsMode: lyricsModeIndex >= 0 ? flagArgs[lyricsModeIndex + 1] ?? null : 'bilingual',
   };
 
   const timelinePath = path.resolve(timelineArg);

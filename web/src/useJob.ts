@@ -32,6 +32,7 @@ export interface JobOptions {
   /** 仅 still */
   scale?: number;
   photoCaption?: boolean;
+  lyricsMode?: 'original' | 'bilingual';
 }
 
 /** 起 fetch-audio 用的选项:后端拿 title/artist 拼落地文件名(buildAudioFilename)。 */

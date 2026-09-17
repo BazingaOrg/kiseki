@@ -106,6 +106,7 @@ const FILTER_GROUPS = [
 ] as const;
 
 const RENDER_DEFAULTS: JobOptions = {
+  lyricsMode: 'bilingual',
   exif: false,
   sign: false,
   photoCaption: false,
@@ -170,9 +171,10 @@ interface OptionsFormProps {
   options: JobOptions;
   onChange: (options: JobOptions) => void;
   captionCapability?: Capability;
+  hasTranslation: boolean;
 }
 
-const OptionsForm = ({kind, photos, options, onChange, captionCapability}: OptionsFormProps) => {
+const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTranslation}: OptionsFormProps) => {
   const set = <K extends keyof JobOptions>(key: K, value: JobOptions[K]) =>
     onChange({...options, [key]: value});
 
@@ -218,6 +220,22 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability}: Optio
         </div>
       )}
 
+      {kind === 'render' && (
+        <div className="make-field">
+          <span className="make-field-label">歌词显示</span>
+          <div className="make-radio-group" role="group" aria-label="歌词显示">
+            <label className="make-radio">
+              <input type="radio" name="lyrics-mode" checked={!hasTranslation || options.lyricsMode === 'original'} onChange={() => set('lyricsMode', 'original')} />
+              原文
+            </label>
+            <label className="make-radio">
+              <input type="radio" name="lyrics-mode" disabled={!hasTranslation} checked={hasTranslation && options.lyricsMode !== 'original'} onChange={() => set('lyricsMode', 'bilingual')} />
+              双语
+            </label>
+          </div>
+          <p className="make-field-hint">{hasTranslation ? '原文在上，中文译文在下；切换不会重新下载歌词。' : '当前歌词没有中文译文，将显示原文。'}</p>
+        </div>
+      )}
       <div className="make-checkboxes">
         <label className="make-checkbox">
           <input type="checkbox" checked={options.exif} onChange={(e) => set('exif', e.target.checked)} />
@@ -397,6 +415,7 @@ interface ActionCardProps {
   onStart: (options: JobOptions) => void;
   onReset: () => void;
   captionCapability: Capability;
+  hasTranslation?: boolean;
 }
 
 const ActionCard = ({
@@ -414,6 +433,7 @@ const ActionCard = ({
   onStart,
   onReset,
   captionCapability,
+  hasTranslation = false,
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(false);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
@@ -424,6 +444,16 @@ const ActionCard = ({
   const optionsPanelRef = useRef<HTMLDivElement>(null);
   // 呈现模板按素材夹记忆:同一种风格反复迭代时不用每次重选
   const templateStorageKey = `kiseki-template:${folder}`;
+  const lyricsModeStorageKey = `kiseki-lyrics-mode:${folder}`;
+
+  useEffect(() => {
+    if (kind !== 'render') return;
+    let lyricsMode: 'original' | 'bilingual' = 'bilingual';
+    try {
+      if (localStorage.getItem(lyricsModeStorageKey) === 'original') lyricsMode = 'original';
+    } catch {}
+    setOptions((previous) => ({...previous, lyricsMode}));
+  }, [kind, lyricsModeStorageKey]);
 
   useEffect(() => {
     // 挂载后回填上次选择的模板;只在用户尚未手动选过时生效
@@ -438,6 +468,11 @@ const ActionCard = ({
   }, [kind, options.template, templateStorageKey]);
 
   const handleOptionsChange = (next: JobOptions) => {
+    if (kind === 'render' && next.lyricsMode !== options.lyricsMode) {
+      try {
+        localStorage.setItem(lyricsModeStorageKey, next.lyricsMode === 'original' ? 'original' : 'bilingual');
+      } catch {}
+    }
     if (kind === 'render' && next.template !== options.template) {
       try {
         if (next.template) localStorage.setItem(templateStorageKey, next.template);
@@ -452,7 +487,7 @@ const ActionCard = ({
     const template = preset.options.template && RENDER_TEMPLATES.some((t) => t.id === preset.options.template)
       ? preset.options.template
       : null;
-    handleOptionsChange({...preset.options, photoCaption: preset.options.photoCaption === true, trim: preset.options.trim ?? 'auto', template});
+    handleOptionsChange({...preset.options, photoCaption: preset.options.photoCaption === true, lyricsMode: preset.options.lyricsMode === 'original' ? 'original' : 'bilingual', trim: preset.options.trim ?? 'auto', template});
   };
 
   const isCurrentPreset = (preset: RenderPreset) => JSON.stringify(preset.options) === JSON.stringify(options);
@@ -518,6 +553,7 @@ const ActionCard = ({
           <>
             <div className="action-card-content">
               <p className="action-ready">素材齐了，可以开工 ：）</p>
+              {kind === 'render' && hasTranslation && <p className="hint">歌词将显示为{options.lyricsMode === 'original' ? '原文' : '双语'}，可在参数中切换。</p>}
               <button className="make-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
                 <SlidersHorizontal size={13} />
                 参数
@@ -573,7 +609,7 @@ const ActionCard = ({
                       </div>
                     </div>
                   )}
-                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} captionCapability={captionCapability} />
+                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} captionCapability={captionCapability} hasTranslation={hasTranslation} />
                 </div>
               )}
               {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
@@ -628,6 +664,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, 
           onStart={(options) => onStart('render', options)}
           onReset={onReset}
           captionCapability={capabilities.photoCaption}
+          hasTranslation={Boolean(project.lyrics?.some((line) => line.translation?.text))}
         />
         <ActionCard
           kind="still"

@@ -25,7 +25,7 @@ export const STILL_USAGE = `用法: kiseki still <photo|folder> ${STILL_OPTIONS}
 export const USAGE =
   '用法:\n' +
   '  kiseki                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]  渲染相册视频(默认命令)\n' +
+  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>] [--lyrics-mode original|bilingual]  渲染相册视频(默认命令)\n' +
   '  kiseki still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  kiseki doctor                             检查依赖是否就绪\n' +
   '  kiseki lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
@@ -66,6 +66,10 @@ const parseRenderArgs = (argv) => {
         throw new CliError(`--filter 需要滤镜 id(可选: ${FILTER_IDS.join(', ')})`);
       }
       filterId = parseFilterId(argv[++i]);
+    } else if (argv[i] === '--lyrics-mode') {
+      const mode = argv[++i];
+      if (!['original', 'bilingual'].includes(mode)) throw new CliError('--lyrics-mode 必须是 original 或 bilingual');
+      args.lyricsMode = mode;
     } else if (argv[i] === '--template') {
       if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
         throw new CliError(`--template 需要模板 id(可选: ${TEMPLATE_IDS.join(', ')})`);

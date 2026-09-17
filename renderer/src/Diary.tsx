@@ -15,6 +15,7 @@ import {ChapterCard} from './ChapterCard';
 import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
+import {resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
@@ -51,6 +52,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   // 字幕带:照片安全框下缘到画布底部,行框垂直居中于此
   const bandCenterFromBottom = (meta.height * (1 - meta.photo_scale)) / 4;
+  const subtitleBandTop = (meta.height * (1 - meta.photo_scale)) / 2;
 
   // 只挂载当前可见的照片(含淡化前后沿)
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
@@ -82,13 +84,16 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     }
   }
 
-  const visibleSubtitles = subtitles.filter(
-    (l) =>
-      t >= (meta.opening_recap?.end ?? 0) &&
-      l.confidence >= SUBTITLE.confidenceThreshold &&
-      t >= l.start - 1 / fps &&
-      t <= l.end + SUBTITLE.fadeOutDuration + 1 / fps,
-  );
+  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const visibleSubtitles = subtitles.flatMap((line, index) => {
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, bilingual});
+    return t >= (meta.opening_recap?.end ?? 0) &&
+      line.confidence >= SUBTITLE.confidenceThreshold &&
+      t >= line.start - 1 / fps &&
+      t <= visibilityEnd + 1 / fps
+      ? [{line, visibilityEnd}]
+      : [];
+  });
 
   // 收尾:音频淡出与画面淡白各自计时(白场更长,给谢幕语留可读时间)。
   // 下界钳到 0,防止过短的合成从首帧就开始泛白/压音量
@@ -176,16 +181,19 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           fontWeight={defaultStyle ? 400 : undefined}
         />
       ) : null}
-      {visibleSubtitles.map((l) => (
+      {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
           line={l}
           scale={scale}
           bandCenterFromBottom={bandCenterFromBottom}
+          bandTopFromBottom={subtitleBandTop}
           sideInset={subtitleSideInset}
           palette={palette}
           captions={template.captions}
           fontFamily={template.fontFamily}
+          bilingual={bilingual}
+          visibilityEnd={visibilityEnd}
         />
       ))}
       {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />)}

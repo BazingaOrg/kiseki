@@ -114,7 +114,7 @@ export const createJobManager =({
    * 记录一条事件并即时推给所有 SSE 订阅者.progress 是可变快照,历史只留最新
    * 一条;其余事件是可审阅的任务语义,必须完整保留并按原顺序重放.
    */
-  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'scale', 'output'];
+  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'lyricsMode', 'scale', 'output'];
   const publicOptions = (options = {}) => {
     const out = {};
     for (const key of PUBLIC_OPTION_KEYS) {

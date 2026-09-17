@@ -14,6 +14,7 @@ import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
+import {resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {hashString} from './motion';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
@@ -46,20 +47,30 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   ensureFonts(template.fontFamily);
 
   const hasCaption = photos.some((clip) => 'caption' in clip && Boolean(clip.caption));
-  const photoFactor = hasCaption ? POLAROID_PHOTO_FACTOR_CAPTION : POLAROID_PHOTO_FACTOR;
+  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const basePhotoFactor = hasCaption ? POLAROID_PHOTO_FACTOR_CAPTION : POLAROID_PHOTO_FACTOR;
+  const photoFactor = bilingual ? Math.min(basePhotoFactor, 0.8) : basePhotoFactor;
   const safeWidth = meta.width * meta.photo_scale;
   const safeHeight = meta.height * meta.photo_scale;
-  const bandCenterFromBottom = (meta.height * (1 - meta.photo_scale)) / 4;
+  const cardPadding = Math.round(safeWidth * 0.03) * 2;
+  const maxRotation = 4 * Math.PI / 180;
+  const maxCardHeight =
+    (safeHeight * photoFactor + cardPadding) * Math.cos(maxRotation) +
+    (safeWidth * photoFactor + cardPadding) * Math.sin(maxRotation);
+  const subtitleBandTop = Math.max(0, (meta.height - maxCardHeight) / 2);
+  const bandCenterFromBottom = subtitleBandTop / 2;
 
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const chapterClips = visualClips.filter(isChapterClip);
-  const visibleSubtitles = subtitles.filter(
-    (l) =>
-      t >= (meta.opening_recap?.end ?? 0) &&
-      l.confidence >= SUBTITLE_CONFIDENCE &&
-      t >= l.start - 1 / fps &&
-      t <= l.end + SUBTITLE_FADE_OUT + 1 / fps,
-  );
+  const visibleSubtitles = subtitles.flatMap((line, index) => {
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE_FADE_OUT, bilingual});
+    return t >= (meta.opening_recap?.end ?? 0) &&
+      line.confidence >= SUBTITLE_CONFIDENCE &&
+      t >= line.start - 1 / fps &&
+      t <= visibilityEnd + 1 / fps
+      ? [{line, visibilityEnd}]
+      : [];
+  });
 
   // 收尾:音频淡出与画面淡白,与 Diary 同款
   const audioFadeStart = Math.max(0, durationInFrames - Math.round(1.5 * fps));
@@ -143,15 +154,18 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           />
         ) : null;
       })()}
-      {visibleSubtitles.map((l) => (
+      {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
           line={l}
           scale={scale}
           bandCenterFromBottom={bandCenterFromBottom}
+          bandTopFromBottom={subtitleBandTop}
           palette={palette}
           captions={template.captions}
           fontFamily={template.fontFamily}
+          bilingual={bilingual}
+          visibilityEnd={visibilityEnd}
         />
       ))}
       {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => (

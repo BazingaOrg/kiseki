@@ -16,6 +16,8 @@ node cli/kiseki.mjs ./osaka-trip
 
 素材夹包含照片、唯一音频，以及可选 `.lrc`；音频和歌词可放在根目录或 `audio/`。没有 `.lrc` 时，首次使用可能下载所需模型并在本地识别歌词。
 
+在线歌词搜索支持 LRCLIB 与 AMLL TTML DB。选择歌曲后可逐句预览原文与已有中文译文，保存时一起写入一份 `.lrc`，不进行机器翻译。来源暂时不可用时会提示，其他来源继续可用。含中文译文时默认双语显示，制作页可以切换为原文；CLI 使用 `--lyrics-mode original`。切换不重新下载，原文版默认文件名带 `-lyrics-original`。AMLL 的歌曲覆盖和译文完整程度取决于社区词库，下载预览保留来源与贡献者信息。[AMLL 歌词库](https://github.com/amll-dev/amll-ttml-db)
+
 ## 使用
 
 ```bash

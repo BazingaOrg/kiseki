@@ -29,9 +29,10 @@ interface LyricsProps {
   lyrics: LyricLine[];
   currentTime: number;
   onSeek: (seconds: number) => void;
+  mode?: 'original' | 'bilingual';
 }
 
-export const Lyrics = ({lyrics, currentTime, onSeek}: LyricsProps) => {
+export const Lyrics = ({lyrics, currentTime, onSeek, mode = 'bilingual'}: LyricsProps) => {
   const listRef = useRef<HTMLOListElement | null>(null);
   const lineRefs = useRef<Array<HTMLLIElement | null>>([]);
   const [following, setFollowing] = useState(true);
@@ -102,7 +103,8 @@ export const Lyrics = ({lyrics, currentTime, onSeek}: LyricsProps) => {
             data-distance={distance}
           >
             <button className="lyric-seek" onClick={() => onSeek(line.time)}>
-              {line.text || '⋯'}
+              <span className="lyric-original">{line.text || '⋯'}</span>
+              {mode === 'bilingual' && line.translation?.text && <span className="lyric-translation">{line.translation.text}</span>}
               {typeof line.confidence === 'number' && line.confidence < RENDER_CONFIDENCE_THRESHOLD && (
                 <span className="lyric-uncertain" title="识别把握不大，渲染时这一行不会出现在成片里">
                   不确定

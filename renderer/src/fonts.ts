@@ -24,28 +24,36 @@ export const fontsForFamily = (family: FontFamily) =>
     descriptors: {weight: '200 900'} as FontFaceDescriptors,
   }));
 
-const loadFont = (family: string, url: string, descriptors?: FontFaceDescriptors, format = 'truetype-variations') => {
-  if (typeof document === 'undefined') return;
+const loadFont = (family: string, url: string, descriptors?: FontFaceDescriptors, format = 'truetype-variations'): Promise<void> => {
+  if (typeof document === 'undefined') return Promise.resolve();
   const handle = delayRender(`loading font ${family}`, {
     timeoutInMilliseconds: 180_000,
     retries: 2,
   });
   const face = new FontFace(family, `url(${url}) format('${format}')`, descriptors);
-  face
+  return face
     .load()
     .then(() => {
       (document.fonts as unknown as {add(f: FontFace): void}).add(face);
       continueRender(handle);
     })
-    .catch((err) => cancelRender(err));
+    .catch((err) => {
+      cancelRender(err);
+      throw err;
+    });
 };
 
 const loaded = new Set<FontFamily>();
+const loading = new Map<FontFamily, Promise<void>>();
 
-export const ensureFonts = (family: FontFamily = 'serif') => {
-  if (loaded.has(family)) return;
+export const ensureFonts = (family: FontFamily = 'serif'): Promise<void> => {
+  const pending = loading.get(family);
+  if (pending) return pending;
+  if (loaded.has(family)) return Promise.resolve();
   loaded.add(family);
-  for (const spec of fontsForFamily(family)) {
-    loadFont(spec.family, spec.url, spec.descriptors, spec.format);
-  }
+  const promise = Promise.all(
+    fontsForFamily(family).map((spec) => loadFont(spec.family, spec.url, spec.descriptors, spec.format)),
+  ).then(() => undefined);
+  loading.set(family, promise);
+  return promise;
 };

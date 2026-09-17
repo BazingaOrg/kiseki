@@ -54,12 +54,14 @@ export const resolveOutputVariantSuffix = ({
   square = false,
   draft = false,
   template = null,
+  lyricsMode = 'bilingual',
   filter = null,
   filterConfig = null,
   photoNames = [],
 } = {}) => `${exif ? '-exif' : ''}${sign ? '-sign' : ''}${photoCaption ? '-caption' : ''}${dark ? '-dark' : ''}` +
   `${portrait ? '-portrait' : ''}${square ? '-square' : ''}${draft ? '-draft' : ''}` +
   `${template && SAFE_SUFFIX.test(template) ? `-template-${template}` : ''}` +
+  `${lyricsMode === 'original' ? '-lyrics-original' : ''}` +
   resolveFilterOutputSuffix({filter, filterConfig, photoNames});
 
 export const enumerateOutputVariantSuffixes = ({

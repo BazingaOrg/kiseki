@@ -91,7 +91,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
 
-  const {folder: folderArg, output, exif, sign, photoCaption, dark, portrait, square, draft, trim, filter, template} = parsed;
+  const {folder: folderArg, output, exif, sign, photoCaption, dark, portrait, square, draft, trim, filter, template, lyricsMode} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -112,7 +112,7 @@ export const runCommandFromArgv = async (
   const preflight = scanFolderLoose(folder);
   if (photoCaption) requireCaptionApiKey();
   const outputPath = resolveRenderOutputPath({
-    folder, output, exif, sign, photoCaption, dark, portrait, square, draft, filter, template,
+    folder, output, exif, sign, photoCaption, dark, portrait, square, draft, filter, template, lyricsMode,
     filterConfig: readFilterConfig(folder), photoNames: preflight.photos,
   });
   const project = resolveProjectPaths(folder, outputPath);
@@ -326,6 +326,7 @@ export const runCommandFromArgv = async (
       ...(filter ? ['--filter', filter.id] : []),
       ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
       ...(template ? ['--template', template] : []),
+      ...(lyricsMode ? ['--lyrics-mode', lyricsMode] : []),
     ]);
     const renderCode = await Promise.resolve(runResolvedCommand('渲染视频', renderCommand));
     if (renderCode !== 0) {

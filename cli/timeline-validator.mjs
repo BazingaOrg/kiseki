@@ -72,6 +72,7 @@ const validateMotion = (value, path) => {
 export const validateTimeline = (timeline) => {
   const root = object(timeline, '$');
   const meta = object(root.meta, '$.meta');
+  if (meta.lyrics_mode !== undefined && !['original', 'bilingual'].includes(meta.lyrics_mode)) fail('$.meta.lyrics_mode', '必须是 original 或 bilingual');
   finite(meta.version, '$.meta.version', {positive: true, integer: true});
   const duration = finite(meta.duration, '$.meta.duration', {positive: true});
   string(meta.audio, '$.meta.audio');
@@ -139,6 +140,11 @@ export const validateTimeline = (timeline) => {
     const path = `$.subtitles[${index}]`;
     const line = object(value, path);
     string(line.text, `${path}.text`);
+    if (line.translation !== undefined) {
+      const translation = object(line.translation, `${path}.translation`);
+      if (!string(translation.text, `${path}.translation.text`).trim()) fail(`${path}.translation.text`, '不能为空');
+      if (translation.lang !== 'zh') fail(`${path}.translation.lang`, '必须是 zh');
+    }
     if (!['ja', 'zh', 'en', 'mixed'].includes(string(line.lang, `${path}.lang`))) fail(`${path}.lang`, '必须是 ja、zh、en 或 mixed');
     validateClipBounds(line, path, duration);
     finite(line.confidence, `${path}.confidence`);

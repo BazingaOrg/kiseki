@@ -1,4 +1,4 @@
-import type {AudioCandidate, LyricsCandidate, LyricsValidation} from './types';
+import type {AudioCandidate, LyricsCandidate, LyricsPreview, LyricsSearchResult, LyricsValidation} from './types';
 
 export type ApiResult<T> =
   | {ok: true; data: T}
@@ -43,7 +43,7 @@ export const searchAudio = (query: string): Promise<ApiResult<{candidates: Audio
 export const searchLyrics = (
   folder: string,
   query?: string,
-): Promise<ApiResult<{candidates: LyricsCandidate[]; query: string}>> => {
+): Promise<ApiResult<LyricsSearchResult>> => {
   const params = new URLSearchParams({folder});
   const normalized = query === undefined ? '' : normalizeSearchQuery(query);
   if (normalized) params.set('q', normalized);
@@ -53,13 +53,14 @@ export const searchLyrics = (
 export const installLyrics = async (
   folder: string,
   id: LyricsCandidate['id'],
+  provider: LyricsCandidate['provider'],
   offset = 0,
 ): Promise<ApiResult<{file: string}>> => {
   try {
     const res = await fetch('/api/fetch/lyrics', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-Kiseki-Token': getToken()},
-      body: JSON.stringify({folder, id, offset}),
+      body: JSON.stringify({folder, id, provider, offset}),
     });
     if (!res.ok) return await readFailure(res);
     return {ok: true, data: (await res.json()) as {file: string}};
@@ -76,8 +77,14 @@ const postAsset = async <T>(url: string, body: object): Promise<ApiResult<T>> =>
   } catch { return {ok: false, message: '连不上 kiseki 服务，确认它还在跑。', fix: null}; }
 };
 
-export const validateLyrics = (folder: string, id: LyricsCandidate['id']) =>
-  postAsset<LyricsValidation>('/api/fetch/lyrics-validate', {folder, id});
+export const validateLyrics = (folder: string, id: LyricsCandidate['id'], provider: LyricsCandidate['provider']) =>
+  postAsset<LyricsValidation>('/api/fetch/lyrics-validate', {folder, id, provider});
+
+export const fetchLyricsPreview = (folder: string, id: LyricsCandidate['id'], provider: LyricsCandidate['provider']) => {
+  const params = new URLSearchParams({folder, id: String(id)});
+  if (provider) params.set('provider', provider);
+  return getJson<LyricsPreview>(`/api/fetch/lyrics-preview?${params}`);
+};
 
 export const mutateAsset = (folder: string, assetId: string, action: 'rename' | 'delete', stem?: string) =>
   postAsset<{assetId?: string; name?: string; undoId?: string}>('/api/assets/mutate', {folder, assetId, action, stem});

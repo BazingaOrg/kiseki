@@ -14,6 +14,7 @@ import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
+import {resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
@@ -49,14 +50,15 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const photoClips = visualClips.filter(isPhotoClip);
   const hasCaption = photoClips.some((clip) => Boolean(clip.caption));
-  const mainScale = meta.photo_scale * (hasCaption ? FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION : FILMSTRIP_MAIN_PHOTO_FACTOR);
+  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const baseMainScale = meta.photo_scale * (hasCaption ? FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION : FILMSTRIP_MAIN_PHOTO_FACTOR);
+  const mainScale = bilingual ? Math.min(baseMainScale, 0.64) : baseMainScale;
   const mainSafeWidth = meta.width * mainScale;
   const mainSafeHeight = meta.height * mainScale;
   const stripHeight = height * STRIP_HEIGHT_RATIO;
-  const bandCenterFromBottom = Math.max(
-    stripHeight + 24 * scale,
-    ((1 - mainScale) / 2 * meta.height + stripHeight) / 2,
-  );
+  const subtitleBandBottom = stripHeight;
+  const subtitleBandTop = (1 - mainScale) / 2 * meta.height;
+  const bandCenterFromBottom = (subtitleBandBottom + subtitleBandTop) / 2;
   const chapterClips = visualClips.filter(isChapterClip);
 
   const visibleMainPhotos = visualClips.flatMap((clip, index) => {
@@ -85,13 +87,15 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         .filter((clip): clip is PhotoClip => clip !== undefined)
     : [];
 
-  const visibleSubtitles = subtitles.filter(
-    (l) =>
-      t >= (meta.opening_recap?.end ?? 0) &&
-      l.confidence >= 0.6 &&
-      t >= l.start - 1 / fps &&
-      t <= l.end + 0.25 + 1 / fps,
-  );
+  const visibleSubtitles = subtitles.flatMap((line, index) => {
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: 0.25, bilingual});
+    return t >= (meta.opening_recap?.end ?? 0) &&
+      line.confidence >= 0.6 &&
+      t >= line.start - 1 / fps &&
+      t <= visibilityEnd + 1 / fps
+      ? [{line, visibilityEnd}]
+      : [];
+  });
 
   // 收尾:音频淡出与画面淡白,与 Diary 同款
   const audioFadeStart = Math.max(0, durationInFrames - Math.round(1.5 * fps));
@@ -147,15 +151,19 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           opacity={captionState.opacity}
         />
       ) : null}
-      {visibleSubtitles.map((l) => (
+      {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
           line={l}
           scale={scale}
           bandCenterFromBottom={bandCenterFromBottom}
+          bandBottomFromBottom={subtitleBandBottom}
+          bandTopFromBottom={subtitleBandTop}
           palette={palette}
           captions={template.captions}
           fontFamily={template.fontFamily}
+          bilingual={bilingual}
+          visibilityEnd={visibilityEnd}
         />
       ))}
       {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => (

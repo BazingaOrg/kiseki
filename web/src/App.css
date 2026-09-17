@@ -1038,6 +1038,53 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
 .lyrics-validation-warn { color: var(--color-status-warn); }
 .lyrics-validation-error { color: var(--color-status-error); }
 
+.lyrics-preview-list {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0.5rem 0.7rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-control);
+}
+
+.lyrics-preview-list li {
+  display: grid;
+  grid-template-columns: 3.4rem minmax(0, 1fr);
+  gap: 0.6rem;
+  padding: 0.4rem 0;
+  font-family: var(--font-serif);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.lyrics-preview-list li + li {
+  border-top: 1px solid var(--color-divider);
+}
+
+.lyrics-preview-time {
+  padding-top: 0.05rem;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  color: var(--color-secondary-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.lyrics-preview-copy,
+.lyric-seek {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.lyrics-preview-translation,
+.lyric-translation {
+  font-family: var(--font-sans);
+  font-size: 0.86em;
+  line-height: 1.45;
+  color: var(--color-secondary-text);
+}
+
 .fetch-warn::before {
   content: ' · ';
   color: var(--color-secondary-text);
@@ -1945,6 +1992,11 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   color: inherit;
 }
 
+.lyric-original,
+.lyric-translation {
+  display: block;
+}
+
 .lyric-uncertain {
   margin-left: 0.6rem;
   font-family: var(--font-sans);
@@ -1954,6 +2006,17 @@ button.asset-name { cursor: pointer; transition: transform 120ms ease-out, color
   border-radius: 999px;
   padding: 0.05rem 0.45rem;
   vertical-align: middle;
+}
+
+@media (max-width: 600px) {
+  .lyrics-preview-list {
+    max-height: 13rem;
+  }
+
+  .lyrics-preview-list li {
+    grid-template-columns: 3rem minmax(0, 1fr);
+    gap: 0.45rem;
+  }
 }
 
 .doctor-recheck {

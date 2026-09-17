@@ -47,6 +47,7 @@ export const savePreset = (folder: string, name: string, options: JobOptions, va
   const sanitized = {
     ...options,
     photoCaption: options.photoCaption === true,
+    lyricsMode: options.lyricsMode === 'original' ? 'original' as const : 'bilingual' as const,
     template: options.template && validTemplateIds.includes(options.template) ? options.template : null,
   };
   const next = [...loadPresets(folder).filter((preset) => preset.name !== trimmed), {

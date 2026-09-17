@@ -44,6 +44,10 @@ export type VisualClip = PhotoClip | ChapterClip | {kind: string; start: number;
 export type SubtitleLine = {
   text: string;
   lang: 'ja' | 'zh' | 'en' | 'mixed';
+  translation?: {
+    text: string;
+    lang: 'zh';
+  };
   start: number;
   end: number;
   confidence: number;
@@ -95,6 +99,7 @@ export type TimelineMeta = {
   filter?: {id: string; intensity?: number} | null;
   /** 渲染时覆盖注入的呈现层模板 id(见 renderer/src/templates.ts);缺省不应用模板 */
   templateId?: string;
+  lyrics_mode?: 'original' | 'bilingual';
   chapters?: {enabled: boolean; day_count: number; card_count: number};
 };
 

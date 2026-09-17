@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import {readFile} from 'node:fs/promises';
 import test from 'node:test';
 
-import {normalizeSearchQuery, searchLyrics} from './api.ts';
+import {fetchLyricsPreview, normalizeSearchQuery, searchLyrics} from './api.ts';
 
 const source = (name: string) => readFile(new URL(`./${name}`, import.meta.url), 'utf8');
 
@@ -43,6 +43,25 @@ test('automatic lyric searches omit q, including repeated blank searches', async
   }
 });
 
+test('lyric preview keeps provider and id together in its request', async () => {
+  const originalFetch = globalThis.fetch;
+  const originalDocument = globalThis.document;
+  const urls: string[] = [];
+  Object.assign(globalThis, {
+    document: {querySelector: () => null},
+    fetch: async (url: string) => {
+      urls.push(url);
+      return {ok: true, json: async () => ({lines: [], provider: 'amll', sourceName: 'AMLL', translationCount: 0, lineCount: 0})};
+    },
+  });
+  try {
+    await fetchLyricsPreview('/project', 'track / id', 'amll');
+    assert.deepEqual(urls, ['/api/fetch/lyrics-preview?folder=%2Fproject&id=track+%2F+id&provider=amll']);
+  } finally {
+    Object.assign(globalThis, {fetch: originalFetch, document: originalDocument});
+  }
+});
+
 test('Materials keeps raw input and discards stale search results without writing inferred query into the input', async () => {
   const lyricsSearch = lyricsSearchSource(await source('Materials.tsx'));
   assert.match(lyricsSearch, /const querySnapshot = queryRef\.current;[\s\S]*?const normalized = normalizeSearchQuery\(querySnapshot\);/);
@@ -50,8 +69,20 @@ test('Materials keeps raw input and discards stale search results without writin
   assert.match(lyricsSearch, /generation !== searchGeneration\.current \|\| queryRef\.current !== querySnapshot/);
   assert.match(lyricsSearch, /onChange=\{\(event\) => \{[\s\S]*?searchGeneration\.current \+= 1;[\s\S]*?queryRef\.current = event\.target\.value;/);
   assert.doesNotMatch(lyricsSearch, /setQuery\(outcome\.data\.query\)/);
-  assert.match(lyricsSearch, /placeholder="留空自动匹配，也可输入歌名 歌手"/);
+  assert.match(lyricsSearch, /placeholder="留空自动匹配，手动搜索优先只输入歌名"/);
   assert.match(lyricsSearch, /normalizeSearchQuery\(query\) \? '手动关键词' : '自动匹配'/);
+  assert.match(lyricsSearch, /result\?\.ok && result\.data\.warnings\?\.map/);
+});
+
+test('Materials previews a selected source before validation and keys candidates by provider plus id', async () => {
+  const materials = await source('Materials.tsx');
+  const lyricsSearch = lyricsSearchSource(materials);
+  assert.match(materials, /const lyricsCandidateKey = \(candidate: LyricsCandidate\) => `\$\{candidate\.provider \?\? 'lrclib'\}:\$\{candidate\.id\}`/);
+  assert.match(lyricsSearch, /const outcome = await fetchLyricsPreview\(project\.path, candidate\.id, candidate\.provider\);/);
+  assert.match(lyricsSearch, /generation !== previewGeneration\.current/);
+  assert.match(lyricsSearch, /disabled=\{!preview \|\| locked \|\| validating !== null \|\| installing !== null\}/);
+  assert.match(lyricsSearch, /含 \$\{preview\.translationCount\}\/\$\{preview\.lineCount\} 句中文译文，保存时会一起保存。/);
+  assert.match(lyricsSearch, /此版本暂无中文译文，保存后将显示原文。/);
 });
 
 test('native folder picker releases its busy state when the dialog is cancelled', async () => {
