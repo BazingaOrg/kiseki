@@ -48,7 +48,7 @@ const bake = (fontPath, tx, ty, scale) => {
 
 export const renderSignatureSvg = (name) => {
   const text = normalizeSignatureName(name);
-  const font = loadFont(/\p{Script=Han}/u.test(text) ? 'LiuJianMaoCao-Regular.ttf' : 'Sacramento-Regular.ttf');
+  const font = loadFont(/\p{Script=Han}/u.test(text) ? 'MaShanZheng-Regular.ttf' : 'Sacramento-Regular.ttf');
   const missing = [];
   const glyphPaths = [];
   let cursor = 0;
