@@ -14,6 +14,7 @@ export const resolvePhotoTransition = ({
   clipTransition: TransitionSpec;
   templateTransition?: TransitionSpec;
   openingRecapFirst: boolean;
+  openingRecapFade?: number;
 }): TransitionSpec => openingRecapFirst
   ? {type: 'none', duration: 0}
   : (templateTransition ?? clipTransition);

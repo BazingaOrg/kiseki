@@ -94,7 +94,9 @@ test('Materials previews a selected source before validation and keys candidates
 
 test('Materials follow-along lyrics honor Make lyrics mode in the same tab', async () => {
   const [make, materials, lyrics] = await Promise.all([source('Make.tsx'), source('Materials.tsx'), source('Lyrics.tsx')]);
-  assert.match(make, /localStorage\.setItem\(lyricsModeKey, next\.lyricsMode === 'original' \? 'original' : 'bilingual'\)/);
+  assert.match(make, /localStorage\.setItem\(lyricsModeKey, next\.lyricsMode === 'original' \|\| next\.lyricsMode === 'none' \? next\.lyricsMode : 'bilingual'\)/);
+  assert.match(make, /set\('lyricsMode', 'none'\)/);
+  assert.match(make, /不显示/);
   assert.match(make, /window\.dispatchEvent\(new Event\(LYRICS_MODE_EVENT\)\)/);
   assert.match(materials, /const lyricsMode = useLyricsMode\(project\.path\)/);
   assert.match(materials, /<Lyrics lyrics=\{project\.lyrics!\} currentTime=\{state\.currentTime\} onSeek=\{seekTo\} mode=\{lyricsMode\} \/>/);

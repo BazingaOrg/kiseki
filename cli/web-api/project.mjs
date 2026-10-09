@@ -2,16 +2,52 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {cacheHit, loadCaptionCache, captionsPathFor} from '../ai/photo-caption-cache.mjs';
+import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
+import {normalizePhotoKey} from '../ai/photo-key.mjs';
 import {readFilterConfig, resolveProjectPaths, scanFolderLoose} from '../project.mjs';
 import {parseLrc} from '../lrc.mjs';
-import {readUsableRecognizedLyrics} from '../recognized-lyrics.mjs';
+import {readUsableRecognizedLyrics, recognizedLyricsStatus} from '../recognized-lyrics.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
-const assetItem = ({kind, origin, folder, relativePath, manageable = true, actionHint = null}) => {
+const safeCaptionCachePath = (folder) => {
+  const target = captionsPathFor(folder);
+  const relative = path.relative(folder, target);
+  let cursor = folder;
+  for (const [index, part] of relative.split(path.sep).entries()) {
+    cursor = path.join(cursor, part);
+    let stat;
+    try { stat = fs.lstatSync(cursor); } catch (error) { return error?.code === 'ENOENT' ? target : null; }
+    const final = index === relative.split(path.sep).length - 1;
+    if (stat.isSymbolicLink() || (final ? !stat.isFile() : !stat.isDirectory())) return null;
+    try { if (fs.realpathSync.native(cursor) !== cursor) return null; } catch { return null; }
+  }
+  return target;
+};
+
+const assetItem = ({kind, origin, folder, relativePath, manageable = true, actionHint = null, captions = null}) => {
   const assetPath = path.join(folder, relativePath);
+  const key = kind === 'photo' ? normalizePhotoKey(folder, assetPath) : null;
+  let captionItem = null;
+  if (key && captions) {
+    try {
+      const stat = fs.lstatSync(assetPath);
+      const parent = path.dirname(assetPath);
+      const parentStat = fs.lstatSync(parent);
+      if (stat.isFile() && !stat.isSymbolicLink() && parentStat.isDirectory() && !parentStat.isSymbolicLink()
+        && fs.realpathSync.native(assetPath) === assetPath && fs.realpathSync.native(parent) === parent) {
+        const identityStat = readSourceStat(assetPath);
+        if (identityStat) captionItem = cacheHit(captions, key, sourceIdentityRecord(key, identityStat, PREVIEW_WIDTH));
+      }
+    } catch {}
+  }
+  const captionText = captionItem?.text;
+  const caption = typeof captionText === 'string' && captionText.trim() ? captionText.trim() : null;
+  const hintText = captionItem?.hint;
+  const captionHint = typeof hintText === 'string' && hintText.trim() ? hintText.trim() : null;
   return {
     id: `${kind}:${relativePath}`,
     kind,
@@ -21,12 +57,14 @@ const assetItem = ({kind, origin, folder, relativePath, manageable = true, actio
     preview: kind === 'photo' || kind === 'still' ? {type: 'image', path: assetPath} : null,
     manageable,
     actionHint,
+    ...(caption ? {caption} : {}),
+    ...(captionHint ? {captionHint} : {}),
   };
 };
 
-const assetCollection = ({kind, origin, folder, relativePaths}) => {
+const assetCollection = ({kind, origin, folder, relativePaths, captions = null}) => {
   const items = relativePaths.map((relativePath) => {
-    return assetItem({kind, origin, folder, relativePath});
+    return assetItem({kind, origin, folder, relativePath, captions});
   });
   return {
     kind,
@@ -147,7 +185,14 @@ export const getProject = (root, requestedPath) => {
   const outputDir = path.join(safePath, 'output');
   const stills = listOutputFiles(path.join(outputDir, 'stills'), IMAGE_EXTS);
   const exportedVideos = listOutputFiles(outputDir, VIDEO_EXTS);
-  const photoAssets = assetCollection({kind: 'photo', origin: 'source', folder: safePath, relativePaths: photos});
+  let captions = null;
+  try {
+    const captionCachePath = safeCaptionCachePath(safePath);
+    captions = captionCachePath ? loadCaptionCache(captionCachePath) : null;
+  } catch {
+    captions = null;
+  }
+  const photoAssets = assetCollection({kind: 'photo', origin: 'source', folder: safePath, relativePaths: photos, captions});
   const audioAssets = assetCollection({kind: 'audio', origin: 'source', folder: safePath, relativePaths: audios});
   const lyricsAssets = assetCollection({kind: 'lyrics', origin: 'source', folder: safePath, relativePaths: lyrics});
   const stillAssets = assetCollection({
@@ -201,6 +246,7 @@ export const getProject = (root, requestedPath) => {
       lyricsSource,
       recognizedLyricsManageable: lyricsSource === 'recognized' && lyrics.length === 0,
       recognizedLyricsPath: existsFile(lyricsPath) ? lyricsPath : null,
+      recognizedLyricsStatus: existsFile(lyricsPath) ? recognizedLyricsStatus(lyricsPath) : null,
       timelinePath: existsFile(timelinePath) ? timelinePath : null,
       unsupportedVideos,
       filterConfig,

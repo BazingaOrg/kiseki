@@ -6,10 +6,22 @@ export const hasUsableRecognizedLyricsPayload = (payload) =>
     Number.isFinite(segment?.start) && typeof segment?.text === 'string' && segment.text.trim());
 
 export const readUsableRecognizedLyrics = (lyricsPath) => {
+  const payload = readRecognizedLyricsPayload(lyricsPath);
+  return payload && hasUsableRecognizedLyricsPayload(payload) ? payload : null;
+};
+
+export const readRecognizedLyricsPayload = (lyricsPath) => {
   try {
     const payload = JSON.parse(fs.readFileSync(lyricsPath, 'utf8'));
-    return hasUsableRecognizedLyricsPayload(payload) ? payload : null;
+    return Array.isArray(payload?.segments) ? payload : null;
   } catch { return null; }
+};
+
+export const recognizedLyricsStatus = (lyricsPath) => {
+  const payload = readRecognizedLyricsPayload(lyricsPath);
+  if (!payload) return null;
+  if (hasUsableRecognizedLyricsPayload(payload)) return 'ready';
+  return payload.segments.length === 0 ? 'instrumental' : null;
 };
 
 /** An LRC file is user-owned even if empty or malformed, so it blocks management. */

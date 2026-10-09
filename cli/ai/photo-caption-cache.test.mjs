@@ -43,6 +43,12 @@ test('inode or ctime change misses even when size and mtime match', () => {
   assert.equal(cacheHit(cache, 'photos/001.jpg', identity({ctimeNs: 99n})), null);
 });
 
+test('caption cache survives a move across devices when the file identity is otherwise unchanged', () => {
+  const cache = upsertCaptionItem({items: {}}, 'photos/001.jpg', item());
+  const hit = cacheHit(cache, 'photos/001.jpg', identity({dev: 99}));
+  assert.equal(hit.text, '坐得端正，也不耽误心里走神');
+});
+
 test('prompt or model mismatch is a conservative miss', () => {
   const cache = upsertCaptionItem({items: {}}, 'photos/001.jpg', item());
   assert.equal(isUsableCache({...cache, prompt_hash: 'other'}), false);

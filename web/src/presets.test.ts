@@ -42,6 +42,25 @@ test('presets round-trip and overwrite by name', () => {
   }
 });
 
+test('saving drops removed web options to current defaults', () => {
+  const uninstall = installFakeStorage();
+  try {
+    const saved = savePreset('/album', '旧画幅', {
+      ...baseOptions,
+      format: 'square',
+      draft: true,
+      trim: 'auto',
+      speed: 'full',
+    }, ['slow-cinema']);
+    assert.equal(saved[0].options.format, 'landscape');
+    assert.equal(saved[0].options.draft, false);
+    assert.equal(saved[0].options.trim, 'full');
+    assert.equal(saved[0].options.speed, 'balanced');
+  } finally {
+    uninstall();
+  }
+});
+
 test('saving sanitizes unknown template ids so renders cannot fail validation', () => {
   const uninstall = installFakeStorage();
   try {

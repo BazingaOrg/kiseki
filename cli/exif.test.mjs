@@ -10,6 +10,7 @@ import {
   formatIso,
   formatParams,
   isDisplayableExif,
+  shotTimeKeyFromExif,
 } from './exif.mjs';
 
 test('formatCamera dedupes Make prefix in Model', () => {
@@ -56,4 +57,10 @@ test('datetime alone is not enough for an EXIF caption', () => {
   assert.equal(isDisplayableExif({datetime: '2026.05.21 18:42'}), false);
   assert.equal(isDisplayableExif({camera: 'FUJIFILM X-T1'}), true);
   assert.equal(isDisplayableExif({params: ['35mm']}), true);
+});
+
+test('shot time keys use DateTimeOriginal including seconds, not CreateDate', () => {
+  assert.equal(shotTimeKeyFromExif('2026:05:21 18:42:33', '123'), '20260521184233123');
+  assert.equal(shotTimeKeyFromExif('2026.05.21 18:42', null), '20260521184200000');
+  assert.equal(shotTimeKeyFromExif(null, '123'), null);
 });

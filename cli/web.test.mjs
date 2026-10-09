@@ -48,7 +48,7 @@ test('starts a server on a free port and serves the frontend', async () => {
   try {
     const {port} = server.address();
     assert.ok(port > 0);
-    const response = await fetch(`http://localhost:${port}/`);
+    const response = await fetch(`http://127.0.0.1:${port}/`);
     assert.equal(response.status, 200);
     const text = await response.text();
     assert.match(text, /(kiseki 本地工作台|軌跡｜kiseki)/);

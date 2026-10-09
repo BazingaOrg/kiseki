@@ -1,8 +1,8 @@
 import React from 'react';
-import {AbsoluteFill, Img, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {FramedPhoto} from './FramedPhoto';
 import {hashString} from './motion';
-import {openingRecapFrameState} from './openingRecapTiming';
+import {openingRecapFrameBounds, openingRecapFrameState} from './openingRecapTiming';
 import {getVisualScale, type Palette} from './theme';
 import type {PhotoClip, TimelineMeta} from './types';
 
@@ -46,10 +46,17 @@ export const OpeningRecap: React.FC<{
   const spec = meta.opening_recap;
   if (!spec) return null;
 
-  const state = openingRecapFrameState({frame, fps, photoCount: photos.length, spec});
+  const stacked = height > width;
+  const state = openingRecapFrameState({frame, fps, photoCount: photos.length, spec, stacked});
   if (!state.visible) return null;
-  if (state.settled && (variant === 'diary' || variant === 'cut')) return null;
-
+  const {settleFrame, endFrame} = openingRecapFrameBounds({fps, spec});
+  const recapOpacity = state.settled
+    ? interpolate(frame, [settleFrame, endFrame], [1, 0], {
+        extrapolateLeft: 'clamp',
+        extrapolateRight: 'clamp',
+        easing: Easing.inOut(Easing.cubic),
+      })
+    : 1;
   const clips = state.photoIndices.map((index) => photos[index]).filter((clip): clip is PhotoClip => clip !== undefined);
   const scale = getVisualScale(width, height);
   const entry = state.settled ? 0 : 1 - Math.min(1, state.slotProgress * 2.5);
@@ -62,7 +69,7 @@ export const OpeningRecap: React.FC<{
         filter: `blur(${entry * 0.8 * scale}px) brightness(${1 + entry * 0.04})`,
       };
 
-  if (spec.layout === 'grid' && !state.settled) {
+  if (spec.layout === 'grid' && !stacked && clips.length > 1) {
     const columns = Math.ceil(Math.sqrt(spec.batch_size));
     const gridWidth = width * 0.74;
     const gridHeight = height * 0.7;
@@ -70,7 +77,7 @@ export const OpeningRecap: React.FC<{
     const cellWidth = (gridWidth - gap * (columns - 1)) / columns;
     const cellHeight = (gridHeight - gap * (columns - 1)) / columns;
     return (
-      <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center'}}>
+      <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center', opacity: recapOpacity}}>
         <div
           style={{
             ...motionStyle,
@@ -118,7 +125,7 @@ export const OpeningRecap: React.FC<{
     const safeHeight = meta.height * photoScale;
     const rotation = (hashString(clip.src) % 9) - 4 + direction * entry * 3;
     return (
-      <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center'}}>
+      <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center', opacity: recapOpacity}}>
         <div style={entry === 0 ? undefined : {filter: `blur(${entry * 0.8 * scale}px) brightness(${1 + entry * 0.04})`}}>
           <PolaroidCard
             clip={clip}
@@ -142,7 +149,7 @@ export const OpeningRecap: React.FC<{
       : [activeIndex + 1, activeIndex, activeIndex - 1];
     const strip = stripIndices.map((index) => photos[index]).filter((item): item is PhotoClip => item !== undefined);
     return (
-      <AbsoluteFill style={{backgroundColor: meta.background}}>
+      <AbsoluteFill style={{backgroundColor: meta.background, opacity: recapOpacity}}>
         <AbsoluteFill style={{...motionStyle, justifyContent: 'center', alignItems: 'center'}}>
           <Img
             src={toStatic(clip.src)}
@@ -194,7 +201,7 @@ export const OpeningRecap: React.FC<{
   }
 
   return (
-    <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center'}}>
+    <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center', opacity: recapOpacity}}>
       <div style={motionStyle}>
         <FramedPhoto
           src={toStatic(clip.src)}

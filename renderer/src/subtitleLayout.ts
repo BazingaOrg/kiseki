@@ -7,8 +7,43 @@ const MIN_FONT_SCALE = 0.72;
 
 export const hasTranslation = (line: SubtitleLine): boolean => Boolean(line.translation?.text.trim());
 
-export const resolveBilingualMode = (mode: 'original' | 'bilingual' | undefined, lines: SubtitleLine[]): boolean =>
-  mode !== 'original' && lines.some(hasTranslation);
+export type SubtitleDisplayMode = 'none' | 'original' | 'bilingual';
+
+export const resolveSubtitleMode = (
+  mode: SubtitleDisplayMode | undefined,
+  lines: SubtitleLine[],
+): SubtitleDisplayMode => {
+  if (mode === 'none') return 'none';
+  return mode !== 'original' && lines.some(hasTranslation) ? 'bilingual' : 'original';
+};
+
+export const resolveBilingualMode = (mode: SubtitleDisplayMode | undefined, lines: SubtitleLine[]): boolean =>
+  resolveSubtitleMode(mode, lines) === 'bilingual';
+
+export const subtitleSignatureInsets = ({
+  visible,
+  portrait,
+  scale,
+  signatureWidth,
+  signatureHeight,
+  rightInset,
+  bottomInset,
+  gap,
+}: {
+  visible: boolean;
+  portrait: boolean;
+  scale: number;
+  signatureWidth: number;
+  signatureHeight: number;
+  rightInset: number;
+  bottomInset: number;
+  gap: number;
+}): {sideInset: number; bottomInset: number} => {
+  if (!visible) return {sideInset: 0, bottomInset: 0};
+  return portrait
+    ? {sideInset: 0, bottomInset: (bottomInset + signatureHeight + gap) * scale}
+    : {sideInset: rightInset * scale + signatureWidth + gap * scale, bottomInset: 0};
+};
 
 export const subtitleVisibilityEnd = ({
   line,

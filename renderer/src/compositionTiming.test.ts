@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {filmstripLayerPresentation, photoCaptionPresentation, polaroidCardPresentation} from './compositionTiming.ts';
+import {childOpacityForParent, filmstripLayerPresentation, photoCaptionLayerPresentation, photoCaptionPresentation, polaroidCardPresentation} from './compositionTiming.ts';
 
 test('filmstrip crossfade keeps the outgoing layer visible while the next photo enters', () => {
   const outgoing = filmstripLayerPresentation({time: 4, start: 0, end: 4, nextPhotoStart: 4, transitionDuration: 0.6});
@@ -72,6 +72,26 @@ test('photo captions follow every body photo, including short clips', () => {
   assert.equal(switchFrame.visible, false);
 });
 
+test('date chapter cards do not swallow captions of the surrounding photos', () => {
+  const clips = [
+    {kind: 'photo', src: 'a.jpg', caption: '第一句', start: 0, end: 8},
+    {kind: 'chapter', text: '第2天', start: 2, end: 4},
+    {kind: 'photo', src: 'b.jpg', caption: '第二句', start: 8, end: 12},
+  ];
+  const fps = 60;
+  const durationInFrames = 12 * fps;
+  const duringChapter = photoCaptionPresentation({
+    clips, frame: Math.round(3 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
+  });
+  assert.equal(duringChapter.visible, true);
+  assert.equal(duringChapter.clip?.src, 'a.jpg');
+  const afterChapter = photoCaptionPresentation({
+    clips, frame: Math.round(6 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
+  });
+  assert.equal(afterChapter.visible, true);
+  assert.equal(afterChapter.clip?.src, 'a.jpg');
+});
+
 test('photo captions stay hidden during the opening recap', () => {
   const clips = [
     {kind: 'photo', src: 'a.jpg', start: 0, end: 3},
@@ -88,4 +108,20 @@ test('photo captions stay hidden during the opening recap', () => {
   });
   assert.equal(body.visible, true);
   assert.equal(body.clip?.src, 'a.jpg');
+});
+
+test('crossfading photo layers reserve valid caption layout but only the active caption is visible', () => {
+  const active = {caption: '当前'};
+  const outgoing = {caption: '上一张'};
+  const state = {visible: true, opacity: 0.65, clip: active};
+  assert.deepEqual(photoCaptionLayerPresentation({clip: active, hasLayout: true, state}), {render: true, opacity: 0.65});
+  assert.deepEqual(photoCaptionLayerPresentation({clip: outgoing, hasLayout: true, state}), {render: true, opacity: 0});
+  assert.deepEqual(photoCaptionLayerPresentation({clip: active, hasLayout: false, state}), {render: false, opacity: 0});
+});
+
+test('nested caption opacity compensates for the parent photo fade', () => {
+  assert.equal(childOpacityForParent(0.25, 0.5), 0.5);
+  assert.equal(childOpacityForParent(0.5, 0.25), 1);
+  assert.equal(childOpacityForParent(0, 0.5), 0);
+  assert.equal(childOpacityForParent(0.5, 0), 0);
 });

@@ -88,11 +88,13 @@ const PhotoLightbox = ({
   index,
   onIndexChange,
   onClose,
+  captions,
 }: {
   paths: string[];
   index: number;
   onIndexChange: (index: number) => void;
   onClose: () => void;
+  captions?: Map<string, string>;
 }) => (
   <Lightbox
     className="kiseki-lightbox"
@@ -124,8 +126,12 @@ const PhotoLightbox = ({
       buttonPrev: paths.length <= 1 ? () => null : undefined,
       buttonNext: paths.length <= 1 ? () => null : undefined,
       buttonZoom: (zoomRef) => <LightboxZoomControls zoomRef={zoomRef} />,
-      slideFooter: ({slide}) =>
-        slide.photoPath ? <ExifTag path={slide.photoPath} /> : null,
+      slideFooter: ({slide}) => slide.photoPath ? (
+        <div className="kiseki-lightbox-footer">
+          {captions?.get(slide.photoPath) && <p className="photo-caption-tag">{captions.get(slide.photoPath)}</p>}
+          <ExifTag path={slide.photoPath} />
+        </div>
+      ) : null,
     }}
     styles={{container: {backgroundColor: 'rgba(12, 12, 14, 0.94)'}}}
   />

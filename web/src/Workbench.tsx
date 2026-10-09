@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
-import {FolderOpen} from 'lucide-react';
+import {ChevronDown, FolderOpen} from 'lucide-react';
 
 import {deriveCapabilities} from './capabilities';
 import type {Remedy} from './capabilities';
@@ -10,11 +10,12 @@ import {Materials} from './Materials';
 import {Results} from './Results';
 import type {DoctorState, ProjectResponse, ProjectSelection, RuntimeResponse} from './types';
 import {CommandHint} from './ui';
+import {ThemeToggle} from './ThemeToggle';
 import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
 import {clearLastJobRecord, readLastJobRecord} from './lastJob';
-import {clearRecognizedLyrics, mutateAsset, undoAssetDelete} from './api';
+import {clearRecognizedLyrics, generatePhotoCaption, mutateAsset, undoAssetDelete} from './api';
 import type {AssetItem} from './types';
 
 type SectionKey = 'materials' | 'make' | 'results';
@@ -237,6 +238,15 @@ export const Workbench = ({
     }
     void performAsset(item, action, stem);
   };
+  const handleCaption = async (item: AssetItem, hint: string): Promise<string | null> => {
+    if (assetBusy || jobBusy) return '请等当前操作结束后再试。';
+    setAssetBusy(true);
+    const result = await generatePhotoCaption(project.path, item.id, hint);
+    setAssetBusy(false);
+    if (!result.ok) return result.message;
+    onProjectRefresh();
+    return null;
+  };
   const performDeleteAll = async (items: AssetItem[]): Promise<boolean> => {
     if (assetBusy || jobBusy) return false;
     const targets = items.filter((item) => item.manageable !== false);
@@ -372,6 +382,7 @@ export const Workbench = ({
             >
               <FolderOpen size={15} strokeWidth={1.5} />
               <span className="folder-switch-name">{project.name}</span>
+              <ChevronDown className="folder-switch-chevron" size={13} strokeWidth={1.7} aria-hidden="true" />
             </button>
           )}
           <DoctorPanel
@@ -380,6 +391,7 @@ export const Workbench = ({
             onToggle={() => setDoctorOpen((v) => !v)}
             onRecheck={onRecheckDoctor}
           />
+          <ThemeToggle />
         </div>
       </header>
 
@@ -426,6 +438,7 @@ export const Workbench = ({
               locked={jobBusy}
               assetBusy={assetBusy || jobBusy}
               onAsset={handleAsset}
+              onCaption={handleCaption}
             />
           )}
           {section === 'make' && (

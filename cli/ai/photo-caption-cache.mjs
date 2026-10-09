@@ -38,7 +38,10 @@ export const cacheHit = (cache, key, identityRecord) => {
   if (!isUsableCache(cache)) return null;
   const item = cache.items[key];
   if (!item || typeof item.text !== 'string' || !item.text) return null;
-  if (!item.source_identity || identityRecordKey(item.source_identity) !== identityRecordKey(identityRecord)) {
+  const cachedIdentity = item.source_identity;
+  const exactMatch = cachedIdentity && identityRecordKey(cachedIdentity) === identityRecordKey(identityRecord);
+  const sameFileAcrossDevices = cachedIdentity && identityRecordKey({...cachedIdentity, dev: ''}) === identityRecordKey({...identityRecord, dev: ''});
+  if (!exactMatch && !sameFileAcrossDevices) {
     return null;
   }
   if (typeof item.preview_sha256 !== 'string' || item.preview_sha256.length !== 64) return null;

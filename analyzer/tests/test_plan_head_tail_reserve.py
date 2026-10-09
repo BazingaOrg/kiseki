@@ -171,7 +171,7 @@ class TestHeadTailInvariant:
         # 图少歌长触发裁剪,裁剪后的 duration 才是判断预留的依据
         make_photos(tmp_path, 3)
         beats = make_beats(200.0)  # avg = 200/3 ≈ 66.7 > trim_avg_threshold(10)
-        cfg = dict(plan.DEFAULTS)
+        cfg = {**plan.DEFAULTS, "trim": "auto"}
         timeline = build_timeline(tmp_path, beats, [], cfg, None)
 
         total = timeline["meta"]["duration"]

@@ -15,11 +15,10 @@ import {ChapterCard} from './ChapterCard';
 import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
-import {fitDiaryPhotoScale, resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
+import {resolveSubtitleMode, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout';
+import {isCaptionLayout, resolveVideoPhotoScale} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
-import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
-import {resolveFontFamily} from './fontFamily';
 import {getFadeDuration, resolvePhotoTransition} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 import {templateById, resolveTemplatePresentation} from './templates';
@@ -44,32 +43,39 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   // 呈现层模板:只覆盖照片转场与字幕/章节卡长相;缺省(无 templateId)全部回落现有常量
   const template = resolveTemplatePresentation(meta.templateId);
   ensureFonts(template.fontFamily);
+  const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
+  const photoClips = visualClips.filter(isPhotoClip);
+  const chapterClips = visualClips.filter(isChapterClip);
+  const hasCaption = photoClips.some((clip) => Boolean(clip.caption) && isCaptionLayout(clip.captionLayout));
+  if (hasCaption) ensureFonts('serif');
 
   // 视觉规格以 1080p 为基准,非 1080p 输出等比缩放
   const scale = getVisualScale(width, height);
-  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const subtitleMode = resolveSubtitleMode(meta.lyrics_mode, subtitles);
+  const bilingual = subtitleMode === 'bilingual';
   const captionsStyle = {...SUBTITLE, ...template.captions};
-  const photoScale = bilingual
-    ? fitDiaryPhotoScale({
-        photoScale: meta.photo_scale,
-        canvasHeight: meta.height,
-        fontSize: captionsStyle.fontSize,
-        scale,
-        riseDistance: captionsStyle.riseDistance,
-        exitRise: captionsStyle.exitRise,
-      })
-    : meta.photo_scale;
+  const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
+  const photoSignature = useSignatureData(meta.sign ? signatureSrc : undefined);
+  const portraitSignatureReserve = subtitleMode !== 'none' && subtitles.length > 0 && meta.sign && photoSignature && meta.height > meta.width && photoClips.some((clip) => !hasDisplayableExif(clip.exif))
+    ? (STILL.signature.bottomInset + STILL.signature.height + STILL.signature.subtitleGap) * scale
+    : 0;
+  const photoScale = resolveVideoPhotoScale({
+    photoScale: meta.photo_scale,
+    canvasHeight: meta.height,
+    visualScale: scale,
+    bilingual,
+    hasCaption,
+    fontSize: captionsStyle.fontSize,
+    riseDistance: captionsStyle.riseDistance,
+    exitRise: captionsStyle.exitRise,
+    subtitleBottomInset: portraitSignatureReserve,
+  });
   const safeWidth = meta.width * photoScale;
   const safeHeight = meta.height * photoScale;
 
   // 字幕带:照片安全框下缘到画布底部,行框垂直居中于此
   const bandCenterFromBottom = (meta.height * (1 - photoScale)) / 4;
   const subtitleBandTop = (meta.height * (1 - photoScale)) / 2;
-
-  // 只挂载当前可见的照片(含淡化前后沿)
-  const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
-  const photoClips = visualClips.filter(isPhotoClip);
-  const chapterClips = visualClips.filter(isChapterClip);
   const visiblePhotos: Array<{clip: PhotoClip; index: number; motionStart: number}> = [];
   for (let index = 0; index < visualClips.length; index += 1) {
     const clip = visualClips[index];
@@ -96,7 +102,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     }
   }
 
-  const visibleSubtitles = subtitles.flatMap((line, index) => {
+  const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
     const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
       line.confidence >= SUBTITLE.confidenceThreshold &&
@@ -131,15 +137,11 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     recapEnd: meta.opening_recap?.end ?? 0,
     durationInFrames,
   });
-  const captionClip = captionState.clip && typeof captionState.clip.caption === 'string' ? captionState.clip : null;
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
   const outroOpacity =
     outroText === ''
       ? 0
       : interpolate(whiteFade, [...OUTRO.fadeRange], [0, 1], clamp);
-  const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
-  // 照片落款:hook 不能按 clip 条件调用,统一在 Diary 层调用一次;sign 关闭时不传给 Photo
-  const photoSignature = useSignatureData(meta.sign ? signatureSrc : undefined);
   const bottomSignatureVisible = Boolean(
     meta.sign &&
       photoSignature &&
@@ -152,11 +154,16 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         meta.width * STILL.signature.maxWidthRatio,
       )
     : 0;
-  const subtitleSideInset = bottomSignatureVisible
-    ? STILL.signature.rightInset * scale +
-      signatureWidth +
-      STILL.signature.subtitleGap * scale
-    : 0;
+  const subtitleInsets = subtitleSignatureInsets({
+    visible: bottomSignatureVisible,
+    portrait: meta.height > meta.width,
+    scale,
+    signatureWidth,
+    signatureHeight: STILL.signature.height,
+    rightInset: STILL.signature.rightInset,
+    bottomInset: STILL.signature.bottomInset,
+    gap: STILL.signature.subtitleGap,
+  });
 
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
@@ -180,26 +187,24 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           motion={template.motion}
           motionStart={motionStart}
           fontFamily={template.fontFamily}
+          captionOpacity={
+            captionState.visible &&
+            captionState.clip?.src === clip.src &&
+            captionState.clip.start === motionStart
+              ? captionState.opacity
+              : 0
+          }
         />
       ))}
-      {captionClip?.caption && captionState.visible ? (
-        <PhotoCaption
-          text={captionClip.caption}
-          layout={captionClip.captionLayout}
-          palette={palette}
-          fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
-          opacity={captionState.opacity}
-          fontWeight={defaultStyle ? 400 : undefined}
-        />
-      ) : null}
       {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
           line={l}
           scale={scale}
           bandCenterFromBottom={bandCenterFromBottom}
+          bandBottomFromBottom={subtitleInsets.bottomInset}
           bandTopFromBottom={subtitleBandTop}
-          sideInset={subtitleSideInset}
+          sideInset={subtitleInsets.sideInset}
           palette={palette}
           captions={template.captions}
           fontFamily={template.fontFamily}

@@ -32,7 +32,7 @@ export interface JobOptions {
   /** 仅 still */
   scale?: number;
   photoCaption?: boolean;
-  lyricsMode?: 'original' | 'bilingual';
+  lyricsMode?: 'original' | 'bilingual' | 'none';
 }
 
 /** 起 fetch-audio 用的选项:后端拿 title/artist 拼落地文件名(buildAudioFilename)。 */
@@ -166,7 +166,11 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
           body: JSON.stringify(args),
         });
         if (res.status === 409) throw new Error('busy');
-        if (!res.ok) throw new Error('failed');
+        if (!res.ok) {
+          const body = await res.json().catch(() => null) as {error?: string} | null;
+          const detail = typeof body?.error === 'string' ? body.error.trim() : '';
+          throw new Error(detail || 'failed');
+        }
         const {id} = await res.json() as {id: string};
 
         // 即使调用方已过期，也要先保留服务端已创建的任务 id，供取消路径使用。
@@ -189,7 +193,13 @@ export const useJob = (onEnd?: () => void, onDisconnect?: () => void) => {
         startingRef.current = false;
         if (!mountedRef.current || run !== runRef.current) return false;
         setStatus('failed');
-        setError(err instanceof Error && err.message === 'busy' ? '已经有一个任务在跑（可能是另一个标签页开着）。等它结束再试。' : '任务没能起来。');
+        setError(
+          err instanceof Error && err.message === 'busy'
+            ? '已经有一个任务在跑（可能是另一个标签页开着）。等它结束再试。'
+            : err instanceof Error && err.message && err.message !== 'failed'
+              ? err.message
+              : '任务没能起来。',
+        );
         return false;
       }
     },

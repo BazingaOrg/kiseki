@@ -1,4 +1,5 @@
 :root {
+  color-scheme: light;
   /* 取自 renderer/src/theme.ts 的 PALETTES,与成片视觉同源 */
   --color-text: #37332d;
   /**
@@ -34,8 +35,27 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
 
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --color-text: #e8e5de;
+  --color-secondary-text: #a6a29a;
+  --color-faint-text: #807d76;
+  --color-divider: #2a2925;
+  --color-background: #1a1917;
+  --color-surface: #201f1c;
+  --color-status-progress: var(--color-text);
+  --color-status-info: var(--color-secondary-text);
+  --color-status-success: #91ce9f;
+  --color-status-warn: #e2b667;
+  --color-status-error: #f09a8f;
+  --color-destructive: #b85f57;
+  --color-photo-outline: rgba(232, 229, 222, 0.16);
+  --shadow-photo: 0 0 40px -12px rgba(255, 252, 244, 0.06);
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme='system'] {
+    color-scheme: dark;
     --color-text: #e8e5de;
     --color-secondary-text: #a6a29a;
     --color-faint-text: #807d76;

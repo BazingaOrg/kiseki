@@ -44,7 +44,7 @@ def test_default_recap_uses_a_beat_window_and_moves_the_body_start(tmp_path: Pat
     assert len(clips) == 12
 
 
-def test_recap_uses_contact_sheet_batches_when_single_frames_would_be_too_short(tmp_path: Path):
+def test_recap_keeps_single_photo_playback_when_single_frames_would_be_short(tmp_path: Path):
     make_photos(tmp_path, 50)
     timeline = plan.build_timeline(
         tmp_path,
@@ -55,8 +55,8 @@ def test_recap_uses_contact_sheet_batches_when_single_frames_would_be_too_short(
     )
 
     recap = timeline["meta"]["opening_recap"]
-    assert recap["layout"] == "grid"
-    assert recap["batch_size"] >= 4
+    assert recap["layout"] == "single"
+    assert recap["batch_size"] == 1
     assert len(photo_clips(timeline)) == 50
 
 

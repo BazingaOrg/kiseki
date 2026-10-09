@@ -423,6 +423,8 @@ const LyricsFetch = ({
   onRefresh,
   locked,
 }: LyricsFetchProps) => {
+  const instrumental = project.recognizedLyricsStatus === 'instrumental';
+
   if (isActive && job.status !== 'idle') {
     return (
       <JobPanel
@@ -440,8 +442,12 @@ const LyricsFetch = ({
 
   return (
     <div className="fetch lyrics-empty-state">
-      <h3>还没有歌词</h3>
-      <p className="lyrics-empty-description">可以先在线匹配；没有合适版本时，再使用本地人声识别。</p>
+      {instrumental ? <h3>上次识别没有发现人声</h3> : <h3>还没有歌词</h3>}
+      {instrumental ? (
+        <p className="lyrics-empty-description">这首歌可能是纯音乐；如果你认为其中有人声，可以重新运行本地识别。</p>
+      ) : (
+        <p className="lyrics-empty-description">可以先在线匹配；没有合适版本时，再使用本地人声识别。</p>
+      )}
 
       <div className="lyrics-online-match">
         <span className="lyrics-empty-label">在线匹配</span>
@@ -453,7 +459,7 @@ const LyricsFetch = ({
       </div>
 
       <div className="lyrics-local-recognition">
-        <p className="lyrics-local-prompt">没有找到合适结果？</p>
+        <p className="lyrics-local-prompt">{instrumental ? '想再确认一次？' : '没有找到合适结果？'}</p>
         <div className="lyrics-recognition-action">
           <span className="lyrics-empty-label lyrics-empty-label-with-help">
             本地识别
@@ -465,7 +471,7 @@ const LyricsFetch = ({
               disabled={busy || locked}
               onClick={() => onStart({kind: 'lyrics'})}
             >
-              开始识别
+              {instrumental ? '重新识别' : '开始识别'}
             </button>
           )}
         </div>
@@ -497,6 +503,7 @@ interface MaterialsProps {
   assetBusy: boolean;
   locked: boolean;
   onAsset: (item: AssetItem, action: 'rename' | 'delete', stem?: string) => void;
+  onCaption?: (item: AssetItem, hint: string) => Promise<string | null>;
 }
 
 export const Materials = ({
@@ -513,6 +520,7 @@ export const Materials = ({
   assetBusy,
   locked,
   onAsset,
+  onCaption,
 }: MaterialsProps) => {
   const photos = project.photos;
   const audios = project.audios ?? (project.audio ? [project.audio] : []);
@@ -571,7 +579,15 @@ export const Materials = ({
 
       <div {...tabsBehavior.getPanelProps('photos')}>
         {photos.length > 0 ? (
-          <PhotoGrid project={project} groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showHeader: false}]} busy={assetBusy} onRename={(item, stem) => onAsset(item, 'rename', stem)} onDelete={(item) => onAsset(item, 'delete')} />
+          <PhotoGrid
+            project={project}
+            groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showHeader: false}]}
+            busy={assetBusy}
+            captionEnabled={capabilities.photoCaption.enabled}
+            captionBlockedReason={capabilities.photoCaption.blockers[0]?.reason ?? null}
+            onDelete={(item) => onAsset(item, 'delete')}
+            onCaption={onCaption}
+          />
         ) : (
           <p className="material-empty">把照片放进这个文件夹就行，jpg / png / webp 都可以 ：）</p>
         )}

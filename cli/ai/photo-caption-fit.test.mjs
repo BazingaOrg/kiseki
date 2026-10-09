@@ -9,7 +9,7 @@ test('fitTopCaption uses injected measureWidth instead of a CJK estimate', async
     text: '坐得端正，也不耽误心里走神',
     canvasWidth: 1920,
     canvasHeight: 1080,
-    photoScale: 0.8,
+    photoScale: 0.74,
     imageWidth: 640,
     imageHeight: 480,
     visualScale: 1,
@@ -23,6 +23,23 @@ test('fitTopCaption uses injected measureWidth instead of a CJK estimate', async
   assert.ok(calls[0].fontSize > 0);
   assert.ok(layout);
   assert.equal(layout.fontSize, 32);
+});
+
+test('portrait captions use the full canvas width even with EXIF', async () => {
+  const layout = await fitTopCaption({
+    text: '窗边那点光先到了',
+    canvasWidth: 1080,
+    canvasHeight: 1920,
+    photoScale: 0.8,
+    imageWidth: 640,
+    imageHeight: 853,
+    visualScale: 1,
+    hasExif: true,
+    measureWidth: async () => 360,
+  });
+  assert.ok(layout);
+  assert.equal(layout.x, (1080 - 1080 * 0.86) / 2);
+  assert.ok(layout.y >= 40 - 1e-6);
 });
 
 test('fitTopCaption returns null when measured width cannot fit the band', async () => {
@@ -39,7 +56,7 @@ test('fitTopCaption returns null when measured width cannot fit the band', async
   assert.equal(layout, null);
 });
 
-test('fitStillCaption returns null when the photo leaves no top band', async () => {
+test('fitStillCaption shrinks a full-bleed photo so the caption still fits', async () => {
   const layout = await fitStillCaption({
     text: '签名上方空间不够',
     canvasWidth: 1920,
@@ -52,7 +69,8 @@ test('fitStillCaption returns null when the photo leaves no top band', async () 
     sign: false,
     measureWidth: async () => 200,
   });
-  assert.equal(layout, null);
+  assert.ok(layout);
+  assert.ok(layout.y >= 40 - 1e-6);
 });
 
 test('captionPageFromBrowser opens a dedicated Remotion page', async () => {
@@ -84,17 +102,15 @@ test('measureCaptionWidth requires a browser page', async () => {
 });
 
 
-test('default video measures multilingual captions using the rendered font and tracking', async () => {
-  for (const [text, family] of [['午后的光', 'Noto Sans SC'], ['午後の光', 'Noto Sans JP'], ['Afternoon light', 'Noto Sans']]) {
-    let measured;
-    const layout = await fitTopCaption({
-      text, canvasWidth: 1920, canvasHeight: 1080, photoScale: 0.8,
-      imageWidth: 640, imageHeight: 480, visualScale: 1,
-      measureWidth: async (args) => { measured = args; return 500; },
-    });
-    assert.ok(measured.fontFamily.startsWith(`'${family}'`));
-    assert.equal(measured.fontWeight, 400);
-    assert.equal(layout.letterSpacing, measured.letterSpacing);
-    assert.equal(layout.fontSize, measured.fontSize);
-  }
+test('video captions measure with the same exhibition serif as stills', async () => {
+  let measured;
+  const layout = await fitTopCaption({
+    text: '午后的光', canvasWidth: 1920, canvasHeight: 1080, photoScale: 0.74,
+    imageWidth: 640, imageHeight: 480, visualScale: 1,
+    measureWidth: async (args) => { measured = args; return 500; },
+  });
+  assert.match(measured.fontFamily, /Noto Serif SC/);
+  assert.equal(measured.fontWeight, 300);
+  assert.equal(layout.letterSpacing, measured.letterSpacing);
+  assert.equal(layout.fontSize, measured.fontSize);
 });

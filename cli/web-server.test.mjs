@@ -221,6 +221,88 @@ test('asset recovery HTTP exposes only its opaque retry id and required flag', a
   } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
 });
 
+test('caption route rejects a non-directory folder before generation', async () => {
+  const root = makeTempRoot();
+  const file = path.join(root, 'photo.jpg');
+  fs.writeFileSync(file, 'image');
+  const {server, token} = createTestGalleryServer(root, {
+    captionDeps: {prepare: async () => { throw new Error('must not run'); }},
+  });
+  const port = await listen(server);
+  try {
+    const result = await postJson(port, '/api/captions/generate', {folder: file, assetId: 'photo:photo.jpg'}, {'X-Kiseki-Token': token});
+    assert.equal(result.status, 400);
+  } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
+});
+
+test('server shutdown abort signal reaches caption generation', async () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'photo.jpg'), 'image');
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  const leaseManager = {acquire: () => ({}), release: () => true};
+  const gallery = createTestGalleryServer(root, {
+    captionDeps: {
+      leaseManager,
+      getApiKey: () => 'test-key',
+      prepare: ({signal}) => new Promise((resolve, reject) => {
+        assert.equal(signal.aborted, false);
+        entered();
+        signal.addEventListener('abort', () => reject(Object.assign(new Error('cancelled'), {code: 'cancelled'})), {once: true});
+      }),
+    },
+  });
+  const port = await listen(gallery.server);
+  try {
+    const pending = postJson(port, '/api/captions/generate', {folder: root, assetId: 'photo:photo.jpg'}, {'X-Kiseki-Token': gallery.token});
+    await started;
+    gallery.cancelAsyncOperations();
+    const result = await pending;
+    assert.equal(result.status, 499);
+    assert.equal(result.body.error, '图片旁白已取消');
+  } finally { gallery.server.close(); fs.rmSync(root, {recursive: true, force: true}); }
+});
+
+test('caption generation aborts when the requesting client disconnects', async () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'photo.jpg'), 'image');
+  let entered;
+  const started = new Promise((resolve) => { entered = resolve; });
+  let observedAbort;
+  const aborted = new Promise((resolve) => { observedAbort = resolve; });
+  const gallery = createTestGalleryServer(root, {
+    captionDeps: {
+      leaseManager: {acquire: () => ({}), release: () => true},
+      getApiKey: () => 'test-key',
+      prepare: ({signal}) => new Promise((resolve, reject) => {
+        entered();
+        signal.addEventListener('abort', () => {
+          observedAbort();
+          reject(Object.assign(new Error('cancelled'), {code: 'cancelled'}));
+        }, {once: true});
+      }),
+    },
+  });
+  const port = await listen(gallery.server);
+  try {
+    const req = http.request({
+      host: '127.0.0.1',
+      port,
+      path: '/api/captions/generate',
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Kiseki-Token': gallery.token,
+      },
+    });
+    req.on('error', () => {});
+    req.end(JSON.stringify({folder: root, assetId: 'photo:photo.jpg'}));
+    await started;
+    req.destroy();
+    await aborted;
+  } finally { gallery.server.close(); fs.rmSync(root, {recursive: true, force: true}); }
+});
+
 test('缺 token 的 POST /api/jobs → 403', async () => {
   const root = makeTempRoot();
   const {server} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});

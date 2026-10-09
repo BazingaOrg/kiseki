@@ -98,7 +98,6 @@ export const Results = ({project, capabilities, onRemedy, assetBusy, onAsset, on
                   {key: 'stills', title: '导出静态图', hint: '按成片同款视觉导出的静态图', paths: project.output.stills, assets: project.assets?.stills.items ?? fallbackAssetCollection('still', project.output.stills).items},
                 ]}
                 busy={assetBusy}
-                onRename={(item, stem) => onAsset(item, 'rename', stem)}
                 onDelete={(item) => onAsset(item, 'delete')}
                 onDeleteAll={onDeleteAll}
               />

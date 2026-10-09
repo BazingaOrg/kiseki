@@ -31,6 +31,20 @@ export const SYSTEM_PROMPT = `你是一位为「电子相框」撰写旁白短�
 3. 不要出现“这张照片”“这一刻”“那天”等指代照片本身的词。`;
 
 export const USER_PROMPT = '请看着这张照片，写一句符合规则的中文旁白。';
+export const CAPTION_HINT_MAX_CODE_POINTS = 40;
+
+export const normalizeCaptionHint = (value) => {
+  if (typeof value !== 'string') return '';
+  const text = value.replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  return [...text].slice(0, CAPTION_HINT_MAX_CODE_POINTS).join('');
+};
+
+export const userPromptWithHint = (hint) => {
+  const normalized = normalizeCaptionHint(hint);
+  if (!normalized) return USER_PROMPT;
+  return `${USER_PROMPT}\n拍摄者补充（可当作已知事实，不要复述原文，仍写成一句画外之意）：${normalized}`;
+};
 
 export const promptHash = createHash('sha256')
   .update(`v${PROMPT_VERSION}\0${SYSTEM_PROMPT}\0${USER_PROMPT}`)
@@ -66,5 +80,5 @@ export const validateCaption = (raw) => {
   return {ok: true, reason: null, text};
 };
 
-export const repairUserPrompt = (reason) =>
-  `${USER_PROMPT}\n上一句不合规（${reason}），请只输出一句不超过 30 个汉字的中文短句，不要换行、引号或解释。`;
+export const repairUserPrompt = (reason, hint = '') =>
+  `${userPromptWithHint(hint)}\n上一句不合规（${reason}），请只输出一句不超过 30 个汉字的中文短句，不要换行、引号或解释。`;

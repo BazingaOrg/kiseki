@@ -34,7 +34,7 @@ export const createKisekiService = ({rootController, runtime = sourceRuntimeLayo
       if (shutdownPromise) throw new Error('服务正在关闭');
       if (started) return started;
       const port = await listen(context.server, startPort);
-      started = Object.freeze({port, url: `http://localhost:${port}`, token: context.token});
+      started = Object.freeze({port, url: `http://127.0.0.1:${port}`, token: context.token});
       return started;
     },
     getRoot: () => rootController.getSnapshot(),

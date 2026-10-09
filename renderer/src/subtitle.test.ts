@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {resolveFontFamily} from './fontFamily.ts';
-import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, subtitleBlockHeight, subtitleVisibilityEnd} from './subtitleLayout.ts';
+import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, resolveSubtitleMode, subtitleBlockHeight, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout.ts';
 
 test('resolveFontFamily routes by script within the serif family by default', () => {
   assert.match(resolveFontFamily('hello', 'en'), /Noto Serif/);
@@ -26,6 +26,10 @@ test('bilingual subtitles reserve a second line and infer the display mode from 
   assert.equal(resolveBilingualMode(undefined, [bilingual]), true);
   assert.equal(resolveBilingualMode('original', [bilingual]), false);
   assert.equal(resolveBilingualMode('bilingual', [original]), false);
+  assert.equal(resolveBilingualMode('none', [bilingual]), false);
+  assert.equal(resolveSubtitleMode('none', [bilingual]), 'none');
+  assert.equal(resolveSubtitleMode('original', [bilingual]), 'original');
+  assert.equal(resolveSubtitleMode(undefined, [bilingual]), 'bilingual');
   assert.equal(subtitleBlockHeight({fontSize: 30, bilingual: false, scale: 1}), 30);
   assert.equal(subtitleBlockHeight({fontSize: 30, bilingual: true, scale: 1}), 70.8);
 });
@@ -62,6 +66,21 @@ test('bilingual block must fit inside the supplied safe subtitle band', () => {
     }),
     /安全区不足/,
   );
+});
+
+test('signature clearance uses horizontal space in landscape and vertical space in portrait', () => {
+  const shared = {
+    visible: true,
+    scale: 1,
+    signatureWidth: 180,
+    signatureHeight: 72,
+    rightInset: 48,
+    bottomInset: 26,
+    gap: 24,
+  };
+  assert.deepEqual(subtitleSignatureInsets({...shared, portrait: false}), {sideInset: 252, bottomInset: 0});
+  assert.deepEqual(subtitleSignatureInsets({...shared, portrait: true}), {sideInset: 0, bottomInset: 122});
+  assert.deepEqual(subtitleSignatureInsets({...shared, visible: false, portrait: true}), {sideInset: 0, bottomInset: 0});
 });
 
 test('fitDiaryPhotoScale shrinks a 0.85 photo so news-cut bilingual captions fit 1080p', () => {

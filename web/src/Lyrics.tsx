@@ -27,10 +27,10 @@ const prefersReducedMotion = () =>
 
 export const readLyricsMode = (folder: string): LyricsMode => {
   try {
-    return localStorage.getItem(lyricsModeStorageKey(folder)) === 'original' ? 'original' : 'bilingual';
-  } catch {
-    return 'bilingual';
-  }
+    const value = localStorage.getItem(lyricsModeStorageKey(folder));
+    if (value === 'original' || value === 'none') return value;
+  } catch {}
+  return 'bilingual';
 };
 
 export const useLyricsMode = (folder: string): LyricsMode => {
@@ -110,6 +110,10 @@ export const Lyrics = ({lyrics, currentTime, onSeek, mode = 'bilingual'}: Lyrics
     frame = requestAnimationFrame(step);
     return () => cancelAnimationFrame(frame);
   }, [activeIndex, following]);
+
+  if (mode === 'none') {
+    return <p className="hint">成片将不显示歌词。</p>;
+  }
 
   return (
     <ol className="lyrics-list" ref={listRef}>

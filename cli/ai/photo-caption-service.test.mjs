@@ -54,6 +54,41 @@ test('warm cache hits skip generate and materialize', async () => {
     assert.equal(second.generated, 0);
     assert.equal(generates, 1);
     assert.equal(materializes, 1);
+    const forced = await preparePhotoCaptions({
+      projectRoot: dir,
+      sources: [photo],
+      apiKey: 'k',
+      force: true,
+      generateCaption: async ({hint}) => {
+        generates += 1;
+        assert.equal(hint, '妈妈');
+        return {validation: validateCaption('换了一句仍然合规的旁白'), usage: {input_tokens: 1, output_tokens: 1}};
+      },
+      materialize: async () => {
+        materializes += 1;
+        return jpegPreview;
+      },
+      hint: '妈妈',
+    });
+    assert.equal(forced.generated, 1);
+    assert.equal(forced.reused, 0);
+    assert.equal(generates, 2);
+    assert.equal(materializes, 2);
+    const cachePath = path.join(dir, 'output', 'metadata', 'ai-captions.json');
+    assert.equal(JSON.parse(fs.readFileSync(cachePath, 'utf8')).items['001.jpg'].hint, '妈妈');
+    await preparePhotoCaptions({
+      projectRoot: dir,
+      sources: [photo],
+      apiKey: 'k',
+      force: true,
+      generateCaption: async ({hint}) => {
+        assert.equal(hint, '');
+        return {validation: validateCaption('第三次仍然合规的旁白句子'), usage: {input_tokens: 1, output_tokens: 1}};
+      },
+      materialize: async () => jpegPreview,
+      hint: '',
+    });
+    assert.equal(JSON.parse(fs.readFileSync(cachePath, 'utf8')).items['001.jpg'].hint, undefined);
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
   }

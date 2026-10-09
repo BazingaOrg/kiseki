@@ -12,13 +12,14 @@ import {FIXES} from './dependencies.mjs';
 import {extractFormattedExif} from './exif.mjs';
 import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
-import {resolveTemplateComposition, templateMotionZoom} from './templates.mjs';
+import {resolveTemplateComposition, TEMPLATES, templateMotionZoom} from './templates.mjs';
 import {term} from './term.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
 import {cacheHit, captionsPathFor, loadCaptionCache} from './ai/photo-caption-cache.mjs';
 import {normalizePhotoKey} from './ai/photo-key.mjs';
 import {captionPageFromBrowser, fitTopCaption} from './ai/photo-caption-fit.mjs';
+import {resolveVideoPhotoScale} from '../renderer/src/photoCaptionLayout.mjs';
 import {assertUnchangedSources} from './ai/photo-caption-service.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from './image-identity.mjs';
 
@@ -130,7 +131,7 @@ export const applyRenderVariants = async (
   {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null, lyricsMode = 'bilingual'} = {},
   {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null} = {},
 ) => {
-  if (!['original', 'bilingual'].includes(lyricsMode)) throw new Error('--lyrics-mode 必须是 original 或 bilingual');
+  if (!['original', 'bilingual', 'none'].includes(lyricsMode)) throw new Error('--lyrics-mode 必须是 original、bilingual 或 none');
   timeline.meta = {...timeline.meta, lyrics_mode: lyricsMode};
   if (portrait && square) throw new Error('--portrait 与 --square 不能同时使用');
   if (portrait) timeline.meta = {...timeline.meta, width: 1080, height: 1920};
@@ -205,6 +206,22 @@ export const applyCaptionLayouts = async (timeline, {page, templateId = null, mo
   const width = timeline.meta.width;
   const height = timeline.meta.height;
   const visualScale = Math.min(width, height) / 1080;
+  const hasCaption = (timeline.photos ?? []).some((photo) => (photo.kind === undefined || photo.kind === 'photo') && photo.caption);
+  const bilingual = timeline.meta.lyrics_mode !== 'original'
+    && timeline.meta.lyrics_mode !== 'none'
+    && (timeline.subtitles ?? []).some((line) => line?.translation?.text);
+  const template = TEMPLATES.find((item) => item.id === templateId);
+  const photoScale = templateId === 'filmstrip' || templateId === 'polaroid'
+    ? timeline.meta.photo_scale
+    : resolveVideoPhotoScale({
+      photoScale: timeline.meta.photo_scale,
+      canvasHeight: height,
+      visualScale,
+      bilingual,
+      hasCaption,
+      fontSize: template?.captionsFontSize ?? 30,
+      riseDistance: template?.captionsRise ?? 0,
+    });
   let skippedLayout = 0;
   const next = [];
   for (const photo of timeline.photos ?? []) {
@@ -217,7 +234,7 @@ export const applyCaptionLayouts = async (timeline, {page, templateId = null, mo
       text: photo.caption,
       canvasWidth: width,
       canvasHeight: height,
-      photoScale: timeline.meta.photo_scale,
+      photoScale,
       imageWidth: photo.captionPreview?.width || 640,
       imageHeight: photo.captionPreview?.height || 480,
       visualScale,
@@ -345,7 +362,7 @@ const main = async () => {
     }
     await renderMedia({
       serveUrl: bundled.serveUrl,
-      composition,
+      composition: {...composition, props: inputProps},
       inputProps,
       ...(browser ? {puppeteerInstance: browser} : {}),
       codec: 'h264',

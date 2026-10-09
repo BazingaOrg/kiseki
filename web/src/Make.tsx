@@ -1,9 +1,8 @@
-import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useId, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
-import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
+import {Check, ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
 import {FILTERS, getFilter} from '../../renderer/src/filters';
-import {TEMPLATES as ALL_RENDER_TEMPLATES, type Template} from '../../renderer/src/templates';
 import type {Capability, Capabilities, Remedy} from './capabilities';
 import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
@@ -18,92 +17,154 @@ import {useTransitionPresence} from './useTransitionPresence';
 
 type Kind = 'render' | 'still';
 
-const FEATURED_TEMPLATE_IDS = ['slow-cinema', 'filmstrip', 'polaroid'] as const;
-const RENDER_TEMPLATES = FEATURED_TEMPLATE_IDS
-  .map((id) => ALL_RENDER_TEMPLATES.find((template) => template.id === id))
-  .filter((template): template is Template => template !== undefined);
-
-const PreviewArtwork = ({variant, className = ''}: {variant: 'one' | 'two' | 'three'; className?: string}) => (
-  <span className={`template-preview-art template-preview-art-${variant} ${className}`.trim()}>
-    <span className="template-preview-sky" />
-    <span className="template-preview-sun" />
-    <span className="template-preview-ground" />
-    <span className="template-preview-subject" />
-  </span>
-);
-
-const PreviewCaption = () => (
-  <span className="template-preview-caption">字幕</span>
-);
-
-const TemplatePreview = ({template}: {template: Template}) => {
-  if (template.composition === 'Filmstrip') {
-    return (
-      <span className="template-preview template-preview-filmstrip" aria-hidden="true">
-        <span className="template-preview-main">
-          <PreviewArtwork variant="one" className="template-preview-scene template-preview-scene-one" />
-          <PreviewArtwork variant="two" className="template-preview-scene template-preview-scene-two" />
-          <PreviewArtwork variant="three" className="template-preview-scene template-preview-scene-three" />
-        </span>
-        <PreviewCaption />
-        <span className="template-preview-strip">
-          <PreviewArtwork variant="one" />
-          <PreviewArtwork variant="two" />
-          <PreviewArtwork variant="three" />
-          <span className="template-preview-strip-current" />
-        </span>
-      </span>
-    );
-  }
-
-  if (template.composition === 'PolaroidWall') {
-    return (
-      <span className="template-preview template-preview-polaroid" aria-hidden="true">
-        <span className="template-preview-polaroid-card template-preview-polaroid-one">
-          <PreviewArtwork variant="one" />
-        </span>
-        <span className="template-preview-polaroid-card template-preview-polaroid-two">
-          <PreviewArtwork variant="three" />
-        </span>
-        <PreviewCaption />
-      </span>
-    );
-  }
-
-  return (
-    <span className="template-preview template-preview-cinema" aria-hidden="true">
-      <span className="template-preview-diary-frame">
-        <PreviewArtwork variant="one" className="template-preview-scene template-preview-scene-one" />
-        <PreviewArtwork variant="two" className="template-preview-scene template-preview-scene-two" />
-      </span>
-      <PreviewCaption />
-    </span>
-  );
-};
-
 const KIND_VERB: Record<Kind, string> = {render: '渲染', still: '导出'};
 
-const FORMAT_LABELS: {value: JobOptions['format']; label: string}[] = [
+const constrainOptions = (kind: Kind, options: JobOptions): JobOptions => ({
+  ...options,
+  format: options.format === 'portrait' ? 'portrait' : 'landscape',
+  ...(kind === 'render' ? {draft: false, trim: 'full' as const, speed: 'balanced' as const, template: null} : {}),
+});
+
+const FORMAT_LABELS: {value: 'landscape' | 'portrait'; label: string}[] = [
   {value: 'landscape', label: '横版'},
   {value: 'portrait', label: '竖版'},
-  {value: 'square', label: '方形'},
-];
-
-const TRIM_LABELS: {value: NonNullable<JobOptions['trim']>; label: string; hint: string}[] = [
-  {value: 'auto', label: '智能收尾（推荐）', hint: '根据照片数量，在音乐合适的节拍处结束'},
-  {value: 'full', label: '完整歌曲', hint: '始终渲染到歌曲结束，成片可能更长'},
-];
-
-const SPEED_LABELS: {value: NonNullable<JobOptions['speed']>; label: string}[] = [
-  {value: 'saver', label: '省着点'},
-  {value: 'balanced', label: '均衡'},
-  {value: 'full', label: '快'},
 ];
 
 const FILTER_GROUPS = [
   {id: 'camera', label: '经典相机'},
   {id: 'film', label: '经典胶片'},
 ] as const;
+
+const FilterPicker = ({value, onChange}: {value: string | null; onChange: (value: string | null) => void}) => {
+  const [open, setOpen] = useState(false);
+  const [menuPlacement, setMenuPlacement] = useState<'bottom' | 'top'>('bottom');
+  const [menuMaxHeight, setMenuMaxHeight] = useState(320);
+  const pickerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const listboxId = useId();
+  const selectedFilter = FILTERS.find((filter) => filter.id === value);
+  const selectedLegacyFilter = FILTERS.find((filter) => filter.id === value && filter.group === 'legacy');
+  useEffect(() => {
+    if (!open) return;
+    const updateMenuPosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const gap = 6;
+      const viewportPadding = 8;
+      const preferredHeight = Math.min(320, Math.floor(window.innerHeight * 0.52));
+      const below = Math.max(0, window.innerHeight - rect.bottom - gap - viewportPadding);
+      const above = Math.max(0, rect.top - gap - viewportPadding);
+      const placeTop = below < Math.min(preferredHeight, 240) && above > below;
+      const available = placeTop ? above : below;
+      setMenuPlacement(placeTop ? 'top' : 'bottom');
+      setMenuMaxHeight(Math.max(96, Math.min(preferredHeight, available)));
+    };
+    const onPointerDown = (event: PointerEvent) => {
+      if (!pickerRef.current?.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    };
+    updateMenuPosition();
+    window.addEventListener('resize', updateMenuPosition);
+    document.addEventListener('scroll', updateMenuPosition, true);
+    document.addEventListener('pointerdown', onPointerDown);
+    const selected = menuRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
+    selected?.focus();
+    return () => {
+      window.removeEventListener('resize', updateMenuPosition);
+      document.removeEventListener('scroll', updateMenuPosition, true);
+      document.removeEventListener('pointerdown', onPointerDown);
+    };
+  }, [open]);
+
+  const choose = (next: string | null) => {
+    onChange(next);
+    setOpen(false);
+    triggerRef.current?.focus();
+  };
+
+  const moveFocus = (current: HTMLButtonElement, direction: 1 | -1) => {
+    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [])];
+    const index = items.indexOf(current);
+    items[(index + direction + items.length) % items.length]?.focus();
+  };
+
+  const selectedLabel = selectedFilter?.label ?? '无';
+
+  return (
+    <div className="make-filter-picker" ref={pickerRef}>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="make-filter-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listboxId}
+        onClick={() => setOpen((current) => !current)}
+        onKeyDown={(event) => {
+          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <span>{selectedLabel}</span>
+        <ChevronDown className={open ? 'make-filter-chevron make-filter-chevron-open' : 'make-filter-chevron'} size={14} aria-hidden="true" />
+      </button>
+      {open && (
+        <div ref={menuRef} id={listboxId} className={`make-filter-menu make-filter-menu-${menuPlacement}`} style={{maxHeight: `${menuMaxHeight}px`}} role="listbox" aria-label="滤镜选项" onKeyDown={(event) => {
+          const current = event.target as HTMLButtonElement;
+          if (event.key === 'Escape') {
+            event.preventDefault();
+            setOpen(false);
+            triggerRef.current?.focus();
+          } else if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            moveFocus(current, 1);
+          } else if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            moveFocus(current, -1);
+          } else if (event.key === 'Home' || event.key === 'End') {
+            event.preventDefault();
+            const items = menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]');
+            (event.key === 'Home' ? items?.[0] : items?.[items.length - 1])?.focus();
+          }
+        }}>
+          <FilterOption value={null} label="无" selected={value === null} onChoose={choose} />
+          {selectedLegacyFilter && (
+            <div className="make-filter-group" role="group" aria-label="旧项目滤镜">
+              <span className="make-filter-group-label">旧项目滤镜</span>
+              <FilterOption value={selectedLegacyFilter.id} label={selectedLegacyFilter.label} selected={value === selectedLegacyFilter.id} onChoose={choose} />
+            </div>
+          )}
+          {FILTER_GROUPS.map((group) => (
+            <div className="make-filter-group" role="group" aria-label={group.label} key={group.id}>
+              <span className="make-filter-group-label">{group.label}</span>
+              {FILTERS.filter((filter) => filter.group === group.id).map((filter) => (
+                <FilterOption key={filter.id} value={filter.id} label={filter.label} selected={value === filter.id} onChoose={choose} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const FilterOption = ({value, label, selected, onChoose}: {value: string | null; label: string; selected: boolean; onChoose: (value: string | null) => void}) => (
+  <button
+    type="button"
+    className={selected ? 'make-filter-option make-filter-option-selected' : 'make-filter-option'}
+    role="option"
+    aria-selected={selected}
+    onClick={() => onChoose(value)}
+  >
+    <span>{label}</span>
+    {selected && <Check size={14} aria-hidden="true" />}
+  </button>
+);
 
 const RENDER_DEFAULTS: JobOptions = {
   lyricsMode: 'bilingual',
@@ -115,7 +176,7 @@ const RENDER_DEFAULTS: JobOptions = {
   filter: null,
   filterIntensity: null,
   draft: false,
-  trim: 'auto',
+  trim: 'full',
   speed: 'balanced',
   template: null,
 };
@@ -187,53 +248,35 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
     const def = FILTERS.find((item) => item.id === filterId);
     onChange({...options, filter: filterId, filterIntensity: def?.defaultIntensity ?? 0.6});
   };
-  const selectedLegacyFilter = FILTERS.find(
-    (filter) => filter.id === options.filter && filter.group === 'legacy',
-  );
-  const trim = options.trim ?? 'auto';
+  const format = options.format === 'portrait' ? 'portrait' : 'landscape';
 
   return (
     <div className="make-form">
       {kind === 'render' && (
         <div className="make-field">
-          <span className="make-field-label make-field-label-with-help">成片风格 <FieldHelp label="了解成片风格">卡片使用抽象图形演示布局和动效，选中后会循环播放，以成片为准。</FieldHelp></span>
-          <p className="make-field-hint">只影响布局、转场和字幕；滤镜单独设置。</p>
-          <label className="make-radio make-template-default">
-            <input type="radio" name="render-template" checked={!options.template} onChange={() => set('template', null)} />
-            <span className="make-template-card-body">
-              <strong>不套用风格</strong>
-              <em>保留素材夹的原始转场与标准排版</em>
-            </span>
-          </label>
-          <div className="make-radio-group make-template-grid">
-            {RENDER_TEMPLATES.map((template) => (
-              <label className="make-radio make-template-card" key={template.id}>
-                <input type="radio" name="render-template" checked={options.template === template.id} onChange={() => set('template', template.id)} />
-                <TemplatePreview template={template} />
-                <span className="make-template-card-body">
-                  <strong>{template.name}</strong>
-                  <em>{template.description}</em>
-                </span>
-              </label>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {kind === 'render' && (
-        <div className="make-field">
-          <span className="make-field-label">歌词显示</span>
+          <span className="make-field-label make-field-label-with-help">
+            歌词显示
+            {!hasTranslation && <FieldHelp label="了解歌词显示">当前歌词没有中文译文，将显示原文。</FieldHelp>}
+          </span>
           <div className="make-radio-group" role="group" aria-label="歌词显示">
             <label className="make-radio">
-              <input type="radio" name="lyrics-mode" checked={!hasTranslation || options.lyricsMode === 'original'} onChange={() => set('lyricsMode', 'original')} />
+              <input type="radio" name="lyrics-mode" checked={options.lyricsMode === 'original' || (options.lyricsMode !== 'none' && !hasTranslation)} onChange={() => set('lyricsMode', 'original')} />
               原文
             </label>
             <label className="make-radio">
-              <input type="radio" name="lyrics-mode" disabled={!hasTranslation} checked={hasTranslation && options.lyricsMode !== 'original'} onChange={() => set('lyricsMode', 'bilingual')} />
+              <input type="radio" name="lyrics-mode" disabled={!hasTranslation} checked={hasTranslation && options.lyricsMode !== 'original' && options.lyricsMode !== 'none'} onChange={() => set('lyricsMode', 'bilingual')} />
               双语
             </label>
+            <label className="make-radio">
+              <input type="radio" name="lyrics-mode" checked={options.lyricsMode === 'none'} onChange={() => set('lyricsMode', 'none')} />
+              不显示
+            </label>
           </div>
-          <p className="make-field-hint">{hasTranslation ? '原文在上，中文译文在下；切换不会重新下载歌词。' : '当前歌词没有中文译文，将显示原文。'}</p>
+          {options.lyricsMode === 'none' ? (
+            <p className="make-field-hint">成片不显示歌词，也不会重新下载或识别。</p>
+          ) : hasTranslation ? (
+            <p className="make-field-hint">原文在上，中文译文在下；切换不会重新下载歌词。</p>
+          ) : null}
         </div>
       )}
       <div className="make-checkboxes">
@@ -249,34 +292,23 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
           <input type="checkbox" checked={options.dark} onChange={(e) => set('dark', e.target.checked)} />
           暗色
         </label>
-        {kind === 'render' && (
+      </div>
+      <div className="make-field make-caption-field">
+        <div className="make-checkbox-with-help">
           <label className="make-checkbox">
             <input
               type="checkbox"
-              checked={options.draft ?? false}
-              onChange={(e) => set('draft', e.target.checked)}
+              checked={options.photoCaption === true}
+              disabled={!captionCapability?.enabled && options.photoCaption !== true}
+              onChange={(e) => {
+                if (e.target.checked && captionCapability && !captionCapability.enabled) return;
+                set('photoCaption', e.target.checked);
+              }}
             />
-            草稿模式（渲染更快，预览画质较低）
+            图片旁白
           </label>
-        )}
-      </div>
-      <div className="make-field make-caption-field">
-        <label className="make-checkbox">
-          <input
-            type="checkbox"
-            checked={options.photoCaption === true}
-            disabled={!captionCapability?.enabled && options.photoCaption !== true}
-            aria-describedby="photo-caption-help"
-            onChange={(e) => {
-              if (e.target.checked && captionCapability && !captionCapability.enabled) return;
-              set('photoCaption', e.target.checked);
-            }}
-          />
-          图片旁白
-        </label>
-        <p className="make-field-hint" id="photo-caption-help">
-          为照片补上一句画外之意。开启后会将缩小后的预览发给 DeepSeek，全部生成后再开始制作。原图不会上传。
-        </p>
+          <FieldHelp label="了解图片旁白">为照片补上一句画外之意。开启后会将缩小后的预览发给 DeepSeek，全部生成后再开始制作。原图不会上传。</FieldHelp>
+        </div>
         {captionCapability && !captionCapability.enabled && (
           <p className="hint hint-error">{captionCapability.blockers[0]?.reason}</p>
         )}
@@ -290,7 +322,7 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
               <input
                 type="radio"
                 name={`${kind}-format`}
-                checked={options.format === item.value}
+                checked={format === item.value}
                 onChange={() => set('format', item.value)}
               />
               {item.label}
@@ -299,87 +331,9 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
         </div>
       </div>
 
-      {kind === 'render' && (
-        <div className="make-field">
-          <span className="make-field-label">成片时长</span>
-          <div className="make-radio-group">
-            {TRIM_LABELS.map((item) => (
-              <label className="make-radio" key={item.label}>
-                <input
-                  type="radio"
-                  name="render-trim"
-                  checked={trim === item.value}
-                  onChange={() => set('trim', item.value)}
-                />
-                {item.label}
-              </label>
-            ))}
-          </div>
-          <p className="make-field-hint">
-            {TRIM_LABELS.find((item) => item.value === trim)?.hint}
-          </p>
-        </div>
-      )}
-
-      {/* 只给渲染:still 不走 resolveRenderSettings,并发对它无效,摆在那只会误导 */}
-      {kind === 'render' && (
-        <div className="make-field">
-          <span className="make-field-label make-field-label-with-help">渲染速度 <FieldHelp label="了解渲染速度">省着点约占四分之一资源，均衡约占一半，快则尽量使用全部资源。</FieldHelp></span>
-          <div className="make-radio-group">
-            {SPEED_LABELS.map((item) => (
-              <label className="make-radio" key={item.value}>
-                <input
-                  type="radio"
-                  name="render-speed"
-                  checked={(options.speed ?? 'balanced') === item.value}
-                  onChange={() => set('speed', item.value)}
-                />
-                {item.label}
-              </label>
-            ))}
-          </div>
-          <p className="make-field-hint">只影响电脑资源占用，不影响成片质量。</p>
-        </div>
-      )}
-
-      {kind === 'still' && (
-        <div className="make-field">
-          <span className="make-field-label">输出倍率 ×{options.scale ?? 2}</span>
-          <input
-            type="range"
-            min={1}
-            max={4}
-            step={1}
-            value={options.scale ?? 2}
-            onChange={(e) => set('scale', Number(e.target.value))}
-          />
-          <p className="make-field-hint">仅影响单张导出；实际像素为项目画布 × 当前倍率。</p>
-        </div>
-      )}
-
       <div className="make-field">
         <span className="make-field-label make-field-label-with-help">滤镜 <FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。</FieldHelp></span>
-        <select
-          className="make-select"
-          value={options.filter ?? ''}
-          onChange={(e) => handleFilterChange(e.target.value)}
-        >
-          <option value="">无</option>
-          {selectedLegacyFilter && (
-            <optgroup label="旧项目滤镜">
-              <option value={selectedLegacyFilter.id}>{selectedLegacyFilter.label}</option>
-            </optgroup>
-          )}
-          {FILTER_GROUPS.map((group) => (
-            <optgroup key={group.id} label={group.label}>
-              {FILTERS.filter((filter) => filter.group === group.id).map((filter) => (
-                <option key={filter.id} value={filter.id}>
-                  {filter.label}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+        <FilterPicker value={options.filter} onChange={(filterId) => handleFilterChange(filterId ?? '')} />
         {options.filter && (
           <input
             type="range"
@@ -402,9 +356,6 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
 
 interface ActionCardProps {
   kind: Kind;
-  icon: ReactNode;
-  title: string;
-  description: string;
   capability: Capability;
   folder: string;
   photos: string[];
@@ -420,9 +371,6 @@ interface ActionCardProps {
 
 const ActionCard = ({
   kind,
-  icon,
-  title,
-  description,
   capability,
   folder,
   photos,
@@ -435,66 +383,56 @@ const ActionCard = ({
   captionCapability,
   hasTranslation = false,
 }: ActionCardProps) => {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
   const [submittedOptions, setSubmittedOptions] = useState<JobOptions | null>(null);
   const [presets, setPresets] = useState<RenderPreset[]>(() => loadPresets(folder));
   const [presetName, setPresetName] = useState('');
   const optionsPresence = useTransitionPresence(expanded);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
-  // 呈现模板按素材夹记忆:同一种风格反复迭代时不用每次重选
-  const templateStorageKey = `kiseki-template:${folder}`;
   const lyricsModeKey = lyricsModeStorageKey(folder);
 
   useEffect(() => {
+    setOptions((previous) => constrainOptions(kind, {
+      ...previous,
+      ...(kind === 'render'
+        ? {lyricsMode: previous.lyricsMode === 'original' || previous.lyricsMode === 'none' ? previous.lyricsMode : 'bilingual'}
+        : {scale: previous.scale ?? 2}),
+    }));
+  }, [kind]);
+
+  useEffect(() => {
     if (kind !== 'render') return;
-    let lyricsMode: 'original' | 'bilingual' = 'bilingual';
+    let lyricsMode: 'original' | 'bilingual' | 'none' = 'bilingual';
     try {
-      if (localStorage.getItem(lyricsModeKey) === 'original') lyricsMode = 'original';
+      const saved = localStorage.getItem(lyricsModeKey);
+      if (saved === 'original' || saved === 'none') lyricsMode = saved;
     } catch {}
     setOptions((previous) => ({...previous, lyricsMode}));
   }, [kind, lyricsModeKey]);
 
-  useEffect(() => {
-    // 挂载后回填上次选择的模板;只在用户尚未手动选过时生效
-    if (kind !== 'render' || options.template) return;
-    let saved: string | null = null;
-    try {
-      saved = localStorage.getItem(templateStorageKey);
-    } catch {}
-    if (saved && RENDER_TEMPLATES.some((t) => t.id === saved)) {
-      setOptions((prev) => ({...prev, template: saved}));
-    }
-  }, [kind, options.template, templateStorageKey]);
-
   const handleOptionsChange = (next: JobOptions) => {
     if (kind === 'render' && next.lyricsMode !== options.lyricsMode) {
       try {
-        localStorage.setItem(lyricsModeKey, next.lyricsMode === 'original' ? 'original' : 'bilingual');
+        localStorage.setItem(lyricsModeKey, next.lyricsMode === 'original' || next.lyricsMode === 'none' ? next.lyricsMode : 'bilingual');
         window.dispatchEvent(new Event(LYRICS_MODE_EVENT));
       } catch {}
     }
-    if (kind === 'render' && next.template !== options.template) {
-      try {
-        if (next.template) localStorage.setItem(templateStorageKey, next.template);
-        else localStorage.removeItem(templateStorageKey);
-      } catch {}
-    }
-    setOptions(next);
+    setOptions(constrainOptions(kind, next));
   };
 
-  // 预设 = 用户级一键组合(模板+滤镜+暗色+开关),应用时净化可能已失效的模板 id
   const applyPreset = (preset: RenderPreset) => {
-    const template = preset.options.template && RENDER_TEMPLATES.some((t) => t.id === preset.options.template)
-      ? preset.options.template
-      : null;
-    handleOptionsChange({...preset.options, photoCaption: preset.options.photoCaption === true, lyricsMode: preset.options.lyricsMode === 'original' ? 'original' : 'bilingual', trim: preset.options.trim ?? 'auto', template});
+    handleOptionsChange({
+      ...preset.options,
+      photoCaption: preset.options.photoCaption === true,
+      lyricsMode: preset.options.lyricsMode === 'original' || preset.options.lyricsMode === 'none' ? preset.options.lyricsMode : 'bilingual',
+    });
   };
 
   const isCurrentPreset = (preset: RenderPreset) => JSON.stringify(preset.options) === JSON.stringify(options);
 
   const handleSavePreset = () => {
-    setPresets(savePreset(folder, presetName, options, RENDER_TEMPLATES.map((t) => t.id)));
+    setPresets(savePreset(folder, presetName, options, []));
     setPresetName('');
   };
 
@@ -503,7 +441,7 @@ const ActionCard = ({
   useEffect(() => {
     if (!isActive || !job.snapshotOptions || submittedOptions) return;
     setSubmittedOptions(job.snapshotOptions);
-    setOptions((prev) => ({...prev, ...job.snapshotOptions}));
+    setOptions((prev) => constrainOptions(kind, {...prev, ...job.snapshotOptions}));
   }, [isActive, job.snapshotOptions, submittedOptions]);
 
   useLayoutEffect(() => {
@@ -526,13 +464,7 @@ const ActionCard = ({
   );
 
   return (
-    <div className={capability.enabled ? 'action-card' : 'action-card action-card-blocked'}>
-      <div className="action-head">
-        <span className="action-icon">{icon}</span>
-        <h3 className="action-title">{title}</h3>
-      </div>
-      <p className="action-description">{description}</p>
-
+      <div className={capability.enabled ? 'action-card' : 'action-card action-card-blocked'}>
       {capability.enabled ? (
         showJobPanel ? (
           <div className="action-card-content">
@@ -554,7 +486,6 @@ const ActionCard = ({
           <>
             <div className="action-card-content">
               <p className="action-ready">素材齐了，可以开工 ：）</p>
-              {kind === 'render' && hasTranslation && <p className="hint">歌词将显示为{options.lyricsMode === 'original' ? '原文' : '双语'}，可在参数中切换。</p>}
               <button className="make-toggle" onClick={() => setExpanded((v) => !v)} aria-expanded={expanded}>
                 <SlidersHorizontal size={13} />
                 参数
@@ -646,43 +577,54 @@ interface MakeProps {
 
 export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, onStart, onReset}: MakeProps) => {
   const otherRunning = () => locked;
+  const [selectedKind, setSelectedKind] = useState<Kind>(() => activeKind ?? 'render');
+
+  useEffect(() => {
+    if (activeKind) setSelectedKind(activeKind);
+  }, [activeKind]);
+
+  const outputTabs: {kind: Kind; label: string; description: string; icon: ReactNode; capability: Capability}[] = [
+    {kind: 'render', label: '渲染相册视频', description: '分析音乐的节拍，把照片排进时间线，渲染成一支踩点影像日记。', icon: <Clapperboard size={18} strokeWidth={1.5} />, capability: capabilities.renderVideo},
+    {kind: 'still', label: '导出静态图', description: '按成片同款视觉导出单张照片，可带 EXIF 展签与签名落款。', icon: <ImageDown size={18} strokeWidth={1.5} />, capability: capabilities.exportStill},
+  ];
+  const selectedTab = outputTabs.find((tab) => tab.kind === selectedKind) ?? outputTabs[0];
 
   return (
     <Section title="制作" titleHidden>
-      <div className="action-cards">
-        <ActionCard
-          kind="render"
-          icon={<Clapperboard size={20} strokeWidth={1.5} />}
-          title="渲染相册视频"
-          description="分析音乐的节拍，把照片排进时间线，渲染成一支踩点影像日记。"
-          capability={capabilities.renderVideo}
+      <div className="make-output">
+        <div className="make-output-tabs" role="tablist" aria-label="输出方式">
+          {outputTabs.map((tab) => (
+            <button
+              key={tab.kind}
+              id={`make-output-tab-${tab.kind}`}
+              type="button"
+              role="tab"
+              aria-selected={selectedKind === tab.kind}
+              aria-controls="make-output-panel"
+              className={selectedKind === tab.kind ? 'make-output-tab make-output-tab-active' : 'make-output-tab'}
+              onClick={() => setSelectedKind(tab.kind)}
+            >
+              <span className="make-output-tab-title"><span className="make-output-tab-icon">{tab.icon}</span>{tab.label}</span>
+              <small>{tab.description}</small>
+            </button>
+          ))}
+        </div>
+        <div id="make-output-panel" role="tabpanel" aria-labelledby={`make-output-tab-${selectedTab.kind}`}>
+            <ActionCard
+              kind={selectedKind}
+              capability={selectedKind === 'render' ? capabilities.renderVideo : capabilities.exportStill}
           folder={project.path}
           photos={project.photos}
           onRemedy={onRemedy}
           job={job}
-          isActive={activeKind === 'render'}
+          isActive={activeKind === selectedKind}
           otherRunning={otherRunning()}
-          onStart={(options) => onStart('render', options)}
+          onStart={(options) => onStart(selectedKind, options)}
           onReset={onReset}
           captionCapability={capabilities.photoCaption}
-          hasTranslation={Boolean(project.lyrics?.some((line) => line.translation?.text))}
+          hasTranslation={selectedKind === 'render' && Boolean(project.lyrics?.some((line) => line.translation?.text))}
         />
-        <ActionCard
-          kind="still"
-          icon={<ImageDown size={20} strokeWidth={1.5} />}
-          title="导出静态图"
-          description="按成片同款视觉导出单张照片，可带 EXIF 展签与签名落款。"
-          capability={capabilities.exportStill}
-          folder={project.path}
-          photos={project.photos}
-          onRemedy={onRemedy}
-          job={job}
-          isActive={activeKind === 'still'}
-          otherRunning={otherRunning()}
-          onStart={(options) => onStart('still', options)}
-          onReset={onReset}
-          captionCapability={capabilities.photoCaption}
-        />
+        </div>
       </div>
     </Section>
   );

@@ -14,7 +14,7 @@ import {limitLyricsCandidates} from './fetch.mjs';
 import {rankWebLyricsCandidates} from './web-api/fetch.mjs';
 
 test('lyrics display choice survives CLI and job argument conversion', () => {
-  for (const lyricsMode of ['original', 'bilingual']) {
+  for (const lyricsMode of ['original', 'bilingual', 'none']) {
     const argv = buildJobArgv({kind: 'render', folder: '/album', options: {lyricsMode}});
     assert.equal(parseArgs(argv).lyricsMode, lyricsMode);
   }
@@ -26,8 +26,11 @@ test('lyrics display choice survives CLI and job argument conversion', () => {
 test('original-only exports do not overwrite the default bilingual export', () => {
   const original = resolveRenderOutputPath({folder: '/album', lyricsMode: 'original'});
   const bilingual = resolveRenderOutputPath({folder: '/album', lyricsMode: 'bilingual'});
+  const hidden = resolveRenderOutputPath({folder: '/album', lyricsMode: 'none'});
   assert.notEqual(original, bilingual);
+  assert.notEqual(hidden, bilingual);
   assert.equal(bilingual, resolveRenderOutputPath({folder: '/album'}));
+  assert.match(hidden, /-lyrics-none\.mp4$/);
   const spec = buildJobSpec({kind: 'render', folder: '/album', options: {lyricsMode: 'original'}});
   assert.deepEqual(spec.outputPaths, [original]);
 });
@@ -43,6 +46,9 @@ test('render variants preserve translations while only switching their presentat
   const invalid = structuredClone(source);
   invalid.subtitles[0].translation.lang = 'en';
   assert.throws(() => validateTimeline(invalid), /translation.lang/);
+  const hidden = await applyRenderVariants(structuredClone(source), {lyricsMode: 'none'}, {resolvePhotoPath: (src) => src});
+  assert.equal(hidden.meta.lyrics_mode, 'none');
+  assert.deepEqual(hidden.subtitles, source.subtitles);
   await assert.rejects(() => applyRenderVariants(structuredClone(source), {lyricsMode: 'other'}), /lyrics-mode/);
 });
 

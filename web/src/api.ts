@@ -91,6 +91,9 @@ export const fetchLyricsPreview = (folder: string, id: LyricsCandidate['id'], pr
 export const mutateAsset = (folder: string, assetId: string, action: 'rename' | 'delete', stem?: string) =>
   postAsset<{assetId?: string; name?: string; undoId?: string}>('/api/assets/mutate', {folder, assetId, action, stem});
 
+export const generatePhotoCaption = (folder: string, assetId: string, hint?: string) =>
+  postAsset<{caption: string}>('/api/captions/generate', {folder, assetId, ...(hint ? {hint} : {})});
+
 export const undoAssetDelete = (folder: string, undoId: string) =>
   postAsset<{restored: number}>('/api/assets/undo', {folder, undoId});
 

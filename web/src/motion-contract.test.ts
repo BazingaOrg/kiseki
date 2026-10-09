@@ -57,23 +57,15 @@ test('material and result tabs share restrained motion styles', async () => {
 
 test('featured render styles use abstract explanatory previews with motion safeguards', async () => {
   const [appCss, make, materials, fieldHelp] = await Promise.all([source('App.css'), source('Make.tsx'), source('Materials.tsx'), source('FieldHelp.tsx')]);
-  const preview = make.slice(make.indexOf('const PreviewArtwork'), make.indexOf('const KIND_VERB'));
-  assert.match(make, /FEATURED_TEMPLATE_IDS = \['slow-cinema', 'filmstrip', 'polaroid'\]/);
-  assert.match(make, />成片风格 <FieldHelp label="了解成片风格">/);
-  assert.match(make, />不套用风格</);
-  assert.match(make, />成片时长</);
-  assert.match(make, /智能收尾（推荐）[\s\S]*完整歌曲/);
+  assert.doesNotMatch(make, /FEATURED_TEMPLATE_IDS|成片风格|不套用风格|电影舒缓|胶片带|拍立得/);
+  assert.doesNotMatch(make, /成片时长|智能收尾|渲染速度|草稿模式|方形/);
   assert.doesNotMatch(make, /跟随素材夹/);
-  assert.match(make, /trim: 'auto'/);
-  assert.match(make, /trim: preset\.options\.trim \?\? 'auto'/);
-  assert.match(make, /根据照片数量，在音乐合适的节拍处结束/);
-  assert.match(make, /始终渲染到歌曲结束，成片可能更长/);
-  assert.match(make, /<FieldHelp label="了解成片风格">卡片使用抽象图形演示布局和动效，选中后会循环播放，以成片为准。<\/FieldHelp>/);
-  assert.match(make, /<p className="make-field-hint">只影响布局、转场和字幕；滤镜单独设置。<\/p>/);
-  assert.match(make, /<FieldHelp label="了解渲染速度">省着点约占四分之一资源，均衡约占一半，快则尽量使用全部资源。<\/FieldHelp>/);
-  assert.match(make, /<p className="make-field-hint">只影响电脑资源占用，不影响成片质量。<\/p>/);
+  assert.match(make, /trim: 'full'/);
+  assert.match(make, /speed: 'balanced'/);
+  assert.match(make, /template: null/);
+  assert.match(make, /<FieldHelp label="了解歌词显示">当前歌词没有中文译文，将显示原文。<\/FieldHelp>/);
+  assert.match(make, /<FieldHelp label="了解图片旁白">为照片补上一句画外之意。开启后会将缩小后的预览发给 DeepSeek，全部生成后再开始制作。原图不会上传。<\/FieldHelp>/);
   assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。<\/FieldHelp>/);
-  assert.match(make, /<p className="make-field-hint">\s*\{TRIM_LABELS\.find/);
   assert.doesNotMatch(make, /改变照片布局、转场和字幕样式|抽象图形仅说明布局与动效|非品牌官方模拟，效果会受原片色彩和曝光影响。/);
   assert.doesNotMatch(make, /title=\{item\.hint\}/);
   assert.match(fieldHelp, /import \{Info\} from 'lucide-react';/);
@@ -92,29 +84,18 @@ test('featured render styles use abstract explanatory previews with motion safeg
   assert.match(appCss, /@media \(max-width: 600px\) \{\s*\.field-help-tooltip \{\s*position: fixed;[\s\S]*right: 1rem;[\s\S]*bottom: 1rem;[\s\S]*left: 1rem;/);
   assert.match(appCss, /\.make-field-label \{\s*display: block;/);
   assert.match(appCss, /\.make-field-label-with-help \{\s*display: flex;[\s\S]*align-items: center;[\s\S]*gap: 0\.3rem;/);
-  assert.equal([...make.matchAll(/make-field-label make-field-label-with-help/g)].length, 3);
+  assert.equal([...make.matchAll(/make-field-label make-field-label-with-help/g)].length, 2);
   assert.doesNotMatch(make, /约四分之一核心|约一半核心|几乎占满，风扇会转起来/);
   assert.doesNotMatch(make, /晴天 海边 午后|SAMPLE_CAPTION/);
-  assert.match(preview, /template-preview-caption">字幕</);
-  assert.match(preview, /variant="three" className="template-preview-scene template-preview-scene-three"/);
-  assert.doesNotMatch(preview, /<img|thumbUrl|photos\[/);
-  assert.match(appCss, /@keyframes template-cinema-one/);
-  assert.match(appCss, /@keyframes template-filmstrip-current/);
-  assert.match(appCss, /@keyframes template-filmstrip-three/);
-  assert.match(appCss, /60%, 82% \{ transform: translateX\(68px\); \}/);
-  assert.match(appCss, /@keyframes template-polaroid-one/);
-  assert.match(appCss, /\.make-template-card:has\(input:checked\) \{\s*--template-preview-iterations: infinite;/);
-  assert.match(appCss, /animation: var\(--template-cinema-one, none\)[^;]*var\(--template-preview-iterations, 1\)/);
-  assert.match(appCss, /@media \(hover: hover\) and \(pointer: fine\) \{[\s\S]*?\.make-template-card:hover/);
-  assert.match(appCss, /@media \(prefers-reduced-motion: reduce\) \{[\s\S]*?\.template-preview-scene,[\s\S]*?animation: none !important;/);
 });
 
 test('filter picker exposes only grouped classic styles and preserves a selected legacy value', async () => {
   const make = await source('Make.tsx');
   assert.match(make, /\{id: 'camera', label: '经典相机'\}/);
   assert.match(make, /\{id: 'film', label: '经典胶片'\}/);
-  assert.match(make, /filter\.id === options\.filter && filter\.group === 'legacy'/);
-  assert.match(make, /<optgroup label="旧项目滤镜">/);
+  assert.match(make, /filter\.id === value && filter\.group === 'legacy'/);
+  assert.match(make, /role="group" aria-label="旧项目滤镜"/);
+  assert.match(make, /role="listbox" aria-label="滤镜选项"/);
   assert.match(make, /FILTERS\.filter\(\(filter\) => filter\.group === group\.id\)/);
   assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果/);
 });

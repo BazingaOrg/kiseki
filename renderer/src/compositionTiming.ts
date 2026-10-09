@@ -46,11 +46,11 @@ export const photoCaptionPresentation = ({
   const whiteFadeStartFrame = Math.max(0, durationInFrames - Math.round(whiteFadeDuration * fps));
   const fadeFrames = Math.round(0.2 * fps);
   const bodyStart = Math.max(showIntro ? introEnd : 0, recapEnd);
+  const photos = clips.filter((clip) => clip.kind !== 'chapter' && typeof clip.src === 'string');
   let winner: {index: number; startFrame: number; endFrame: number} | null = null;
-  for (let index = 0; index < clips.length; index += 1) {
-    const clip = clips[index];
-    if (clip.kind === 'chapter' || typeof clip.src !== 'string') continue;
-    const next = clips[index + 1];
+  for (let index = 0; index < photos.length; index += 1) {
+    const clip = photos[index];
+    const next = photos[index + 1];
     const startFrame = Math.ceil(Math.max(clip.start, bodyStart) * fps);
     const endCandidates = [Math.ceil(clip.end * fps), whiteFadeStartFrame];
     if (next) endCandidates.push(Math.ceil(next.start * fps));
@@ -65,9 +65,28 @@ export const photoCaptionPresentation = ({
   return {
     visible: true,
     opacity: Math.min(fadeIn, fadeOut, 1),
-    clip: clips[winner.index],
+    clip: photos[winner.index],
   };
 };
+
+export const photoCaptionLayerPresentation = ({
+  clip,
+  hasLayout,
+  state,
+}: {
+  clip: {caption?: string | null};
+  hasLayout: boolean;
+  state: {visible: boolean; opacity: number; clip: {caption?: string | null} | null};
+}): {render: boolean; opacity: number} => {
+  const render = Boolean(clip.caption && hasLayout);
+  return {
+    render,
+    opacity: render && state.visible && state.clip === clip ? state.opacity : 0,
+  };
+};
+
+export const childOpacityForParent = (targetOpacity: number, parentOpacity: number): number =>
+  targetOpacity > 0 && parentOpacity > 0 ? Math.min(1, targetOpacity / parentOpacity) : 0;
 
 export const polaroidCardPresentation = ({
   time,

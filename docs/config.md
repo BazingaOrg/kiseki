@@ -20,7 +20,7 @@
 - `trim_avg_threshold = 10.0`：默认 `10.0`；大于 0 的有限数字。
 - `trim_target_avg = 8.0`：默认 `8.0`；大于 0 的有限数字。
 - `pacing = "dynamic"`：默认 `"dynamic"`；`"dynamic"` 或 `"uniform"`。
-- `trim = "auto"`：默认 `"auto"`；`"auto"`、`"full"` 或大于 0 的有限秒数。
+- `trim = "full"`：默认 `"full"`；`"auto"`、`"full"` 或大于 0 的有限秒数。 `auto` 会在照片偏少时于合适节拍处收尾。
 - `subtitles = true`：默认 `true`；布尔值。
 - `chapters = true`：默认 `true`；布尔值。
 - `demucs = true`：默认 `true`；布尔值。

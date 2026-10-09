@@ -5,7 +5,7 @@ import {ExifPanel, type StillExif} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
 import {Signature, getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {PhotoCaption} from './PhotoCaption';
-import {signaturePhotoLift} from './photoCaptionLayout.mjs';
+import {CAPTION_BAND_PAD, CAPTION_SUBJECT_GAP, signaturePhotoLift} from './photoCaptionLayout.mjs';
 import {resolveFontFamily} from './fontFamily';
 import {CANVAS, STILL, getExifLayout, getPalette, getVisualScale, signaturePathProps} from './theme';
 
@@ -55,97 +55,118 @@ export const Still: React.FC<StillProps> = ({
   const palette = getPalette(background);
   const signature = useSignatureData(sign ? signatureSrc : undefined);
   const hasExif = Boolean(exif && (exif.camera || exif.lens || exif.params || exif.datetime));
+  const pad = CAPTION_BAND_PAD * scale;
+  const captionGap = CAPTION_SUBJECT_GAP * scale;
+  const hasCaption = Boolean(caption && captionLayout);
+  const captionBlock = hasCaption ? captionLayout!.height + captionGap : 0;
+  const signReserve = sign && signature && !hasExif
+    ? (STILL.signature.bottomInset + STILL.signature.height) * scale + captionGap
+    : pad;
+  const maxPhotoWidth = Math.max(1, width - pad * 2);
+  const maxPhotoHeight = Math.max(1, height - pad - captionBlock - signReserve);
+  const captionNode = hasCaption ? (
+    <PhotoCaption
+      text={caption!}
+      layout={captionLayout}
+      palette={palette}
+      fontFamily={resolveFontFamily(caption!, 'zh')}
+      flow
+    />
+  ) : null;
+  const stage = (photo: React.ReactNode) => (
+    <AbsoluteFill
+      style={{
+        backgroundColor: background,
+        justifyContent: 'center',
+        alignItems: 'center',
+        padding: pad,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: hasCaption ? captionGap : 0,
+          maxWidth: '100%',
+          maxHeight: '100%',
+        }}
+      >
+        {captionNode}
+        {photo}
+      </div>
+      {sign && signature && !hasExif ? (
+        <div
+          style={{
+            position: 'absolute',
+            ...(height > width
+              ? {left: '50%', transform: 'translateX(-50%)'}
+              : {right: STILL.signature.rightInset * scale}),
+            bottom: STILL.signature.bottomInset * scale,
+            display: 'flex',
+            color: palette.text,
+            opacity: STILL.signature.opacity,
+          }}
+        >
+          <Signature
+            data={signature}
+            style={{
+              width: getSignatureDisplayWidth(signature, STILL.signature.height * scale, width * STILL.signature.maxWidthRatio),
+              height: STILL.signature.height * scale,
+            }}
+            pathProps={signaturePathProps}
+          />
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
 
   if (!hasExif) {
-    const safeW = width * photoScale;
-    const safeH = height * photoScale;
-    const lift = signaturePhotoLift({
+    const safeW = Math.min(width * photoScale, maxPhotoWidth);
+    const safeH = Math.min(height * photoScale, maxPhotoHeight);
+    const lift = hasCaption ? 0 : signaturePhotoLift({
       canvasHeight: height,
       maxPhotoHeight: safeH,
       visualScale: scale,
       sign: Boolean(sign && signature),
       hasExif: false,
     });
-    const signatureHeight = STILL.signature.height * scale;
-    const signatureWidth = signature
-      ? getSignatureDisplayWidth(signature, signatureHeight, width * STILL.signature.maxWidthRatio)
-      : 0;
-    return (
-      <AbsoluteFill
-        style={{
-          backgroundColor: background,
-          justifyContent: 'center',
-          alignItems: 'center',
-        }}
-      >
-        <div style={{display: 'inline-flex', transform: lift ? `translateY(${-lift}px)` : undefined}}>
-          <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} filter={filter} />
-        </div>
-        {caption && captionLayout ? (
-          <PhotoCaption
-            text={caption}
-            layout={captionLayout}
-            palette={palette}
-            fontFamily={resolveFontFamily(caption, 'zh')}
-          />
-        ) : null}
-        {sign && signature ? (
-          <div
-            style={{
-              position: 'absolute',
-              right: STILL.signature.rightInset * scale,
-              bottom: STILL.signature.bottomInset * scale,
-              display: 'flex',
-              color: palette.text,
-              opacity: STILL.signature.opacity,
-            }}
-          >
-            <Signature data={signature} style={{width: signatureWidth, height: signatureHeight}} pathProps={signaturePathProps} />
-          </div>
-        ) : null}
-      </AbsoluteFill>
+    return stage(
+      <div style={{display: 'inline-flex', transform: lift ? `translateY(${-lift}px)` : undefined}}>
+        <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} filter={filter} />
+      </div>,
     );
   }
 
   const layout = getExifLayout(width, height);
+  const stacked = layout.stacked;
+  const panelEstimate = stacked ? height * 0.22 : 0;
+  const photoMaxHeight = stacked
+    ? Math.min(layout.photoMaxHeight, Math.max(1, maxPhotoHeight - layout.gap - panelEstimate))
+    : Math.min(layout.photoMaxHeight, maxPhotoHeight);
+  const photoMaxWidth = Math.min(layout.photoMaxWidth, maxPhotoWidth);
 
-  return (
-    <AbsoluteFill
+  return stage(
+    <div
       style={{
-        backgroundColor: background,
-        justifyContent: 'center',
+        display: 'flex',
+        flexDirection: stacked ? 'column' : 'row',
         alignItems: 'center',
+        gap: layout.gap,
+        maxWidth: '100%',
+        maxHeight: '100%',
       }}
     >
-      <div
-        style={{
-          display: 'flex',
-          flexDirection: layout.stacked ? 'column' : 'row',
-          alignItems: 'center',
-          gap: layout.gap,
-          maxWidth: '100%',
-          maxHeight: '100%',
-        }}
-      >
-        <FramedPhoto
-          src={toStatic(src)}
-          maxWidth={layout.photoMaxWidth}
-          maxHeight={layout.photoMaxHeight}
-          renderScale={scale}
-          palette={palette}
-          filter={filter}
-        />
-        <ExifPanel exif={exif!} scale={scale} width={layout.panelWidth} sign={sign} signature={signature} palette={palette} />
-      </div>
-      {caption && captionLayout ? (
-        <PhotoCaption
-          text={caption}
-          layout={captionLayout}
-          palette={palette}
-          fontFamily={resolveFontFamily(caption, 'zh')}
-        />
-      ) : null}
-    </AbsoluteFill>
+      <FramedPhoto
+        src={toStatic(src)}
+        maxWidth={photoMaxWidth}
+        maxHeight={photoMaxHeight}
+        renderScale={scale}
+        palette={palette}
+        filter={filter}
+      />
+      <ExifPanel exif={exif!} scale={scale} width={Math.min(layout.panelWidth, maxPhotoWidth)} sign={sign} signature={signature} palette={palette} align={stacked ? 'center' : 'left'} />
+    </div>,
   );
 };
 

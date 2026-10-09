@@ -4,6 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import {CACHE_VERSION} from '../ai/photo-caption-cache.mjs';
+import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from '../ai/photo-caption-prompt.mjs';
+import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
 import {getProject} from './project.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-project-'));
@@ -122,6 +125,17 @@ test('legacy recognized segment without end remains manageable', () => {
   assert.equal(body.recognizedLyricsManageable, true);
 });
 
+test('empty recognized segments are exposed as an instrumental result without becoming follow-along lyrics', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'music.mp3'), '');
+  writeRecognized(root, []);
+
+  const {body} = getProject(root, root);
+  assert.equal(body.lyrics, null);
+  assert.equal(body.lyricsSource, null);
+  assert.equal(body.recognizedLyricsStatus, 'instrumental');
+});
+
 test('a recognition result whose segments are all malformed counts as no lyrics', () => {
   const root = makeTempRoot();
   fs.writeFileSync(path.join(root, 'music.mp3'), '');
@@ -188,6 +202,77 @@ test('lrc 里只有时间戳的空行转成上一句的 until,不再自己占一
     {time: 9, text: '第二句', until: null},
     {time: 12, text: '第三句', until: null},
   ]);
+});
+
+test('attaches cached captions when the cache is usable', () => {
+  const root = makeTempRoot();
+  const photoPath = path.join(root, 'a.jpg');
+  fs.writeFileSync(photoPath, '');
+  const identity = sourceIdentityRecord('a.jpg', readSourceStat(photoPath), PREVIEW_WIDTH);
+  fs.mkdirSync(path.join(root, 'output', 'metadata'), {recursive: true});
+  fs.writeFileSync(path.join(root, 'output', 'metadata', 'ai-captions.json'), JSON.stringify({
+    version: CACHE_VERSION,
+    model: CAPTION_MODEL,
+    prompt_hash: promptHash,
+    prompt_version: PROMPT_VERSION,
+    revision: 1,
+    items: {
+      'a.jpg': {text: '窗边那点光先到了', hint: '窗边', source_identity: identity, preview_sha256: 'a'.repeat(64)},
+    },
+  }));
+  const {status, body} = getProject(root, root);
+  assert.equal(status, 200);
+  const photo = body.assets.photos.items.find((item) => item.name === 'a.jpg');
+  assert.ok(photo);
+  assert.equal(photo.caption, '窗边那点光先到了');
+  assert.equal(photo.captionHint, '窗边');
+});
+
+test('omits stale captions and hints whose source identity no longer matches', () => {
+  const root = makeTempRoot();
+  const photoPath = path.join(root, 'a.jpg');
+  fs.writeFileSync(photoPath, 'first');
+  const staleIdentity = sourceIdentityRecord('a.jpg', readSourceStat(photoPath), PREVIEW_WIDTH);
+  fs.appendFileSync(photoPath, '-changed');
+  fs.mkdirSync(path.join(root, 'output', 'metadata'), {recursive: true});
+  fs.writeFileSync(path.join(root, 'output', 'metadata', 'ai-captions.json'), JSON.stringify({
+    version: CACHE_VERSION,
+    model: CAPTION_MODEL,
+    prompt_hash: promptHash,
+    prompt_version: PROMPT_VERSION,
+    revision: 1,
+    items: {
+      'a.jpg': {text: '旧旁白', hint: '旧提示', source_identity: staleIdentity, preview_sha256: 'b'.repeat(64)},
+    },
+  }));
+  const {body} = getProject(root, root);
+  const photo = body.assets.photos.items.find((item) => item.name === 'a.jpg');
+  assert.equal(photo.caption, undefined);
+  assert.equal(photo.captionHint, undefined);
+});
+
+test('does not read captions through a symlinked cache parent', () => {
+  const root = makeTempRoot();
+  const outside = makeTempRoot();
+  const photoPath = path.join(root, 'a.jpg');
+  fs.writeFileSync(photoPath, 'image');
+  const identity = sourceIdentityRecord('a.jpg', readSourceStat(photoPath), PREVIEW_WIDTH);
+  fs.mkdirSync(path.join(outside, 'metadata'));
+  fs.writeFileSync(path.join(outside, 'metadata', 'ai-captions.json'), JSON.stringify({
+    version: CACHE_VERSION,
+    model: CAPTION_MODEL,
+    prompt_hash: promptHash,
+    prompt_version: PROMPT_VERSION,
+    revision: 1,
+    items: {
+      'a.jpg': {text: '不应读取', hint: '外部', source_identity: identity, preview_sha256: 'c'.repeat(64)},
+    },
+  }));
+  fs.symlinkSync(outside, path.join(root, 'output'));
+  const {body} = getProject(root, root);
+  const photo = body.assets.photos.items.find((item) => item.name === 'a.jpg');
+  assert.equal(photo.caption, undefined);
+  assert.equal(photo.captionHint, undefined);
 });
 
 test('开头就是空行时不炸,也不凭空造出一行', () => {

@@ -99,36 +99,62 @@ export const formatDatetime = (value) => {
   return s;
 };
 
-/**
- * 从照片文件提取并格式化四行 EXIF.失败或全缺返回 null(调用方回退无 EXIF 布局).
- * @param {string} filePath
- * @returns {Promise<FormattedExif | null>}
- */
-export const extractFormattedExif = async (filePath) => {
-  let raw;
+/** 拍摄时间排序键:相机本地 DateTimeOriginal,含秒与亚秒,不用文件修改时间. */
+export const shotTimeKeyFromExif = (value, subsec) => {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const stamp = [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, '0'),
+      String(value.getDate()).padStart(2, '0'),
+      String(value.getHours()).padStart(2, '0'),
+      String(value.getMinutes()).padStart(2, '0'),
+      String(value.getSeconds()).padStart(2, '0'),
+    ].join('');
+    const fracFromSub = String(subsec ?? '').replace(/\D/g, '').slice(0, 3);
+    const frac = (fracFromSub || String(value.getMilliseconds()).padStart(3, '0')).padEnd(3, '0');
+    return `${stamp}${frac}`;
+  }
+  const s = clean(value);
+  if (!s) return null;
+  const m = s.match(/^(\d{4})[:.\-/](\d{2})[:.\-/](\d{2})[ T](\d{2}):(\d{2})(?::(\d{2}))?/);
+  if (!m) return null;
+  const frac = String(subsec ?? '').replace(/\D/g, '').slice(0, 3).padEnd(3, '0');
+  return `${m[1]}${m[2]}${m[3]}${m[4]}${m[5]}${m[6] ?? '00'}${frac}`;
+};
+
+const EXIF_PARSE_OPTIONS = {
+  gps: false,
+  pick: [
+    'Make',
+    'Model',
+    'LensModel',
+    'FocalLength',
+    'FNumber',
+    'ExposureTime',
+    'ISO',
+    'ISOSpeedRatings',
+    'PhotographicSensitivity',
+    'DateTimeOriginal',
+    'SubSecTimeOriginal',
+    'CreateDate',
+  ],
+};
+
+const parseRawExif = async (filePath) => {
   try {
-    raw = await exifr.parse(filePath, {
-      // 明确不取 GPS
-      gps: false,
-      pick: [
-        'Make',
-        'Model',
-        'LensModel',
-        'FocalLength',
-        'FNumber',
-        'ExposureTime',
-        'ISO',
-        'ISOSpeedRatings',
-        'PhotographicSensitivity',
-        'DateTimeOriginal',
-        'CreateDate',
-      ],
-    });
+    const raw = await exifr.parse(filePath, EXIF_PARSE_OPTIONS);
+    return raw && typeof raw === 'object' ? raw : null;
   } catch {
     return null;
   }
-  if (!raw || typeof raw !== 'object') return null;
+};
 
+const compactFormatted = (formatted) =>
+  Object.fromEntries(Object.entries(formatted).filter(([, v]) => v != null));
+
+export const readPhotoExif = async (filePath) => {
+  const raw = await parseRawExif(filePath);
+  if (!raw) return {formatted: null, shotTime: null};
   const iso = raw.ISO ?? raw.ISOSpeedRatings ?? raw.PhotographicSensitivity;
   const formatted = {
     camera: formatCamera(raw.Make, raw.Model),
@@ -141,11 +167,18 @@ export const extractFormattedExif = async (filePath) => {
     }),
     datetime: formatDatetime(raw.DateTimeOriginal ?? raw.CreateDate),
   };
+  return {
+    formatted: isDisplayableExif(formatted) ? compactFormatted(formatted) : null,
+    shotTime: shotTimeKeyFromExif(raw.DateTimeOriginal, raw.SubSecTimeOriginal),
+  };
+};
 
-  // 时间单独存在时可能只是转存/保存时间,不足以组成可靠展签.
-  if (!isDisplayableExif(formatted)) {
-    return null;
-  }
-  // 去掉 undefined 键,props 更干净
-  return Object.fromEntries(Object.entries(formatted).filter(([, v]) => v != null));
+/**
+ * 从照片文件提取并格式化四行 EXIF.失败或全缺返回 null(调用方回退无 EXIF 布局).
+ * @param {string} filePath
+ * @returns {Promise<FormattedExif | null>}
+ */
+export const extractFormattedExif = async (filePath) => {
+  const {formatted} = await readPhotoExif(filePath);
+  return formatted;
 };

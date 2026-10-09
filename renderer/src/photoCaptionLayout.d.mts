@@ -6,6 +6,8 @@ export const CAPTION_COMPACT_LETTER_SPACING: number;
 export const CAPTION_COMPACT_THRESHOLD: number;
 export const CAPTION_MAX_WIDTH_RATIO: number;
 export const CAPTION_LINE_HEIGHT: number;
+export const CAPTION_BAND_PAD: number;
+export const CAPTION_SUBJECT_GAP: number;
 export const CAPTION_EDGE_PAD: number;
 export const STILL_CAPTION_RESERVE: number;
 export const STILL_CAPTION_GAP: number;
@@ -25,6 +27,8 @@ export type CaptionLayout = {
   fontSize: number;
   letterSpacing: string;
 };
+
+export function isCaptionLayout(layout: unknown): layout is CaptionLayout;
 
 export function letterSpacingFor(codePoints: number): number;
 export function containSize(
@@ -48,6 +52,39 @@ export function layoutTopBandCaption(args: {
   codePoints: number;
   tracking?: number;
 }): CaptionLayout | null;
+export function layoutSafeCaption(args: {
+  canvasWidth: number;
+  canvasHeight: number;
+  visualScale: number;
+  maxTextWidth: number;
+  measuredAtMax: number;
+  codePoints: number;
+  tracking?: number;
+  photoTop?: number | null;
+  photoBottom?: number | null;
+}): CaptionLayout | null;
+export function layoutBelowSubjectCaption(args: {
+  canvasWidth: number;
+  canvasHeight: number;
+  visualScale: number;
+  subjectBottom: number;
+  maxTextWidth: number;
+  measuredAtMax: number;
+  codePoints: number;
+  tracking?: number;
+  floor?: number | null;
+}): CaptionLayout | null;
+export function resolveVideoPhotoScale(args: {
+  photoScale: number;
+  canvasHeight: number;
+  visualScale: number;
+  bilingual?: boolean;
+  hasCaption?: boolean;
+  fontSize?: number;
+  riseDistance?: number;
+  exitRise?: number;
+  subtitleBottomInset?: number;
+}): number;
 export function layoutStillCaption(args: {
   canvasWidth: number;
   canvasHeight: number;
@@ -75,6 +112,18 @@ export function signaturePhotoLift(args: {
   sign?: boolean;
   hasExif?: boolean;
 }): number;
+export function videoSubjectBox(args: {
+  canvasWidth: number;
+  canvasHeight: number;
+  photoScale: number;
+  imageWidth: number;
+  imageHeight: number;
+  hasExif?: boolean;
+  sign?: boolean;
+  templateId?: string | null;
+  src?: string;
+  motionZoom?: number;
+}): {top: number; height: number; bottom: number};
 export function videoSubjectTop(args: {
   canvasWidth: number;
   canvasHeight: number;
@@ -96,6 +145,7 @@ export function stillCaptionMetrics(args: {
   imageHeight: number;
   hasExif: boolean;
   sign: boolean;
+  hasCaption?: boolean;
 }): {
   photoBox: {x: number; y: number; width: number; height: number};
   photoMaxWidth: number;

@@ -36,7 +36,7 @@
 
 每个 `subtitles[i]` 必须是对象：`text` 为字符串，`lang` 为 `"ja"`、`"zh"`、`"en"` 或 `"mixed"`，`start`/`end` 服从同一时间边界，`confidence` 为有限数。
 
-可选 `translation` 为 `{ "text": "中文译文", "lang": "zh" }`，`text` 必须非空。译文与原文共享 `start`/`end`，不单独创建字幕条目。下载的已有译文始终保留在 timeline 中。渲染时 `--lyrics-mode original|bilingual` 通过运行时 `meta.lyrics_mode` 控制显示，默认 `bilingual`；无译文的时间线仍显示单行原文。显示切换不修改磁盘 timeline，也不重新识别歌词。
+可选 `translation` 为 `{ "text": "中文译文", "lang": "zh" }`，`text` 必须非空。译文与原文共享 `start`/`end`，不单独创建字幕条目。下载的已有译文始终保留在 timeline 中。渲染时 `--lyrics-mode original|bilingual|none` 通过运行时 `meta.lyrics_mode` 控制显示，默认 `bilingual`；`none` 成片不烧录字幕。无译文的时间线在 `original`/`bilingual` 下仍显示单行原文。显示切换不修改磁盘 timeline，也不重新识别歌词。
 
 可选 `beats` 是对象：`bpm` 为正有限数，`downbeats` 为非负有限数数组。它可供调试或其他消费者使用；validator 不推断节奏语义。
 

@@ -51,7 +51,7 @@ def test_pacing_config_rejects_invalid_values_with_clear_error(tmp_path: Path, v
 
 def test_auto_trim_applies_and_writes_meta(tmp_path: Path):
     make_photos(tmp_path)
-    timeline = plan.build_timeline(tmp_path, make_beats(), [], dict(plan.DEFAULTS), None)
+    timeline = plan.build_timeline(tmp_path, make_beats(), [], {**plan.DEFAULTS, "trim": "auto"}, None)
     assert timeline["meta"]["duration"] == 24.0
     assert timeline["meta"]["trim"] == {
         "mode": "auto",
@@ -63,7 +63,7 @@ def test_auto_trim_applies_and_writes_meta(tmp_path: Path):
 
 def test_auto_trim_not_triggered(tmp_path: Path):
     make_photos(tmp_path)
-    timeline = plan.build_timeline(tmp_path, make_beats(24.0), [], dict(plan.DEFAULTS), None)
+    timeline = plan.build_timeline(tmp_path, make_beats(24.0), [], {**plan.DEFAULTS, "trim": "auto"}, None)
     assert timeline["meta"]["duration"] == 24.0
     assert timeline["meta"]["trim"]["applied"] is False
 
@@ -128,7 +128,7 @@ def test_dynamic_pacing_does_not_drop_photos_when_uniform_fits(tmp_path: Path, c
 def test_missing_legal_trim_candidate_is_reported(tmp_path: Path, capsys):
     make_photos(tmp_path)
     timeline = plan.build_timeline(
-        tmp_path, make_beats(downbeats=[0.0, 2.0, 4.0]), [], dict(plan.DEFAULTS), None
+        tmp_path, make_beats(downbeats=[0.0, 2.0, 4.0]), [], {**plan.DEFAULTS, "trim": "auto"}, None
     )
     assert timeline["meta"]["duration"] == 60.0
     assert timeline["meta"]["trim"]["applied"] is False

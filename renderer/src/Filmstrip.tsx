@@ -9,16 +9,16 @@
 import React from 'react';
 import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
-import {filmstripLayerPresentation} from './compositionTiming';
+import {childOpacityForParent, filmstripLayerPresentation, photoCaptionLayerPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
-import {resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
+import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
-import {FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION} from './photoCaptionLayout.mjs';
+import {CAPTION_SUBJECT_GAP, FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION, isCaptionLayout} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
@@ -49,8 +49,10 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const photoClips = visualClips.filter(isPhotoClip);
-  const hasCaption = photoClips.some((clip) => Boolean(clip.caption));
-  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const hasCaption = photoClips.some((clip) => Boolean(clip.caption) && isCaptionLayout(clip.captionLayout));
+  if (hasCaption) ensureFonts('serif');
+  const subtitleMode = resolveSubtitleMode(meta.lyrics_mode, subtitles);
+  const bilingual = subtitleMode === 'bilingual';
   const baseMainScale = meta.photo_scale * (hasCaption ? FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION : FILMSTRIP_MAIN_PHOTO_FACTOR);
   const mainScale = bilingual ? Math.min(baseMainScale, 0.64) : baseMainScale;
   const mainSafeWidth = meta.width * mainScale;
@@ -87,7 +89,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         .filter((clip): clip is PhotoClip => clip !== undefined)
     : [];
 
-  const visibleSubtitles = subtitles.flatMap((line, index) => {
+  const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
     const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: 0.25, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
       line.confidence >= 0.6 &&
@@ -119,38 +121,42 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     recapEnd: meta.opening_recap?.end ?? 0,
     durationInFrames,
   });
-  const captionClip = captionState.clip && typeof captionState.clip.caption === 'string' ? captionState.clip : null;
-
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
       <Audio
         src={staticFile(meta.audio.replace(/^\.\//, ''))}
         volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
       />
-      {visibleMainPhotos.map(({clip, opacity}) => (
+      {visibleMainPhotos.map(({clip, opacity}) => {
+        const caption = photoCaptionLayerPresentation({clip, hasLayout: isCaptionLayout(clip.captionLayout), state: captionState});
+        return (
         <AbsoluteFill key={`${clip.src}-${clip.start}`} style={{justifyContent: 'center', alignItems: 'center', opacity}}>
-          <Img
-            src={toStatic(clip.src)}
-            style={{
-              display: 'block',
-              maxWidth: mainSafeWidth,
-              maxHeight: mainSafeHeight,
-              objectFit: 'contain',
-              borderRadius: Math.round(3 * scale),
-              boxShadow: '0 14px 36px rgba(10, 12, 16, 0.22)',
-            }}
-          />
+          <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: caption.render ? CAPTION_SUBJECT_GAP * scale : 0, maxWidth: '86%'}}>
+            {caption.render ? (
+              <PhotoCaption
+                text={clip.caption!}
+                layout={clip.captionLayout}
+                palette={palette}
+                fontFamily={resolveFontFamily(clip.caption!, 'zh')}
+                opacity={childOpacityForParent(caption.opacity, opacity)}
+                flow
+              />
+            ) : null}
+            <Img
+              src={toStatic(clip.src)}
+              style={{
+                display: 'block',
+                maxWidth: mainSafeWidth,
+                maxHeight: mainSafeHeight,
+                objectFit: 'contain',
+                borderRadius: Math.round(3 * scale),
+                boxShadow: '0 14px 36px rgba(10, 12, 16, 0.22)',
+              }}
+            />
+          </div>
         </AbsoluteFill>
-      ))}
-      {captionClip?.caption && captionState.visible ? (
-        <PhotoCaption
-          text={captionClip.caption}
-          layout={captionClip.captionLayout}
-          palette={palette}
-          fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
-          opacity={captionState.opacity}
-        />
-      ) : null}
+        );
+      })}
       {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
@@ -203,7 +209,13 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           );
         })}
       </div> : null}
-      <OpeningRecap meta={meta} photos={photoClips} palette={palette} variant="filmstrip" />
+      <OpeningRecap
+        meta={meta}
+        photos={photoClips}
+        palette={palette}
+        variant="filmstrip"
+        photoScale={mainScale / 0.92}
+      />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
       {showIntro && frame <= Math.round(introDuration * fps) ? (
         <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />

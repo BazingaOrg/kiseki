@@ -76,8 +76,8 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
 
   if (kind === 'render') {
     if (opts.lyricsMode !== undefined) {
-      if (!['original', 'bilingual'].includes(opts.lyricsMode)) {
-        throw new JobValidationError('lyricsMode', 'lyricsMode 必须是 original 或 bilingual');
+      if (!['original', 'bilingual', 'none'].includes(opts.lyricsMode)) {
+        throw new JobValidationError('lyricsMode', 'lyricsMode 必须是 original、bilingual 或 none');
       }
       flags.push('--lyrics-mode', opts.lyricsMode);
     }

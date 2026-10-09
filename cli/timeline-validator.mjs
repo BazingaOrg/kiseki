@@ -72,7 +72,7 @@ const validateMotion = (value, path) => {
 export const validateTimeline = (timeline) => {
   const root = object(timeline, '$');
   const meta = object(root.meta, '$.meta');
-  if (meta.lyrics_mode !== undefined && !['original', 'bilingual'].includes(meta.lyrics_mode)) fail('$.meta.lyrics_mode', '必须是 original 或 bilingual');
+  if (meta.lyrics_mode !== undefined && !['original', 'bilingual', 'none'].includes(meta.lyrics_mode)) fail('$.meta.lyrics_mode', '必须是 original、bilingual 或 none');
   finite(meta.version, '$.meta.version', {positive: true, integer: true});
   const duration = finite(meta.duration, '$.meta.duration', {positive: true});
   string(meta.audio, '$.meta.audio');

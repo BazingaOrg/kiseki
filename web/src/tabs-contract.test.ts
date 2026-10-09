@@ -117,5 +117,7 @@ test('desktop chrome keeps safe drag regions and fullscreen media controls clear
   assert.match(player, /isFullscreen \? <Minimize/);
   assert.doesNotMatch(player, /className="player-shortcuts"/);
   assert.match(css, /\.player:fullscreen\.player-controls-hidden \.video-controls/);
-  assert.match(css, /background: rgba\(250, 248, 243, 0\.88\)/);
+  assert.match(css, /background: rgba\(10, 10, 10, 0\.78\)/);
+  assert.match(css, /color: rgba\(255, 255, 255, 0\.92\)/);
+  assert.match(css, /border-radius: 999px/);
 });

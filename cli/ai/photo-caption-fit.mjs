@@ -1,13 +1,12 @@
 import {readFile} from 'node:fs/promises';
-import {normalizeTemplateId} from '../templates.mjs';
 import {
   CAPTION_FONT_SIZE,
   CAPTION_FONT_WEIGHT,
   captionMaxTextWidth,
-  layoutTopBandCaption,
+  layoutSafeCaption,
   letterSpacingFor,
   stillCaptionMetrics,
-  videoSubjectTop,
+  videoSubjectBox,
 } from '../../renderer/src/photoCaptionLayout.mjs';
 
 const CAPTION_FONT_FAMILY = `'Noto Serif SC', 'Noto Serif JP', 'Noto Serif', serif`;
@@ -113,26 +112,23 @@ export const fitTopCaption = async ({
   measureWidth,
 }) => {
   const codePoints = [...text].length;
-  const subjectTop = videoSubjectTop({
+  const stacked = canvasHeight > canvasWidth;
+  const subject = videoSubjectBox({
     canvasWidth, canvasHeight, photoScale, imageWidth, imageHeight, hasExif, sign, templateId, src, motionZoom,
   });
-  const regionWidth = hasExif && templateId !== 'filmstrip' && templateId !== 'polaroid'
+  const regionWidth = hasExif && !stacked && templateId !== 'filmstrip' && templateId !== 'polaroid'
     ? captionMaxTextWidth(canvasWidth * 0.52, visualScale)
     : captionMaxTextWidth(canvasWidth, visualScale);
-  const defaultStyle = !normalizeTemplateId(templateId);
-  const fontFamily = defaultStyle
-    ? (/^[ -ɏ -⁯]*$/u.test(text) ? "'Noto Sans', sans-serif" : /[぀-ヿ]/u.test(text) ? "'Noto Sans JP', 'Noto Sans SC', 'Noto Sans', sans-serif" : "'Noto Sans SC', 'Noto Sans JP', 'Noto Sans', sans-serif")
-    : CAPTION_FONT_FAMILY;
-  const measuredAtMax = await measuredWidth({page, measureWidth, text, visualScale, codePoints, defaultStyle, fontFamily});
-  return layoutTopBandCaption({
+  const measuredAtMax = await measuredWidth({page, measureWidth, text, visualScale, codePoints});
+  return layoutSafeCaption({
     canvasWidth,
     canvasHeight,
     visualScale,
-    subjectTop,
     maxTextWidth: regionWidth,
     measuredAtMax,
     codePoints,
-    tracking: defaultStyle ? 0.02 : undefined,
+    photoTop: subject.top,
+    photoBottom: subject.bottom,
   });
 };
 
@@ -151,17 +147,18 @@ export const fitStillCaption = async ({
 }) => {
   const codePoints = [...text].length;
   const metrics = stillCaptionMetrics({
-    canvasWidth, canvasHeight, visualScale, photoScale, imageWidth, imageHeight, hasExif, sign,
+    canvasWidth, canvasHeight, visualScale, photoScale, imageWidth, imageHeight, hasExif, sign, hasCaption: true,
   });
   const maxTextWidth = captionMaxTextWidth(canvasWidth, visualScale);
   const measuredAtMax = await measuredWidth({page, measureWidth, text, visualScale, codePoints});
-  return layoutTopBandCaption({
+  return layoutSafeCaption({
     canvasWidth,
     canvasHeight,
     visualScale,
-    subjectTop: metrics.photoBox.y,
     maxTextWidth,
     measuredAtMax,
     codePoints,
+    photoTop: metrics.photoBox.y,
+    photoBottom: metrics.photoBox.y + metrics.photoBox.height,
   });
 };

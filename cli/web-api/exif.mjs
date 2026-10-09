@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {extractFormattedExif, isDisplayableExif} from '../exif.mjs';
+import {isDisplayableExif, readPhotoExif} from '../exif.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -34,15 +34,16 @@ export const getExif = async (root, requestedPath) => {
     return {status: 400, body: {error: '不是支持的图片格式'}};
   }
 
-  const exif = await extractFormattedExif(safePath);
+  const {formatted, shotTime} = await readPhotoExif(safePath);
   return {
     status: 200,
     body: {
       path: safePath,
       // 照片没有 EXIF 是正常情况(截图、导出图),不是错误——回 200 + null,
       // 前端据此不渲染 EXIF 面板即可
-      exif: exif ?? null,
-      displayable: isDisplayableExif(exif),
+      exif: formatted ?? null,
+      displayable: isDisplayableExif(formatted),
+      shotTime,
     },
   };
 };

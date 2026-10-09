@@ -2,11 +2,14 @@ import React from 'react';
 import {AbsoluteFill, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ExifPanel} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
+import {PhotoCaption} from './PhotoCaption';
 import {Signature, getSignatureDisplayWidth, type SignatureData} from './Signature';
-import {signaturePhotoLift} from './photoCaptionLayout.mjs';
+import {CAPTION_BAND_PAD, CAPTION_SUBJECT_GAP, signaturePhotoLift} from './photoCaptionLayout.mjs';
+import {resolveFontFamily} from './fontFamily';
 import {STILL, getExifLayout, getVisualScale, signaturePathProps, type FontFamily, type Palette} from './theme';
 import {getFadeDuration} from './transition';
 import {motionTransform} from './motion';
+import {childOpacityForParent} from './compositionTiming';
 import type {TemplateMotion} from './templates';
 import type {PhotoClip} from './types';
 
@@ -36,7 +39,8 @@ export const Photo: React.FC<{
   motion?: TemplateMotion;
   motionStart?: number;
   fontFamily?: FontFamily;
-}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion, motionStart, fontFamily = 'serif'}) => {
+  captionOpacity?: number;
+}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion, motionStart, fontFamily = 'serif', captionOpacity = 0}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
@@ -51,13 +55,81 @@ export const Photo: React.FC<{
   const renderScale = getVisualScale(width, height);
 
   const hasExif = hasDisplayableExif(clip.exif);
-  const lift = signaturePhotoLift({
+  const pad = CAPTION_BAND_PAD * renderScale;
+  const captionGap = CAPTION_SUBJECT_GAP * renderScale;
+  const captionText = typeof clip.caption === 'string' && clip.captionLayout ? clip.caption : '';
+  const captionHeight = clip.captionLayout?.height ?? 0;
+  const captionBlock = captionText ? captionHeight + captionGap : 0;
+  const signReserve = sign && signature && !hasExif
+    ? (STILL.signature.bottomInset + STILL.signature.height) * renderScale + captionGap
+    : pad;
+  const maxPhotoWidth = Math.min(safeWidth, Math.max(1, canvasWidth - pad * 2));
+  const maxPhotoHeight = Math.min(safeHeight, Math.max(1, canvasHeight - pad - captionBlock - signReserve));
+  const lift = captionText ? 0 : signaturePhotoLift({
     canvasHeight,
-    maxPhotoHeight: safeHeight,
+    maxPhotoHeight: maxPhotoHeight,
     visualScale: renderScale,
     sign: Boolean(sign && signature),
     hasExif,
   });
+  const captionNode = captionText ? (
+    <PhotoCaption
+      text={captionText}
+      layout={clip.captionLayout}
+      palette={palette}
+      fontFamily={resolveFontFamily(captionText, 'zh')}
+      opacity={childOpacityForParent(captionOpacity, fadeIn)}
+      flow
+    />
+  ) : null;
+  const stage = (photo: React.ReactNode) => (
+    <AbsoluteFill
+      style={{
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor,
+        opacity: fadeIn,
+        padding: pad,
+      }}
+    >
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: captionText ? captionGap : 0,
+          maxWidth: '100%',
+          maxHeight: '100%',
+        }}
+      >
+        {captionNode}
+        {photo}
+      </div>
+      {sign && signature && !hasExif ? (
+        <div
+          style={{
+            position: 'absolute',
+            ...(canvasHeight > canvasWidth
+              ? {left: '50%', transform: 'translateX(-50%)'}
+              : {right: STILL.signature.rightInset * renderScale}),
+            bottom: STILL.signature.bottomInset * renderScale,
+            display: 'flex',
+            color: palette.text,
+            opacity: STILL.signature.opacity,
+          }}
+        >
+          <Signature
+            data={signature}
+            style={{
+              width: getSignatureDisplayWidth(signature, STILL.signature.height * renderScale, canvasWidth * STILL.signature.maxWidthRatio),
+              height: STILL.signature.height * renderScale,
+            }}
+            pathProps={signaturePathProps}
+          />
+        </div>
+      ) : null}
+    </AbsoluteFill>
+  );
 
   // 运镜包一层 transform:无 motion 时原样返回 FramedPhoto,输出逐字节不变。
   // 缩放带着相框与阴影一起走,克制的 6% 推近下观感自然,也省去图内裁切复杂度。
@@ -91,89 +163,34 @@ export const Photo: React.FC<{
     return node;
   };
 
-  // 带 EXIF 展签:照片左 + 展签右,整体居中,与 Still withExif 分支同款布局
   if (hasExif) {
     const layout = getExifLayout(canvasWidth, canvasHeight);
-    return (
-      <AbsoluteFill
+    const stacked = layout.stacked;
+    const panelEstimate = stacked ? canvasHeight * 0.22 : 0;
+    const photoMaxHeight = stacked
+      ? Math.min(layout.photoMaxHeight, Math.max(1, maxPhotoHeight - layout.gap - panelEstimate))
+      : Math.min(layout.photoMaxHeight, maxPhotoHeight);
+    return stage(
+      <div
         style={{
-          justifyContent: 'center',
+          display: 'flex',
+          flexDirection: stacked ? 'column' : 'row',
           alignItems: 'center',
-          backgroundColor,
-          opacity: fadeIn,
-        }}
-      >
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: layout.stacked ? 'column' : 'row',
-            alignItems: 'center',
-            gap: layout.gap,
-            maxWidth: '100%',
-            maxHeight: '100%',
-          }}
-        >
-          <Framed
-            maxWidth={layout.photoMaxWidth}
-            maxHeight={layout.photoMaxHeight}
-            />
-          <ExifPanel exif={clip.exif!} scale={renderScale} width={layout.panelWidth} sign={sign} signature={signature ?? null} palette={palette} fontFamily={fontFamily} />
-        </div>
-      </AbsoluteFill>
-    );
-  }
-
-  // 无展签但开启签名落款:退居画布右下角,并为字幕预留安全区
-  if (sign && signature) {
-    const signatureHeight = STILL.signature.height * renderScale;
-    const signatureWidth = getSignatureDisplayWidth(
-      signature,
-      signatureHeight,
-      canvasWidth * STILL.signature.maxWidthRatio,
-    );
-    return (
-      <AbsoluteFill
-        style={{
-          justifyContent: 'center',
-          alignItems: 'center',
-          backgroundColor,
-          opacity: fadeIn,
+          gap: layout.gap,
+          maxWidth: '100%',
+          maxHeight: '100%',
         }}
       >
         <Framed
-          maxWidth={safeWidth}
-          maxHeight={safeHeight}
-          />
-        {/* 无 EXIF 时落款退居右下,把底部中线让给字幕;照片上移以留出和题签对等的底距 */}
-        <div
-          style={{
-            position: 'absolute',
-            right: STILL.signature.rightInset * renderScale,
-            bottom: STILL.signature.bottomInset * renderScale,
-            display: 'flex',
-            color: palette.text,
-            opacity: STILL.signature.opacity,
-          }}
-        >
-          <Signature data={signature} style={{width: signatureWidth, height: signatureHeight}} pathProps={signaturePathProps} />
-        </div>
-      </AbsoluteFill>
+          maxWidth={Math.min(layout.photoMaxWidth, maxPhotoWidth)}
+          maxHeight={photoMaxHeight}
+        />
+        <ExifPanel exif={clip.exif!} scale={renderScale} width={Math.min(layout.panelWidth, maxPhotoWidth)} sign={sign} signature={signature ?? null} palette={palette} fontFamily={fontFamily} align={stacked ? 'center' : 'left'} />
+      </div>,
     );
   }
 
-  return (
-    <AbsoluteFill
-      style={{
-        justifyContent: 'center',
-        alignItems: 'center',
-        backgroundColor,
-        opacity: fadeIn,
-      }}
-    >
-      <Framed
-        maxWidth={safeWidth}
-        maxHeight={safeHeight}
-        />
-    </AbsoluteFill>
+  return stage(
+    <Framed maxWidth={maxPhotoWidth} maxHeight={maxPhotoHeight} />,
   );
 };

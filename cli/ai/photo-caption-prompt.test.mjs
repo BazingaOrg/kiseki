@@ -6,7 +6,10 @@ import {
   SYSTEM_PROMPT,
   USER_PROMPT,
   normalizeCaption,
+  normalizeCaptionHint,
   promptHash,
+  repairUserPrompt,
+  userPromptWithHint,
   validateCaption,
 } from './photo-caption-prompt.mjs';
 
@@ -17,20 +20,14 @@ test('prompt hash is stable for the current prompt version', () => {
   assert.equal(USER_PROMPT, '请看着这张照片，写一句符合规则的中文旁白。');
 });
 
-test('validator accepts a 30-code-point sentence and rejects the 31st', () => {
-  const ok = '坐得端正，也不耽误心里走神一二三四五六七八';
-  assert.equal(validateCaption(ok).ok, true);
-  assert.equal([...ok].length <= CAPTION_MAX_CODE_POINTS, true);
-  assert.equal(validateCaption(ok).ok, true);
-  const thirty = '一'.repeat(CAPTION_MAX_CODE_POINTS);
-  assert.equal(validateCaption(thirty).ok, true);
-  assert.equal(validateCaption(`${thirty}。`).ok, false);
-  assert.equal(validateCaption(`${thirty}。`).reason, 'too-long');
+test('validator accepts the maximum length and rejects the next code point', () => {
+  const max = '一'.repeat(CAPTION_MAX_CODE_POINTS);
+  assert.equal(validateCaption(max).ok, true);
+  assert.equal(validateCaption(`${max}。`).reason, 'too-long');
 });
 
-test('validator counts unicode code points rather than UTF-16 length', () => {
-  const withPunctuation = '今天出门，伞忘了带。';
-  assert.equal(validateCaption(withPunctuation).ok, true);
+test('validator counts unicode code points and normalizes surrounding whitespace', () => {
+  assert.equal(validateCaption('今天出门，伞忘了带。').ok, true);
   assert.equal([...normalizeCaption('  一句旁白  ')].length, 4);
 });
 
@@ -45,4 +42,13 @@ test('validator rejects wrapping quotes, newlines, deixis and forbidden patterns
   assert.equal(validateCaption('比昨天还轻').reason, 'more-than');
   assert.equal(validateCaption('走得比风更慢').reason, 'even-more');
   assert.equal(validateCaption('   ').reason, 'empty');
+});
+
+test('caption hints collapse whitespace and cap length without changing the default prompt', () => {
+  assert.equal(normalizeCaptionHint('  妈妈  在左边  '), '妈妈 在左边');
+  assert.equal([...normalizeCaptionHint('一'.repeat(50))].length, 40);
+  assert.equal(userPromptWithHint(''), USER_PROMPT);
+  assert.match(userPromptWithHint('这是外婆'), /拍摄者补充/);
+  assert.match(userPromptWithHint('这是外婆'), /这是外婆/);
+  assert.match(repairUserPrompt('too-long', '这是外婆'), /这是外婆/);
 });

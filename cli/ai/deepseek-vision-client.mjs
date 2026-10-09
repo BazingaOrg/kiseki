@@ -4,7 +4,7 @@ import {
   CAPTION_TIMEOUT_MS,
   DEEPSEEK_CHAT_COMPLETIONS_URL,
   SYSTEM_PROMPT,
-  USER_PROMPT,
+  userPromptWithHint,
   normalizeCaption,
   repairUserPrompt,
   validateCaption,
@@ -27,15 +27,15 @@ const classifyStatus = (status) => {
   return null;
 };
 
-export const buildCaptionRequestBody = ({jpegBase64, repairReason = null}) => ({
+export const buildCaptionRequestBody = ({jpegBase64, repairReason = null, hint = ''}) => ({
   model: CAPTION_MODEL,
   messages: [
     {role: 'system', content: SYSTEM_PROMPT},
     {
       role: 'user',
       content: [
-        {type: 'text', text: repairReason ? repairUserPrompt(repairReason) : USER_PROMPT},
-        {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${jpegBase64}`, detail: 'high'}},
+        {type: 'text', text: repairReason ? repairUserPrompt(repairReason, hint) : userPromptWithHint(hint)},
+        {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${jpegBase64}`, detail: 'low'}},
       ],
     },
   ],
@@ -64,12 +64,13 @@ export const requestCaption = async ({
   apiKey,
   signal,
   repairReason = null,
+  hint = '',
   fetchImpl = fetch,
   timeoutMs = CAPTION_TIMEOUT_MS,
   now = Date.now,
 }) => {
   const jpegBase64 = Buffer.from(jpegBuffer).toString('base64');
-  const body = buildCaptionRequestBody({jpegBase64, repairReason});
+  const body = buildCaptionRequestBody({jpegBase64, repairReason, hint});
   if (body.messages[0].role !== 'system' || typeof body.messages[0].content !== 'string') {
     throw new CaptionHttpError('request-shape', 0, false, true);
   }
@@ -79,9 +80,11 @@ export const requestCaption = async ({
   const controller = new AbortController();
   const onAbort = () => controller.abort();
   signal?.addEventListener('abort', onAbort, {once: true});
+  if (signal?.aborted) controller.abort();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   const started = now();
   try {
+    if (controller.signal.aborted) throw new CaptionHttpError('cancelled', 0, false, false);
     const response = await fetchImpl(DEEPSEEK_CHAT_COMPLETIONS_URL, {
       method: 'POST',
       headers: {

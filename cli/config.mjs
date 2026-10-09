@@ -114,8 +114,8 @@ export const CONFIG_SCHEMA = {
     validate: (value, kind) => kind === 'string' && ['dynamic', 'uniform'].includes(value),
   },
   trim: {
-    default: 'auto',
-    example: 'trim = "auto"',
+    default: 'full',
+    example: 'trim = "full"',
     expected: '"auto"、"full" 或大于 0 的秒数',
     validate: (value, kind) => {
       if (kind === 'string') return value === 'auto' || value === 'full';

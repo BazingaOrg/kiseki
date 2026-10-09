@@ -19,7 +19,7 @@ export interface RuntimeResponse {
   photoCaptionConfigured?: boolean;
 }
 
-export type LyricsMode = 'original' | 'bilingual';
+export type LyricsMode = 'original' | 'bilingual' | 'none';
 
 export const LYRICS_MODE_EVENT = 'kiseki-lyrics-mode';
 
@@ -56,6 +56,9 @@ export interface AssetItem {
   /** 独立 LRC 仅展示，不能单独改变其与音频的配对关系。 */
   manageable?: boolean;
   actionHint?: string | null;
+  mtimeMs?: number;
+  caption?: string;
+  captionHint?: string;
 }
 
 export interface AssetCollection {
@@ -95,6 +98,7 @@ export interface ProjectResponse {
   recognizedLyricsManageable?: boolean;
   /** output/metadata/lyrics.json —— 识别过的产物是否存在 */
   recognizedLyricsPath: string | null;
+  recognizedLyricsStatus?: 'ready' | 'instrumental' | null;
   /** output/metadata/timeline.json —— 规划过时间线,说明这个素材夹渲染过 */
   timelinePath: string | null;
   unsupportedVideos: string[];
@@ -187,4 +191,5 @@ export interface ExifResponse {
   path: string;
   exif: ExifData | null;
   displayable: boolean;
+  shotTime?: string | null;
 }

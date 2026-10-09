@@ -9,7 +9,7 @@ export type StillExif = {
   datetime?: string;
 };
 
-export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number; sign: boolean; signature: SignatureData | null; palette: Palette; fontFamily?: FontFamily}> = ({
+export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number; sign: boolean; signature: SignatureData | null; palette: Palette; fontFamily?: FontFamily; align?: 'left' | 'center'}> = ({
   exif,
   scale,
   width,
@@ -17,6 +17,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
   signature,
   palette,
   fontFamily = 'serif',
+  align = 'left',
 }) => {
   const t = STILL.typography;
   const face = FONT_FAMILY[fontFamily].mixed;
@@ -45,7 +46,8 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
         display: 'flex',
         flexDirection: 'column',
         justifyContent: 'center',
-        textAlign: 'left',
+        alignItems: align === 'center' ? 'center' : 'stretch',
+        textAlign: align,
       }}
     >
       {line(exif.camera, t.cameraFontSize, palette.text)}
@@ -55,7 +57,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
       ) : null}
       {exif.params?.length ? (
         <>
-          <div style={{width: `${t.dividerWidth * 100}%`, height: scale, background: palette.divider, marginBottom: t.groupGap * scale}} />
+          <div style={{width: `${t.dividerWidth * 100}%`, height: scale, background: palette.divider, marginBottom: t.groupGap * scale, marginLeft: align === 'center' ? 'auto' : undefined, marginRight: align === 'center' ? 'auto' : undefined}} />
           {exif.params.map((param) => (
             <div key={param} style={{fontFamily: face, fontSize: t.paramsFontSize * scale, fontWeight: 500, letterSpacing, color: palette.text, lineHeight: 1.2, marginBottom: t.paramsLineGap * scale}}>{param}</div>
           ))}
@@ -66,7 +68,7 @@ export const ExifPanel: React.FC<{exif: StillExif; scale: number; width: number;
       ) : null}
       {line(exif.datetime, t.datetimeFontSize, palette.secondaryText, 400)}
       {sign && signature ? (
-        <div style={{marginTop: t.groupGap * scale, color: palette.text, opacity: STILL.signature.opacity}}>
+        <div style={{marginTop: t.groupGap * scale, color: palette.text, opacity: STILL.signature.opacity, display: 'flex', justifyContent: align === 'center' ? 'center' : 'flex-start', width: '100%'}}>
           <Signature data={signature} style={{height: STILL.signature.panelHeight * scale, maxWidth: width}} pathProps={signaturePathProps} />
         </div>
       ) : null}

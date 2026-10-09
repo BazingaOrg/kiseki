@@ -9,17 +9,17 @@
 import React from 'react';
 import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
-import {polaroidCardPresentation} from './compositionTiming';
+import {childOpacityForParent, photoCaptionLayerPresentation, polaroidCardPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
-import {resolveBilingualMode, subtitleVisibilityEnd} from './subtitleLayout';
+import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {hashString} from './motion';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
-import {POLAROID_PHOTO_FACTOR, POLAROID_PHOTO_FACTOR_CAPTION} from './photoCaptionLayout.mjs';
+import {CAPTION_SUBJECT_GAP, POLAROID_PHOTO_FACTOR, POLAROID_PHOTO_FACTOR_CAPTION, isCaptionLayout} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
@@ -46,8 +46,10 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const template = resolveTemplatePresentation(meta.templateId);
   ensureFonts(template.fontFamily);
 
-  const hasCaption = photos.some((clip) => 'caption' in clip && Boolean(clip.caption));
-  const bilingual = resolveBilingualMode(meta.lyrics_mode, subtitles);
+  const hasCaption = photos.some((clip) => 'caption' in clip && Boolean(clip.caption) && isCaptionLayout(clip.captionLayout));
+  if (hasCaption) ensureFonts('serif');
+  const subtitleMode = resolveSubtitleMode(meta.lyrics_mode, subtitles);
+  const bilingual = subtitleMode === 'bilingual';
   const basePhotoFactor = hasCaption ? POLAROID_PHOTO_FACTOR_CAPTION : POLAROID_PHOTO_FACTOR;
   const photoFactor = bilingual ? Math.min(basePhotoFactor, 0.8) : basePhotoFactor;
   const safeWidth = meta.width * meta.photo_scale;
@@ -62,7 +64,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const chapterClips = visualClips.filter(isChapterClip);
-  const visibleSubtitles = subtitles.flatMap((line, index) => {
+  const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
     const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE_FADE_OUT, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
       line.confidence >= SUBTITLE_CONFIDENCE &&
@@ -86,6 +88,15 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
         durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
   const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
+  const captionState = photoCaptionPresentation({
+    clips: visualClips,
+    frame,
+    fps,
+    showIntro,
+    introEnd: introDuration,
+    recapEnd: meta.opening_recap?.end ?? 0,
+    durationInFrames,
+  });
 
   const cards = visualClips.flatMap((clip, index) => {
     if (!isPhotoClip(clip)) return [];
@@ -109,51 +120,45 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         src={staticFile(meta.audio.replace(/^\.\//, ''))}
         volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
       />
-      {cards.map(({clip, rotation, opacity}) => (
+      {cards.map(({clip, rotation, opacity}) => {
+        const caption = photoCaptionLayerPresentation({clip, hasLayout: isCaptionLayout(clip.captionLayout), state: captionState});
+        return (
         <AbsoluteFill key={`${clip.src}-${clip.start}`} style={{justifyContent: 'center', alignItems: 'center', opacity}}>
-          <div
-            style={{
-              transform: `rotate(${rotation}deg)`,
-              background: '#fff',
-              padding: Math.round(safeWidth * 0.03),
-              borderRadius: Math.round(4 * scale),
-              boxShadow: '0 14px 36px rgba(10, 12, 16, 0.26)',
-            }}
-          >
-            <Img
-              src={toStatic(clip.src)}
+          <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: caption.render ? CAPTION_SUBJECT_GAP * scale : 0}}>
+            {caption.render ? (
+              <PhotoCaption
+                text={clip.caption!}
+                layout={clip.captionLayout}
+                palette={palette}
+                fontFamily={resolveFontFamily(clip.caption!, 'zh')}
+                opacity={childOpacityForParent(caption.opacity, opacity)}
+                flow
+              />
+            ) : null}
+            <div
               style={{
-                display: 'block',
-                maxWidth: safeWidth * photoFactor,
-                maxHeight: safeHeight * photoFactor,
-                objectFit: 'contain',
-                background: '#000',
+                transform: `rotate(${rotation}deg)`,
+                background: '#fff',
+                padding: Math.round(safeWidth * 0.03),
+                borderRadius: Math.round(4 * scale),
+                boxShadow: '0 14px 36px rgba(10, 12, 16, 0.26)',
               }}
-            />
+            >
+              <Img
+                src={toStatic(clip.src)}
+                style={{
+                  display: 'block',
+                  maxWidth: safeWidth * photoFactor,
+                  maxHeight: safeHeight * photoFactor,
+                  objectFit: 'contain',
+                  background: '#000',
+                }}
+              />
+            </div>
           </div>
         </AbsoluteFill>
-      ))}
-      {(() => {
-        const captionState = photoCaptionPresentation({
-          clips: visualClips,
-          frame,
-          fps,
-          showIntro,
-          introEnd: introDuration,
-          recapEnd: meta.opening_recap?.end ?? 0,
-          durationInFrames,
-        });
-        const captionClip = captionState.clip && typeof captionState.clip.caption === 'string' ? captionState.clip : null;
-        return captionClip?.caption && captionState.visible ? (
-          <PhotoCaption
-            text={captionClip.caption}
-            layout={captionClip.captionLayout}
-            palette={palette}
-            fontFamily={resolveFontFamily(captionClip.caption, 'zh', template.fontFamily)}
-            opacity={captionState.opacity}
-          />
-        ) : null;
-      })()}
+        );
+      })}
       {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
@@ -171,7 +176,13 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => (
         <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />
       ))}
-      <OpeningRecap meta={meta} photos={photoClips} palette={palette} variant="polaroid" />
+      <OpeningRecap
+        meta={meta}
+        photos={photoClips}
+        palette={palette}
+        variant="polaroid"
+        photoScale={meta.photo_scale * photoFactor / 0.9}
+      />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
       {showIntro && frame <= Math.round(introDuration * fps) ? (
         <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />

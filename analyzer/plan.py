@@ -41,7 +41,7 @@ DEFAULTS = {
     "flash_min_gap": 0.8,
     "trim_avg_threshold": 10.0,  # 平均每张展示超过此值 → 裁剪音频
     "trim_target_avg": 8.0,      # 裁剪目标:平均每张展示秒数
-    "trim": "auto",             # auto(自动裁剪)| full(整首)| 正数秒数
+    "trim": "full",             # auto(自动裁剪)| full(整首)| 正数秒数
     "subtitles": True,           # 字幕轨总开关
     "chapters": True,            # EXIF 跨天时插入日期章节卡
     "pacing": "dynamic",        # dynamic(按能量疏密)|uniform(旧版均匀)
@@ -308,7 +308,7 @@ def _opening_recap_spec(beats: dict, n_photos: int, cfg: dict, planning_duration
     start = near_intro[0] if near_intro else INTRO_DURATION
     bpm = float(beats.get("bpm", 120.0))
     beat_duration = 60.0 / bpm if math.isfinite(bpm) and bpm > 0 else 0.5
-    settle_duration = min(0.4, max(0.25, beat_duration / 2))
+    settle_duration = min(0.6, max(0.45, beat_duration / 2))
     desired_rewind = (n_photos - 1) * OPENING_RECAP_TARGET_SLOT_FRAMES / fps
     target_duration = min(
         OPENING_RECAP_MAX_DURATION,
@@ -334,16 +334,13 @@ def _opening_recap_spec(beats: dict, n_photos: int, cfg: dict, planning_duration
     max_slots = rewind_frames // OPENING_RECAP_MIN_SLOT_FRAMES
     if max_slots < 1:
         return None
-    raw_batch_size = max(1, math.ceil((n_photos - 1) / max_slots))
-    columns = math.ceil(math.sqrt(raw_batch_size))
-    batch_size = columns * columns
     return {
         "start": round(start, 3),
         "settle_start": round(settle_start, 3),
         "end": round(end, 3),
         "order": "reverse",
-        "layout": "single" if batch_size == 1 else "grid",
-        "batch_size": batch_size,
+        "layout": "single",
+        "batch_size": 1,
     }
 
 

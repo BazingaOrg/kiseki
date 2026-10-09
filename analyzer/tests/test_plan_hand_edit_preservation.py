@@ -87,7 +87,7 @@ class TestFreshGeneration:
         make_dated_photos(tmp_path)
         write_beats(tmp_path, 30.0)
         assert run_plan(tmp_path) == 0
-        assert "plan: 2 photos / 16.0s (平均每张 8.0s" in capsys.readouterr().out
+        assert "plan: 2 photos / 30.0s (平均每张 15.0s" in capsys.readouterr().out
 
 
 class TestUntouchedAutoUpgrade:

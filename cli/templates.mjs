@@ -7,9 +7,9 @@
  */
 export const TEMPLATES = [
   {id: 'filmstrip', name: '胶片带', description: '主图下方保留前后照片序列', composition: 'Filmstrip'},
-  {id: 'news-cut', name: '新闻快切', description: '干脆的硬切、黑体醒目大号字幕', composition: 'Diary'},
+  {id: 'news-cut', name: '新闻快切', description: '干脆的硬切、黑体醒目大号字幕', composition: 'Diary', captionsFontSize: 44, captionsRise: 4},
   {id: 'polaroid', name: '拍立得', description: '单张白框卡片、轻微旋转入场', composition: 'PolaroidWall'},
-  {id: 'slow-cinema', name: '电影舒缓', description: '缓慢交叉淡化、细字极简字幕、照片缓推', composition: 'Diary', motionZoom: 1.06},
+  {id: 'slow-cinema', name: '电影舒缓', description: '缓慢交叉淡化、细字极简字幕、照片缓推', composition: 'Diary', motionZoom: 1.06, captionsFontSize: 32, captionsRise: 12},
 ];
 
 export const templateMotionZoom = (templateId) => {

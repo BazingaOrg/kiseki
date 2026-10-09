@@ -10,6 +10,7 @@ import {getExif} from './web-api/exif.mjs';
 import {fetchLyricsPreview, resetFetchState, runProcess, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
 import {AssetMutationError, clearRecognizedLyrics, mutateAsset, resetAssetMutationState, undoAssetDelete} from './web-api/assets.mjs';
+import {CaptionRequestError, generatePhotoCaption} from './web-api/captions.mjs';
 import {getProject} from './web-api/project.mjs';
 import {resolveMedia} from './web-api/media.mjs';
 import {resolveSafePath} from './web-api/sandbox.mjs';
@@ -157,15 +158,16 @@ const ASSET_UNDO_RE = /^\/api\/assets\/undo$/;
 const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 const VALIDATE_LYRICS_PATH = '/api/fetch/lyrics-validate';
 const LYRICS_PREVIEW_PATH = '/api/fetch/lyrics-preview';
+const CAPTIONS_GENERATE_PATH = '/api/captions/generate';
 
 // 仅这些路径接受 POST；其他方法必须在进入 SPA fallback 前被拒绝。
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
-  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
+  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || pathname === CAPTIONS_GENERATE_PATH || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
- * @param {{spawnImpl?: Function, runImpl?: Function, doctorGet?: Function, thumbDeps?: object, createReadStream?: Function, jobManagerDeps?: object, assetMutationDeps?: object}} [deps]
+ * @param {{spawnImpl?: Function, runImpl?: Function, doctorGet?: Function, thumbDeps?: object, createReadStream?: Function, jobManagerDeps?: object, assetMutationDeps?: object, captionDeps?: object}} [deps]
  *   spawnImpl 供测试注入假的子进程实现,避免单测真的起渲染进程;
  *   runImpl 同理注入 /api/fetch/* 用的异步进程执行器,避免单测真的联网.
  *   doctorGet 可注入 doctor service,避免路由测试依赖本机的外部命令.
@@ -174,7 +176,7 @@ const isAllowedPostRoute = (method, pathname) =>
  *   生产环境两个都不传.
  * @returns {{server: import('node:http').Server, token: string}}
  */
-export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps, runtime = sourceRuntimeLayout, commandResolver, projectSelection = 'sandbox'} = {}) => {
+export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbDeps, createReadStream, jobManagerDeps, assetMutationDeps, captionDeps, runtime = sourceRuntimeLayout, commandResolver, projectSelection = 'sandbox'} = {}) => {
   const rootController = typeof root === 'string' ? createImmutableRootController(root) : root;
   if (projectSelection !== 'sandbox' && projectSelection !== 'native') throw new TypeError('projectSelection 必须是 sandbox 或 native');
   const writeGate = createWriteActivityGate();
@@ -317,6 +319,66 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         })
         .catch(() => sendJson(res, {status: 500, body: {error: '时间轴校验失败'}}))
         .finally(releaseRequest);
+      return;
+    }
+    if (req.method === 'POST' && url.pathname === CAPTIONS_GENERATE_PATH) {
+      if (!checkToken(req, res)) return;
+      const releaseWrite = writeGate.enter();
+      const requestController = new AbortController();
+      const abortRequest = () => requestController.abort();
+      const abortDisconnectedResponse = () => {
+        if (!res.writableEnded) abortRequest();
+      };
+      asyncController.signal.addEventListener('abort', abortRequest, {once: true});
+      req.addListener('aborted', abortRequest);
+      res.addListener('close', abortDisconnectedResponse);
+      if (asyncController.signal.aborted || req.aborted) abortRequest();
+      readBody(req)
+        .then(async (raw) => {
+          let body;
+          try { body = JSON.parse(raw); } catch {
+            sendJson(res, {status: 400, body: {error: '请求体不是合法 JSON'}});
+            return;
+          }
+          const folder = resolveSafePath(root, body?.folder);
+          if (!folder) {
+            sendJson(res, {status: 403, body: {error: '路径越界或无效'}});
+            return;
+          }
+          try {
+            if (!fs.statSync(folder).isDirectory()) throw new Error('not directory');
+          } catch {
+            sendJson(res, {status: 400, body: {error: 'folder 不是一个存在的目录'}});
+            return;
+          }
+          try {
+            const data = await generatePhotoCaption({
+              ...captionDeps,
+              folder,
+              assetId: body?.assetId,
+              hint: body?.hint,
+              isJobRunning: jobManager.hasRunningJob,
+              signal: requestController.signal,
+            });
+            if (!res.destroyed) sendJson(res, {status: 200, body: data});
+          } catch (error) {
+            if (res.destroyed) return;
+            if (error instanceof CaptionRequestError) {
+              sendJson(res, {status: error.status, body: {error: error.message}});
+              return;
+            }
+            sendJson(res, {status: 500, body: {error: error instanceof Error ? error.message : '图片旁白生成失败'}});
+          }
+        })
+        .catch(() => {
+          if (!res.destroyed) sendJson(res, {status: 500, body: {error: '图片旁白生成失败'}});
+        })
+        .finally(() => {
+          asyncController.signal.removeEventListener('abort', abortRequest);
+          req.removeListener('aborted', abortRequest);
+          res.removeListener('close', abortDisconnectedResponse);
+          releaseWrite();
+        });
       return;
     }
     if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname))) {
@@ -494,7 +556,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       );
       return;
     }
-    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
+    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || url.pathname === CAPTIONS_GENERATE_PATH || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
       // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
       // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面.
       res.writeHead(405);

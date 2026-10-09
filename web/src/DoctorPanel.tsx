@@ -3,7 +3,7 @@
  * 所以它在顶栏常驻成一个状态点,而不是主菜单里的第 4 项。
  */
 import {useLayoutEffect, useRef} from 'react';
-import {Check, RotateCw, X} from 'lucide-react';
+import {Check, CircleCheck, CircleHelp, LoaderCircle, RotateCw, TriangleAlert, X} from 'lucide-react';
 
 import type {DoctorState} from './types';
 import {useTransitionPresence} from './useTransitionPresence';
@@ -22,8 +22,13 @@ export const DoctorPanel = ({doctor, open, onToggle, onRecheck}: DoctorPanelProp
   const missing = checks.filter((check) => !check.ok && !check.optional);
   const status =
     doctor === 'loading' ? 'loading' :
-    doctor === 'unavailable' ? 'bad' :
+    doctor === 'unavailable' ? 'unavailable' :
     missing.length === 0 ? 'ok' : 'bad';
+
+  const StatusIcon =
+    status === 'loading' ? LoaderCircle :
+    status === 'unavailable' ? CircleHelp :
+    status === 'ok' ? CircleCheck : TriangleAlert;
 
   const label =
     doctor === 'loading' ? '检查中' :
@@ -40,8 +45,7 @@ export const DoctorPanel = ({doctor, open, onToggle, onRecheck}: DoctorPanelProp
   return (
     <div className="doctor">
       <button className="doctor-trigger" onClick={onToggle} aria-expanded={open} title={label} aria-label={`环境依赖：${label}`}>
-        <span className={`doctor-dot doctor-dot-${status}`} />
-        <span className="doctor-trigger-label">{label}</span>
+        <StatusIcon className={`doctor-status-icon doctor-status-icon-${status}`} size={16} strokeWidth={1.7} aria-hidden="true" />
       </button>
 
       {panelPresence.present && (

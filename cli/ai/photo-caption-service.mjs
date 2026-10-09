@@ -78,6 +78,8 @@ export const preparePhotoCaptions = async ({
   readStat = readSourceStat,
   now = Date.now,
   onProgress,
+  force = false,
+  hint = '',
   cachePath = captionsPathFor(projectRoot),
 } = {}) => {
   const started = now();
@@ -112,7 +114,7 @@ export const preparePhotoCaptions = async ({
     if (!before) throw Object.assign(new Error('找不到照片'), {code: 'missing', failureStage: 'photo-caption'});
     const identity = sourceIdentityRecord(entry.key, before, PREVIEW_WIDTH);
     const identityKey = captionSourceIdentity(entry.key, before, PREVIEW_WIDTH);
-    const hit = cacheHit(cache, entry.key, identity);
+    const hit = force ? null : cacheHit(cache, entry.key, identity);
     if (hit) {
       reused += 1;
       completed += 1;
@@ -138,6 +140,7 @@ export const preparePhotoCaptions = async ({
           apiKey,
           signal: workSignal,
           repairReason,
+          hint,
         });
         lastValidation = result.validation;
         if (result.validation.ok) {
@@ -145,6 +148,7 @@ export const preparePhotoCaptions = async ({
           if (!beforeWrite || captionSourceIdentity(entry.key, beforeWrite, PREVIEW_WIDTH) !== identityKey) {
             throw changedError();
           }
+          const hintText = typeof hint === 'string' ? hint.replace(/\s+/g, ' ').trim() : '';
           const stored = {
             source_identity: identity,
             preview_sha256: preview.sha256,
@@ -152,6 +156,7 @@ export const preparePhotoCaptions = async ({
             preview_pixel_height: preview.height,
             text: result.validation.text,
             usage: result.usage,
+            ...(hintText ? {hint: hintText} : {}),
           };
           cache = upsertCaptionItem(cache, entry.key, stored);
           await writer.enqueue(cachePath, cache);

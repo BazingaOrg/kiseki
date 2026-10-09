@@ -18,8 +18,21 @@ test('request body keeps system text-only and puts the image in the user message
   assert.equal(body.messages[0].content, SYSTEM_PROMPT);
   assert.equal(body.messages[1].role, 'user');
   assert.equal(body.messages[1].content[0].text, USER_PROMPT);
-  assert.equal(body.messages[1].content[1].image_url.detail, 'high');
+  assert.equal(body.messages[1].content[1].image_url.detail, 'low');
   assert.match(body.messages[1].content[1].image_url.url, /^data:image\/jpeg;base64,abc$/);
+});
+
+test('request body appends a photographer hint without changing the system prompt', () => {
+  const body = buildCaptionRequestBody({jpegBase64: 'abc', hint: '这是妈妈'});
+  assert.equal(body.messages[0].content, SYSTEM_PROMPT);
+  assert.match(body.messages[1].content[0].text, /拍摄者补充/);
+  assert.match(body.messages[1].content[0].text, /这是妈妈/);
+});
+
+test('repair request retains the photographer hint', () => {
+  const body = buildCaptionRequestBody({jpegBase64: 'abc', repairReason: 'too-long', hint: '这是妈妈'});
+  assert.match(body.messages[1].content[0].text, /上一句不合规/);
+  assert.match(body.messages[1].content[0].text, /这是妈妈/);
 });
 
 test('requestCaption classifies auth, retryable and success paths', async () => {
@@ -57,4 +70,23 @@ test('requestCaption classifies auth, retryable and success paths', async () => 
     }),
     (error) => error instanceof CaptionHttpError && error.retryable,
   );
+});
+
+test('requestCaption rejects an already-aborted signal before fetch', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let called = false;
+  await assert.rejects(
+    () => requestCaption({
+      jpegBuffer: Buffer.from('jpeg'),
+      apiKey: 'secret-key',
+      signal: controller.signal,
+      fetchImpl: async () => {
+        called = true;
+        throw new Error('must not fetch');
+      },
+    }),
+    (error) => error instanceof CaptionHttpError && error.code === 'cancelled',
+  );
+  assert.equal(called, false);
 });

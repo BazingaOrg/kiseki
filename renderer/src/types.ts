@@ -99,7 +99,7 @@ export type TimelineMeta = {
   filter?: {id: string; intensity?: number} | null;
   /** 渲染时覆盖注入的呈现层模板 id(见 renderer/src/templates.ts);缺省不应用模板 */
   templateId?: string;
-  lyrics_mode?: 'original' | 'bilingual';
+  lyrics_mode?: 'original' | 'bilingual' | 'none';
   chapters?: {enabled: boolean; day_count: number; card_count: number};
 };
 
