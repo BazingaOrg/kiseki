@@ -68,6 +68,21 @@ test('render: draft + trim', () => {
   assert.deepEqual(argv, ['/f', '--draft', '--trim', 'auto']);
 });
 
+test('render: 片尾文字和签名名字透传，空名字不带 flag', () => {
+  assert.deepEqual(
+    buildJobArgv({kind: 'render', folder: '/f', options: {outroText: '  再见  ', signatureName: ' 张三 '}}),
+    ['/f', '--outro-text', '再见', '--signature-name', '张三'],
+  );
+  assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {outroText: '', signatureName: '  '}}), ['/f', '--outro-text', '']);
+  assert.throws(() => buildJobArgv({kind: 'render', folder: '/f', options: {outroText: 'a\nb'}}), /不能换行/);
+  assert.equal(buildJobArgv({kind: 'still', folder: '/f', options: {outroText: '再见', signatureName: 'Ada'}}).includes('--outro-text'), false);
+  assert.deepEqual(
+    buildJobArgv({kind: 'still', folder: '/f', options: {outroText: '再见', signatureName: ' Ada '}}),
+    ['still', '/f', '--sign', '--signature-name', 'Ada'],
+  );
+  assert.deepEqual(buildJobArgv({kind: 'still', folder: '/f', options: {signatureName: '  '}}), ['still', '/f']);
+});
+
 test('render: template 透传 --template;null 不带 flag', () => {
   assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {template: 'slow-cinema'}}), ['/f', '--template', 'slow-cinema']);
   assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {template: null}}), ['/f']);

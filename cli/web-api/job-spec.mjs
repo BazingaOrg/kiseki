@@ -55,14 +55,17 @@ const buildFetchAudioSpec = ({folder, options, tempParent, commandResolver}) => 
     tempDir,
     progressSource: 'ytdlp-stdout',
     outputPaths: [path.join(folder, 'audio', finalFilename)],
-    finalize: (code, {stderrTail = [], spawnFailed = false, task = null} = {}) => {
+    finalize: (code, {stderrTail = [], spawnFailed = false, youtubeUnreachable = false, task = null} = {}) => {
       try {
         if (spawnFailed) {
           return {ok: false, events: [{kind: 'error', text: `起不了 yt-dlp,确认它已安装并在 PATH 里.${FIXES['yt-dlp']}`}]};
         }
         if (code !== 0) {
           const detail = stderrTail.length > 0 ? `\n${stderrTail.join('\n')}` : '';
-          return {ok: false, events: [{kind: 'error', text: `下载失败(网络、地区限制或 yt-dlp 版本过旧)${detail}`}]};
+          const text = youtubeUnreachable
+            ? `连不上 YouTube，这次没能获取音频。可以把歌放到素材夹里继续。${detail}`
+            : `这次没能获取音频。可以换一个结果，或把歌放到素材夹里。${detail}`;
+          return {ok: false, events: [{kind: 'error', text}]};
         }
         const audios = scanFolderLoose(tempDir).audios;
         if (audios.length !== 1) {

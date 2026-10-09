@@ -2,7 +2,7 @@
 /**
  * kiseki CLI — 日常入口:`kiseki ./folder`
  *
- * 约定优于配置:文件夹内的图片 + 唯一音频是必需输入,可选唯一 LRC;
+ * 约定优于配置:文件夹内的图片是必需输入,唯一音频可选,可选唯一 LRC;
  * JSON 写入 metadata/,默认视频写入 output/.
  * -o 可覆盖输出路径,其余选项按素材自动决策.
  */
@@ -45,7 +45,12 @@ import {resolveRenderOutputPath} from './output-naming.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {createNodeCommandResolver} from './command-resolver.mjs';
+import {GENERATED_SIGNATURE_REL} from './branding.mjs';
+import {loadProjectConfig} from './config.mjs';
+import {SignatureError, renderSignatureSvg} from './signature-svg.mjs';
 import {loadLocalEnv} from './load-env.mjs';
+import {buildSilentTimeline} from './silent-timeline.mjs';
+import {preparePackagedRuntime} from './desktop-runtime.mjs';
 
 export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
   validateTimeline(JSON.parse(readFileSync(timelinePath, 'utf8')));
@@ -91,7 +96,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
 
-  const {folder: folderArg, output, exif, sign, photoCaption, dark, portrait, square, draft, trim, filter, template, lyricsMode} = parsed;
+  const {folder: folderArg, output, exif, sign, photoCaption, dark, portrait, square, draft, trim, filter, template, lyricsMode, outroText, signatureName} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -130,7 +135,7 @@ export const runCommandFromArgv = async (
   try {
   // 交互终端下缺音频/歌词先给下载与在线搜索的机会;备齐或非交互时不打扰
   await offerFetch(folder, {task, runtime});
-  const {photos, audio, lyrics, videos} = scanFolder(folder);
+  const {photos, audio, lyrics, videos} = scanFolder(folder, {requireAudio: false});
   if (videos.length > 0) {
     term.warn(`发现视频文件,kiseki 目前只处理照片,已忽略: ${videos.join(', ')}`);
   }
@@ -144,6 +149,18 @@ export const runCommandFromArgv = async (
   }
   const effectiveTrim = trim ?? (hasExplicitTrimConfig(folder) ? null : readTrimPreference(project.preferencesPath));
 
+  const timelinePath = project.timelinePath;
+  let tl;
+  if (!audio) {
+    term.detail('没有音频，按每张照片 4 秒排成无声视频');
+    const projectConfig = loadProjectConfig(folder);
+    fs.writeFileSync(timelinePath, `${JSON.stringify(buildSilentTimeline({
+      photos,
+      config: projectConfig.values,
+      explicitKeys: projectConfig.explicitKeys,
+    }), null, 2)}\n`);
+    tl = readValidatedTimeline(timelinePath);
+  } else {
   const inputFiles = () => {
     const files = [audio, ...photos];
     if (fs.existsSync(path.join(folder, 'kiseki.toml'))) files.push('kiseki.toml');
@@ -153,7 +170,6 @@ export const runCommandFromArgv = async (
   let hash = computeInputHash(folder, inputFiles());
 
   const analyzer = runtime.analyzerRoot;
-  const timelinePath = project.timelinePath;
   const runtimeFingerprint = readAnalysisFingerprint(analyzer, undefined, runtime, commandResolver);
   const audioHash = computeAnalysisHash(folder, {audio, lyrics, runtimeFingerprint});
   const skipAnalyze = hasValidAnalysisCache({
@@ -240,7 +256,7 @@ export const runCommandFromArgv = async (
     throw error;
   }
 
-  let tl = readValidatedTimeline(timelinePath);
+  tl = readValidatedTimeline(timelinePath);
   const trimChoice = await maybePersistTrimChoice({
     folder, preferencesPath: project.preferencesPath, timeline: tl, trimOverride: trim, planOutcome,
     ...(trimInteractive === undefined ? {} : {interactive: trimInteractive}),
@@ -253,12 +269,16 @@ export const runCommandFromArgv = async (
     term.success('已记住你的选择');
     tl = readValidatedTimeline(timelinePath);
   }
+  }
   const photoClips = tl.photos.filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string');
   const n = photoClips.length;
+  const audioLine = tl.meta.audio
+    ? `音频: ${tl.meta.audio.replace(/^\.\//, '')},${Math.round(tl.meta.duration)}s`
+    : `音频: 无,${Math.round(tl.meta.duration)}s`;
   term.info('渲染计划');
   term.detail(
     `照片: ${n} 张,平均每张 ${(tl.meta.duration / n).toFixed(1)}s\n` +
-      `音频: ${tl.meta.audio.replace(/^\.\//, '')},${Math.round(tl.meta.duration)}s\n` +
+      `${audioLine}\n` +
       `歌词: ${tl.subtitles.length > 0 ? `${tl.subtitles.length} 行` : '无(纯音乐或未识别)'}`,
   );
 
@@ -298,6 +318,23 @@ export const runCommandFromArgv = async (
     }
   }
 
+  if (signatureName) {
+    let svg;
+    try {
+      svg = renderSignatureSvg(signatureName);
+    } catch (error) {
+      if (error instanceof SignatureError) throw new CliError(error.message);
+      throw error;
+    }
+    const signaturePath = path.join(folder, GENERATED_SIGNATURE_REL);
+    fs.mkdirSync(path.dirname(signaturePath), {recursive: true});
+    fs.writeFileSync(signaturePath, svg);
+    term.detail(`片头签名: ${signatureName.trim()}`);
+  }
+  if (outroText !== undefined) {
+    term.detail(outroText ? `片尾文字: ${outroText}` : '片尾不显示文字');
+  }
+
   const outPath = project.outputPath;
   const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
   if (!fs.existsSync(rendererPackage)) throw new CliError('渲染器依赖未安装,先执行: cd renderer && npm install');
@@ -327,6 +364,8 @@ export const runCommandFromArgv = async (
       ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
       ...(template ? ['--template', template] : []),
       ...(lyricsMode ? ['--lyrics-mode', lyricsMode] : []),
+      ...(outroText !== undefined ? ['--outro-text', outroText] : []),
+      ...(signatureName ? ['--signature', GENERATED_SIGNATURE_REL] : []),
     ]);
     const renderCode = await Promise.resolve(runResolvedCommand('渲染视频', renderCommand));
     if (renderCode !== 0) {
@@ -399,12 +438,18 @@ export const runInteractiveMenu = async (
 const main = async () => {
   loadLocalEnv();
   const argv = process.argv.slice(2);
+  const packaged = process.env.KISEKI_RUNTIME_ROOT
+    ? preparePackagedRuntime(process.env.KISEKI_RUNTIME_ROOT)
+    : null;
+  const packagedOptions = packaged
+    ? {runtime: packaged, commandResolver: createNodeCommandResolver({runtime: packaged})}
+    : {};
   // 裸跑 + 交互终端 → 常驻数字菜单;管道/脚本里仍走 USAGE 报错,不破坏可脚本性
   if (argv.length === 0 && process.stdin.isTTY && process.stdout.isTTY) {
     writeBanner();
     return runInteractiveMenu();
   }
-  return runCommandFromArgv(argv);
+  return runCommandFromArgv(argv, packagedOptions);
 };
 
 const isMain = process.argv[1] && fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));

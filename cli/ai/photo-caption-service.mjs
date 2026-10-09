@@ -41,7 +41,7 @@ const backoffMs = (attempt) => 400 * (2 ** attempt) + Math.floor(Math.random() *
 export const requireCaptionApiKey = (env = process.env) => {
   const key = typeof env.DEEPSEEK_API_KEY === 'string' ? env.DEEPSEEK_API_KEY.trim() : '';
   if (!key) {
-    throw new CliError('图片旁白尚未配置\n设置 DEEPSEEK_API_KEY 后重新打开工作台，或关闭图片旁白继续制作。');
+    throw new CliError('图片旁白尚未配置\n在页面填写 DeepSeek API Key 即可使用，也可以关闭图片旁白继续制作。');
   }
   return key;
 };

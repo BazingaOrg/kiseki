@@ -1,3 +1,4 @@
+import {outroTextError} from './branding.mjs';
 import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 import {TEMPLATE_IDS, normalizeTemplateId} from './templates.mjs';
 
@@ -19,13 +20,13 @@ const parseFilterId = (raw) => {
   return id;
 };
 
-const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --photo-caption  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
+const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --signature-name <name>  --photo-caption  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
 export const STILL_USAGE = `用法: kiseki still <photo|folder> ${STILL_OPTIONS}`;
 
 export const USAGE =
   '用法:\n' +
   '  kiseki                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>] [--lyrics-mode original|bilingual|none]  渲染相册视频(默认命令)\n' +
+  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>] [--lyrics-mode original|bilingual|none] [--outro-text <text>] [--signature-name <name>]  渲染相册视频(默认命令)\n' +
   '  kiseki still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  kiseki doctor                             检查依赖是否就绪\n' +
   '  kiseki lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
@@ -84,6 +85,17 @@ const parseRenderArgs = (argv) => {
         throw new CliError('--filter-intensity 需要 0–1 之间的数字');
       }
       filterIntensity = parseFilterIntensity(argv[++i], '--filter-intensity');
+    } else if (argv[i] === '--outro-text') {
+      if (i + 1 >= argv.length) throw new CliError('--outro-text 需要片尾文字，留空表示不显示');
+      const value = argv[++i];
+      const error = outroTextError(value);
+      if (error) throw new CliError(error);
+      args.outroText = value.trim();
+    } else if (argv[i] === '--signature-name') {
+      if (i + 1 >= argv.length || argv[i + 1].startsWith('-') || !argv[i + 1].trim()) {
+        throw new CliError('--signature-name 需要一个名字');
+      }
+      args.signatureName = argv[++i];
     } else if (argv[i] === '--trim') {
       if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
         throw new CliError('--trim 需要 auto、full 或正数秒数');
@@ -196,6 +208,11 @@ const parseStillArgs = (rest) => {
       args.exif = true;
     } else if (token === '--sign') {
       args.sign = true;
+    } else if (token === '--signature-name') {
+      if (i + 1 >= rest.length || rest[i + 1].startsWith('-') || !rest[i + 1].trim()) {
+        throw new CliError('--signature-name 需要一个名字');
+      }
+      args.signatureName = rest[++i];
     } else if (token === '--photo-caption') {
       args.photoCaption = true;
     } else if (token === '--dark') {

@@ -41,7 +41,19 @@ const createResolver = ({runtime, executable, baseEnv, electron}) => {
       runAsNode: true,
       omitEnvKeys: options.omitEnvKeys ?? OMIT_KEY_DEFAULTS,
     }),
-    analyzer: (entry, args, options = {}) => command(runtime.uv, ['run', ...(runtime.analyzerOffline ? ['--offline', '--frozen'] : []), '--project', runtime.analyzerRoot, entry, ...args], {
+    analyzer: (entry, args, options = {}) => runtime.bundledAnalyzer
+      ? command(path.join(runtime.analyzerEnvRoot, process.platform === 'win32' ? 'Scripts' : 'bin', process.platform === 'win32' ? `${entry}.exe` : entry), args, {
+        ...options,
+        env: {
+          VIRTUAL_ENV: runtime.analyzerEnvRoot,
+          KISEKI_MODEL_ROOT: runtime.modelRoot,
+          KISEKI_FFMPEG_BIN: runtime.ffmpeg,
+          ...options.env,
+        },
+        displayName: 'python',
+        omitEnvKeys: options.omitEnvKeys ?? OMIT_KEY_DEFAULTS,
+      })
+      : command(runtime.uv, ['run', ...(runtime.analyzerOffline ? ['--offline', '--frozen'] : []), '--project', runtime.analyzerRoot, entry, ...args], {
       ...options,
       env: {
         KISEKI_MODEL_ROOT: runtime.modelRoot,

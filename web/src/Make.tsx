@@ -2,6 +2,7 @@ import {useEffect, useId, useLayoutEffect, useMemo, useRef, useState} from 'reac
 import type {ReactNode} from 'react';
 import {Check, ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
+import {DEFAULT_OUTRO_TEXT} from '../../cli/branding.mjs';
 import {FILTERS, getFilter} from '../../renderer/src/filters';
 import type {Capability, Capabilities, Remedy} from './capabilities';
 import {equivalentCommand} from './command';
@@ -11,6 +12,7 @@ import {deletePreset, loadPresets, savePreset, type RenderPreset} from './preset
 import {LYRICS_MODE_EVENT, lyricsModeStorageKey, type ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import {FieldHelp} from './FieldHelp';
+import {SignaturePreview} from './SignaturePreview';
 import type {JobOptions} from './useJob';
 import {hasPhotoCaptionFailure, type useJob} from './useJob';
 import {useTransitionPresence} from './useTransitionPresence';
@@ -22,7 +24,14 @@ const KIND_VERB: Record<Kind, string> = {render: '渲染', still: '导出'};
 const constrainOptions = (kind: Kind, options: JobOptions): JobOptions => ({
   ...options,
   format: options.format === 'portrait' ? 'portrait' : 'landscape',
-  ...(kind === 'render' ? {draft: false, trim: 'full' as const, speed: 'balanced' as const, template: null} : {}),
+  signatureName: typeof options.signatureName === 'string' ? options.signatureName : '',
+  ...(kind === 'render' ? {
+    draft: false,
+    trim: 'full' as const,
+    speed: 'balanced' as const,
+    template: null,
+    outroText: typeof options.outroText === 'string' ? options.outroText : DEFAULT_OUTRO_TEXT,
+  } : {}),
 });
 
 const FORMAT_LABELS: {value: 'landscape' | 'portrait'; label: string}[] = [
@@ -179,6 +188,8 @@ const RENDER_DEFAULTS: JobOptions = {
   trim: 'full',
   speed: 'balanced',
   template: null,
+  outroText: DEFAULT_OUTRO_TEXT,
+  signatureName: '',
 };
 
 const STILL_DEFAULTS: JobOptions = {
@@ -190,6 +201,7 @@ const STILL_DEFAULTS: JobOptions = {
   filter: null,
   filterIntensity: null,
   scale: 2,
+  signatureName: '',
 };
 
 /**
@@ -279,13 +291,52 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
           ) : null}
         </div>
       )}
+      <div className="make-field">
+        <label className="make-field-label" htmlFor={`${kind}-signature`}>签名</label>
+        <input
+          id={`${kind}-signature`}
+          className="make-text-input"
+          value={options.signatureName ?? ''}
+          placeholder="输入名字，例如 Bazinga"
+          onChange={(event) => {
+            const signatureName = event.target.value;
+            if (kind === 'still' && signatureName.trim()) onChange({...options, signatureName, sign: true});
+            else set('signatureName', signatureName);
+          }}
+        />
+        <p className="make-field-hint">留空沿用现在的。填写后用于这次，汉字用毛笔。</p>
+        <SignaturePreview name={options.signatureName ?? ''} />
+      </div>
+      {kind === 'render' && (
+        <div className="make-field">
+          <label className="make-field-label" htmlFor={`${kind}-outro`}>片尾文字</label>
+          <input
+            id={`${kind}-outro`}
+            className="make-text-input"
+            value={options.outroText ?? DEFAULT_OUTRO_TEXT}
+            maxLength={80}
+            onChange={(event) => set('outroText', event.target.value)}
+          />
+          <p className="make-field-hint">出现在片尾白场。留空则不显示。</p>
+        </div>
+      )}
       <div className="make-checkboxes">
         <label className="make-checkbox">
           <input type="checkbox" checked={options.exif} onChange={(e) => set('exif', e.target.checked)} />
           EXIF 展签
         </label>
         <label className="make-checkbox">
-          <input type="checkbox" checked={options.sign} onChange={(e) => set('sign', e.target.checked)} />
+          <input
+            type="checkbox"
+            checked={options.sign || (kind === 'still' && Boolean(options.signatureName?.trim()))}
+            onChange={(e) => {
+              if (!e.target.checked && kind === 'still' && options.signatureName?.trim()) {
+                onChange({...options, sign: false, signatureName: ''});
+                return;
+              }
+              set('sign', e.target.checked);
+            }}
+          />
           签名落款
         </label>
         <label className="make-checkbox">
@@ -367,6 +418,7 @@ interface ActionCardProps {
   onReset: () => void;
   captionCapability: Capability;
   hasTranslation?: boolean;
+  outroText: string;
 }
 
 const ActionCard = ({
@@ -382,15 +434,17 @@ const ActionCard = ({
   onReset,
   captionCapability,
   hasTranslation = false,
+  outroText,
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(true);
-  const [options, setOptions] = useState<JobOptions>(kind === 'render' ? RENDER_DEFAULTS : STILL_DEFAULTS);
+  const [options, setOptions] = useState<JobOptions>(kind === 'render' ? {...RENDER_DEFAULTS, outroText} : STILL_DEFAULTS);
   const [submittedOptions, setSubmittedOptions] = useState<JobOptions | null>(null);
   const [presets, setPresets] = useState<RenderPreset[]>(() => loadPresets(folder));
   const [presetName, setPresetName] = useState('');
   const optionsPresence = useTransitionPresence(expanded);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
   const lyricsModeKey = lyricsModeStorageKey(folder);
+  const outroFolderRef = useRef(folder);
 
   useEffect(() => {
     setOptions((previous) => constrainOptions(kind, {
@@ -400,6 +454,16 @@ const ActionCard = ({
         : {scale: previous.scale ?? 2}),
     }));
   }, [kind]);
+
+  useEffect(() => {
+    const folderChanged = outroFolderRef.current !== folder;
+    outroFolderRef.current = folder;
+    setOptions((previous) => ({
+      ...previous,
+      outroText,
+      ...(folderChanged ? {signatureName: ''} : {}),
+    }));
+  }, [folder, outroText]);
 
   useEffect(() => {
     if (kind !== 'render') return;
@@ -584,8 +648,8 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, 
   }, [activeKind]);
 
   const outputTabs: {kind: Kind; label: string; description: string; icon: ReactNode; capability: Capability}[] = [
-    {kind: 'render', label: '渲染相册视频', description: '分析音乐的节拍，把照片排进时间线，渲染成一支踩点影像日记。', icon: <Clapperboard size={18} strokeWidth={1.5} />, capability: capabilities.renderVideo},
-    {kind: 'still', label: '导出静态图', description: '按成片同款视觉导出单张照片，可带 EXIF 展签与签名落款。', icon: <ImageDown size={18} strokeWidth={1.5} />, capability: capabilities.exportStill},
+    {kind: 'render', label: '渲染相册视频', description: '把照片排成一支影像日记。有歌时会跟着音乐安排画面，没有歌也可以直接做成无声视频。', icon: <Clapperboard size={18} strokeWidth={1.5} />, capability: capabilities.renderVideo},
+    {kind: 'still', label: '导出静态图', description: '按成片同款视觉导出单张照片，可带 EXIF 展签，也可以填名字生成签名落款。', icon: <ImageDown size={18} strokeWidth={1.5} />, capability: capabilities.exportStill},
   ];
   const selectedTab = outputTabs.find((tab) => tab.kind === selectedKind) ?? outputTabs[0];
 
@@ -623,6 +687,7 @@ export const Make = ({project, capabilities, onRemedy, job, activeKind, locked, 
           onReset={onReset}
           captionCapability={capabilities.photoCaption}
           hasTranslation={selectedKind === 'render' && Boolean(project.lyrics?.some((line) => line.translation?.text))}
+          outroText={project.outroText ?? DEFAULT_OUTRO_TEXT}
         />
         </div>
       </div>

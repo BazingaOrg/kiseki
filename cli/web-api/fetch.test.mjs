@@ -576,9 +576,49 @@ test('audio-search:yt-dlp 搜索失败 → 502', async () => {
     if (args[0] === '--version') return {status: 0, stdout: '2026.01.01', stderr: ''};
     return {status: 1, stdout: '', stderr: 'ERROR: unable to download'};
   };
-  const result = await searchAudioCandidates('song', {run});
+  const result = await searchAudioCandidates('song', {run, reach: async () => true});
   assert.equal(result.status, 502);
+  assert.match(result.body.error, /搜索没有完成/);
   assert.match(result.body.detail, /unable to download/);
+  assert.equal(result.body.error.includes('代理'), false);
+});
+
+test('lyrics-search:歌词站连不上且没有其他结果时说明网络原因', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const result = await searchLyricsCandidates(root, folder, {
+    run: fakeRun({}),
+    reach: async () => false,
+    amllFetcher: async () => { throw new Error('down'); },
+  });
+  assert.equal(result.status, 502);
+  assert.match(result.body.error, /连不上歌词服务/);
+  assert.equal(result.body.error.includes('代理'), false);
+});
+
+test('lyrics-search:歌词站连不上但已有其他结果时不额外提示', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const result = await searchLyricsCandidates(root, folder, {
+    run: fakeRun({}),
+    reach: async () => false,
+    amllFetcher: async () => ({items: [{id: 12, musicNames: ['Song'], artistNames: ['Artist'], filename: '12.ttml'}]}),
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.candidates.length, 1);
+  assert.equal(JSON.stringify(result.body).includes('连不上'), false);
+});
+
+test('audio-search:站点连不上时说明是网络原因', async () => {
+  const run = async (command, args) => {
+    if (args[0] === '--version') return {status: 0, stdout: '2026.01.01', stderr: ''};
+    return {status: 1, stdout: '', stderr: 'ERROR: unable to download'};
+  };
+  const result = await searchAudioCandidates('song', {run, reach: async () => false});
+  assert.equal(result.status, 502);
+  assert.match(result.body.error, /连不上 YouTube/);
+  assert.equal(result.body.error.includes('VPN'), false);
+  assert.equal(result.body.error.includes('代理'), false);
 });
 
 test('lyrics-search:q 覆盖自动推断的查询词', async () => {

@@ -31,7 +31,9 @@ interface LogoProps {
 export const Logo = ({size = 24, variant = 'compact'}: LogoProps) => (
   <span className={variant === 'hero' ? 'logo logo-hero' : 'logo'}>
     <Mark size={size} />
-    <span className="logo-word">kiseki</span>
-    {variant === 'hero' && <span className="logo-kanji">軌跡</span>}
+    <span className="logo-lockup">
+      <span className="logo-word">kiseki</span>
+      {variant === 'hero' && <span className="logo-kanji">（軌跡）</span>}
+    </span>
   </span>
 );

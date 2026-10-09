@@ -8,9 +8,12 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {extractFormattedExif} from './exif.mjs';
+import {GENERATED_SIGNATURE_REL} from './branding.mjs';
 import {loadProjectConfig} from './config.mjs';
 import {CliError} from './options.mjs';
+import {SignatureError, renderSignatureSvg} from './signature-svg.mjs';
 import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
+import {resolveChromeExecutable} from './chrome-browser.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {createPercentProgress} from './progress.mjs';
@@ -36,6 +39,14 @@ export const loadStillCanvasConfig = (folder) => {
     photo_scale: values.photo_scale,
     signature: values.signature,
   };
+};
+
+export const resolveStillSignature = ({sign = false, configuredSignature = '', generatedSignature = ''} = {}) => {
+  const generated = String(generatedSignature || '').trim();
+  const configured = String(configuredSignature || '').trim();
+  if (!sign && !generated) return {sign: false};
+  const signatureSrc = generated || configured;
+  return signatureSrc ? {sign: true, signatureSrc} : {sign: true};
 };
 
 /** 静态导出诊断只使用解析后的画布、倍率和确定的输出目标. */
@@ -217,7 +228,9 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
 
   try {
     if (opts.photoCaption) capturedKey = requireCaptionApiKey();
-    const resolved = resolveJobs(opts.target, opts.output, opts);
+    const namedSignature = typeof opts.signatureName === 'string' ? opts.signatureName.trim() : '';
+    const sign = Boolean(opts.sign) || Boolean(namedSignature);
+    const resolved = resolveJobs(opts.target, opts.output, {...opts, sign});
     jobs = resolved.jobs;
     task = acquireCommandLease({kind: 'still', folder: resolved.canvasFolder, outputPaths: jobs.map((job) => job.outPath)});
     startedAt = Date.now();
@@ -238,7 +251,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     skipped = preflight.skipped;
     skippedExif = preflight.skippedExif;
     const preparedJobs = preflight.prepared;
-    term.detail(`${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${opts.sign ? ', 签名' : ''}${opts.photoCaption ? ', 图片旁白' : ''}${opts.dark ? ', 暗色' : ''}`);
+    term.detail(`${jobs.length} 张, scale=${opts.scale}${opts.exif ? ', EXIF' : ''}${sign ? ', 签名' : ''}${opts.photoCaption ? ', 图片旁白' : ''}${opts.dark ? ', 暗色' : ''}`);
     if (preparedJobs.length === 0) {
       jobs = preparedJobs;
       if (skipped > 0) term.detail(`跳过 ${skipped} 张已存在(--skip-existing)`);
@@ -280,6 +293,27 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     const stillProgressLabel = (index) =>
       preparedJobs.length === 1 ? 'Rendering still' : `Rendering still ${index + 1}/${preparedJobs.length}`;
 
+    let generatedSignature = '';
+    if (namedSignature) {
+      let svg;
+      try {
+        svg = renderSignatureSvg(namedSignature);
+      } catch (error) {
+        if (error instanceof SignatureError) throw new CliError(error.message);
+        throw error;
+      }
+      const signaturePath = path.join(resolved.publicDir, GENERATED_SIGNATURE_REL);
+      fs.mkdirSync(path.dirname(signaturePath), {recursive: true});
+      fs.writeFileSync(signaturePath, svg);
+      generatedSignature = GENERATED_SIGNATURE_REL;
+      term.detail(`签名: ${namedSignature}`);
+    }
+    const signatureProps = resolveStillSignature({
+      sign,
+      configuredSignature: canvas.signature,
+      generatedSignature,
+    });
+
     exportTask = term.task('导出 still');
     exportTask.endLine();
     const bundled = await bundleRenderer(resolved.publicDir, {
@@ -289,7 +323,8 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     cleanup = bundled.cleanup;
     progress.endLine();
 
-    const browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable: runtime.chromium});
+    const browserExecutable = resolveChromeExecutable(runtime.chromium);
+    const browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable});
     cleanup = () => {
       Promise.resolve(browser.close({silent: true})).catch(() => {});
       bundled.cleanup();
@@ -302,8 +337,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
       width: canvas.width,
       height: canvas.height,
       exif: null,
-      sign: opts.sign,
-      ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
+      ...signatureProps,
       filter: resolveJobFilter(preparedJobs[0]),
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error', puppeteerInstance: browser});
@@ -323,8 +357,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         photoScale: canvas.photo_scale,
         width: canvas.width,
         height: canvas.height,
-        sign: opts.sign,
-        ...(opts.sign && canvas.signature ? {signatureSrc: canvas.signature} : {}),
+        ...signatureProps,
         exif: job.exifProps ?? null,
         filter: resolveJobFilter(job),
       };
@@ -342,7 +375,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
           imageHeight: item?.preview_pixel_height || 480,
           visualScale,
           hasExif: Boolean(job.exifProps),
-          sign: opts.sign,
+          sign: signatureProps.sign,
           page: captionPage,
         });
         if (!inputProps.captionLayout) skippedLayout += 1;

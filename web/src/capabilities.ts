@@ -41,6 +41,13 @@ const DOCTOR: Remedy = {label: '查看环境', target: 'doctor'};
  *                    这时候还说"素材齐了，可以开工"就是在骗人
  *   实际结果       —— 按 ok 判定
  */
+const requiredAnalyzerBlocker = (doctor: DoctorState): Blocker | null => {
+  if (typeof doctor === 'string') return null;
+  const check = doctor.checks.find((item) => item.id === 'analyzer');
+  if (!check || check.ok || check.optional) return null;
+  return {reason: '分析组件还没下载。', remedy: DOCTOR};
+};
+
 const depBlocker = (doctor: DoctorState, id: string, what: string): Blocker | null => {
   if (doctor === 'loading') return null;
   if (doctor === 'unavailable') {
@@ -135,10 +142,9 @@ export const deriveCapabilities = (
 
     renderVideo: make([
       noPhotos,
-      noAudio,
       ambiguousAudio,
       ambiguousLyrics,
-      depBlocker(doctor, 'uv', '音频分析'),
+      ...(hasAudio ? [depBlocker(doctor, 'uv', '音频分析'), requiredAnalyzerBlocker(doctor)] : []),
       depBlocker(doctor, 'ffmpeg', '视频封装'),
       depBlocker(doctor, 'renderer', '视频渲染'),
     ]),
@@ -153,6 +159,7 @@ export const deriveCapabilities = (
       ambiguousAudio,
       ambiguousLyrics,
       depBlocker(doctor, 'uv', '歌词识别'),
+      requiredAnalyzerBlocker(doctor),
       depBlocker(doctor, 'ffmpeg', '音频解码'),
     ]),
 
@@ -169,7 +176,7 @@ export const deriveCapabilities = (
     photoCaption: make([
       doctor === 'loading' ? {reason: '正在检查图片旁白环境…', remedy: null} : null,
       doctor === 'unavailable' ? {reason: '暂时无法检查，请重试', remedy: DOCTOR} : null,
-      runtime?.photoCaptionConfigured ? null : {reason: '图片旁白尚未配置。设置 DEEPSEEK_API_KEY 后重新打开工作台，或关闭图片旁白继续制作。', remedy: null},
+      runtime?.photoCaptionConfigured ? null : {reason: '还没有填写 DeepSeek API Key。点「填写 DeepSeek API Key」即可给照片写旁白，也可以关闭图片旁白继续制作。', remedy: null},
       depBlocker(doctor, 'ffmpeg', '生成低清预览'),
     ]),
   };

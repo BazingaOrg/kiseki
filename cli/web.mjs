@@ -14,6 +14,7 @@ import {installRuntimeShutdown} from './runtime-lifecycle.mjs';
 import {createKisekiService} from './kiseki-service.mjs';
 import {createImmutableRootController} from './root-controller.mjs';
 import {term} from './term.mjs';
+import {shouldOpenWebBrowser} from './desktop-runtime.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 
 /** 尝试用系统默认程序打开 URL;跨平台命令都试了仍失败也不报错,只提示手动打开. */
@@ -65,6 +66,7 @@ export const runWeb = async (folder = null, {openBrowser = true, runtime = sourc
   term.success(`本地工作台已启动: ${url}`);
   term.detail(folder ? `已锁定素材夹: ${root}` : `浏览起点: ${root}(用户主目录)`);
   term.detail('按 Ctrl+C 结束');
-  if (openBrowser) tryOpenBrowser(url);
+  if (shouldOpenWebBrowser(openBrowser)) tryOpenBrowser(url);
+  if (process.env.KISEKI_DESKTOP === '1') fs.writeSync(1, `KISEKI_READY ${url}\n`);
   return service.server;
 };

@@ -11,10 +11,14 @@ import {fetchLyricsPreview, resetFetchState, runProcess, searchAudioCandidates, 
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
 import {AssetMutationError, clearRecognizedLyrics, mutateAsset, resetAssetMutationState, undoAssetDelete} from './web-api/assets.mjs';
 import {CaptionRequestError, generatePhotoCaption} from './web-api/captions.mjs';
+import {saveCaptionKey} from './web-api/caption-key.mjs';
+import {installTool} from './web-api/setup-tools.mjs';
 import {getProject} from './web-api/project.mjs';
+import {previewSignature} from './web-api/signature.mjs';
 import {resolveMedia} from './web-api/media.mjs';
 import {resolveSafePath} from './web-api/sandbox.mjs';
 import {resolveThumb} from './web-api/thumb.mjs';
+import {canReach} from './reach.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {createImmutableRootController, createWriteActivityGate} from './root-controller.mjs';
 
@@ -159,11 +163,14 @@ const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 const VALIDATE_LYRICS_PATH = '/api/fetch/lyrics-validate';
 const LYRICS_PREVIEW_PATH = '/api/fetch/lyrics-preview';
 const CAPTIONS_GENERATE_PATH = '/api/captions/generate';
+const CAPTION_KEY_PATH = '/api/settings/caption-key';
+const SETUP_INSTALL_PATH = '/api/setup/install';
+const SIGNATURE_PATH = '/api/signature';
 
 // 仅这些路径接受 POST；其他方法必须在进入 SPA fallback 前被拒绝。
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
-  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || pathname === CAPTIONS_GENERATE_PATH || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
+  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || pathname === CAPTIONS_GENERATE_PATH || pathname === CAPTION_KEY_PATH || pathname === SETUP_INSTALL_PATH || pathname === SIGNATURE_PATH || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
@@ -187,7 +194,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
   const fetchDeps = {run: (command, args, options = {}) => baseRun(command, args, {...options, signal: asyncController.signal}), runtime, ...(commandResolver ? {commandResolver} : {})};
   const requestDoctor = doctorGet ?? createDoctorService({runtime}).getDoctor;
   const token = crypto.randomBytes(32).toString('hex');
-  const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {}), runtime, ...(commandResolver ? {commandResolver} : {})});
+  const jobManager = createJobManager({...jobManagerDeps, ...(spawnImpl ? {spawnImpl} : {}), runtime, reach: canReach, ...(commandResolver ? {commandResolver} : {})});
 
   const checkToken = (req, res) => {
     if (req.headers['x-kiseki-token'] !== token) {
@@ -381,6 +388,41 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         });
       return;
     }
+    if (req.method === 'POST' && url.pathname === SIGNATURE_PATH) {
+      if (!checkToken(req, res)) return;
+      handleAsync(
+        () => readBody(req).then((raw) => previewSignature(raw)),
+        (result) => sendJson(res, result),
+        () => sendJson(res, {status: 500, body: {error: '签名没有生成'}}),
+      );
+      return;
+    }
+    if (req.method === 'POST' && (url.pathname === CAPTION_KEY_PATH || url.pathname === SETUP_INSTALL_PATH)) {
+      if (!checkToken(req, res)) return;
+      const releaseWrite = writeGate.enter();
+      readBody(req)
+        .then(async (raw) => {
+          let body;
+          try { body = JSON.parse(raw || '{}'); } catch {
+            sendJson(res, {status: 400, body: {error: '请求体不是合法 JSON'}});
+            return;
+          }
+          if (url.pathname === CAPTION_KEY_PATH) {
+            try {
+              const saved = saveCaptionKey({key: body?.apiKey});
+              sendJson(res, {status: 200, body: saved});
+            } catch (error) {
+              sendJson(res, {status: error.status ?? 500, body: {error: error instanceof Error ? error.message : '没能保存密钥'}});
+            }
+            return;
+          }
+          const result = await installTool({tool: body?.tool});
+          sendJson(res, result);
+        })
+        .catch(() => sendJson(res, {status: 500, body: {error: '请求没有完成'}}))
+        .finally(releaseWrite);
+      return;
+    }
     if (req.method === 'POST' && (url.pathname === '/api/assets/mutate' || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname))) {
       if (!checkToken(req, res)) return;
       const releaseWrite = writeGate.enter();
@@ -483,6 +525,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         projectSelection,
         root: authorizedRoot,
         photoCaptionConfigured: Boolean(String(process.env.DEEPSEEK_API_KEY ?? '').trim()),
+        portableTools: process.env.KISEKI_DESKTOP === '1',
       }});
       return;
     }
@@ -556,7 +599,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       );
       return;
     }
-    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || url.pathname === CAPTIONS_GENERATE_PATH || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
+    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || url.pathname === CAPTIONS_GENERATE_PATH || url.pathname === CAPTION_KEY_PATH || url.pathname === SETUP_INSTALL_PATH || url.pathname === SIGNATURE_PATH || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
       // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
       // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面.
       res.writeHead(405);
@@ -565,6 +608,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
     }
     serveStatic(req, res, token, runtime.webDist);
   });
+  server.requestTimeout = 30 * 60 * 1000;
   // killAll 交给调用方在进程退出时收尾:子进程是 detached 的,收不到终端的
   // Ctrl+C,不显式杀掉就会变成孤儿继续跑(见 jobs.mjs 的说明).
   return {server, token, killAll: jobManager.killAll, jobManager, rootController, writeGate, requestGate, beginClosing: () => { closing = true; }, cancelAsyncOperations: () => asyncController.abort(), resetRootState: () => {

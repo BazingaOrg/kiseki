@@ -29,11 +29,15 @@ import {resolveSafePath} from './sandbox.mjs';
 import {assertNoRunningJob, withProjectMutationLock} from './assets.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 import {shiftLrc, validateLyricsAlignment} from './lyrics-validation.mjs';
+import {canReach, LRCLIB_REACH_URL, YOUTUBE_REACH_URL} from '../reach.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createNodeCommandResolver} from '../command-resolver.mjs';
 import {createProcessCompletion} from './process-lifecycle.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
+const LYRICS_UNREACHABLE = '连不上歌词服务，这次没能在线查找。可以把 .lrc 放进素材夹。';
+const YOUTUBE_UNREACHABLE = '连不上 YouTube，这次没能获取音频。可以把歌放到素材夹里继续。';
+const AUDIO_SEARCH_FAILED = '搜索没有完成。可以换个关键词，或把歌放到素材夹里。';
 const AMLL_BASE = 'https://api.amll.dev/v1/lyrics';
 // LRCLIB 要求调用方带可识别的 User-Agent(与 cli/fetch.mjs 保持一致)
 const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
@@ -127,7 +131,7 @@ export const searchYtDlpAsync = async (query, run = runProcess, runtime = source
     '--flat-playlist',
     '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
   ]);
-  if (result.status !== 0) return {ok: false, stderr: (result.stderr ?? '').trim()};
+  if (result.status !== 0) return {ok: false, status: result.status, stderr: (result.stderr ?? '').trim()};
   return {ok: true, candidates: parseSearchCandidates(result.stdout)};
 };
 
@@ -346,7 +350,7 @@ const resolveAudioFolder = (root, folderParam) => {
  * q 是必要的补救路径:文件名乱七八糟时自动推断必然猜错,CLI 里也允许重新输关键词
  * 再搜一次,没有它用户就只能去改文件名.
  */
-export const searchLyricsCandidates = async (root, folderParam, {run = runProcess, fetcher, amllFetcher, query: queryOverride, runtime = sourceRuntimeLayout} = {}) => {
+export const searchLyricsCandidates = async (root, folderParam, {run = runProcess, fetcher, amllFetcher, query: queryOverride, runtime = sourceRuntimeLayout, reach} = {}) => {
   const resolved = resolveAudioFolder(root, folderParam);
   if (resolved.error) return resolved.error;
   const {folder, audio} = resolved;
@@ -358,8 +362,10 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   const override = normalizeSearchQuery(queryOverride);
   const query = override || normalizeSearchQuery(buildLyricsQuery({title: expectedTitle, artist: expectedArtist, audioFile: audio}));
   const useInjectedFetchers = fetcher !== undefined || amllFetcher !== undefined;
+  const usesRealLrclib = fetcher === undefined;
+  const lrclibReachable = usesRealLrclib ? await (reach ?? canReach)(LRCLIB_REACH_URL) : true;
   const requests = [];
-  if (!useInjectedFetchers || fetcher !== undefined) {
+  if (lrclibReachable && (!useInjectedFetchers || fetcher !== undefined)) {
     requests.push(['lrclib', async () => searchLyricsRecords(
       // customized 必须跟着用户是否手输关键词走:searchLyricsRecords 在
       // !customized 且 tag 齐全时会先打 /get 精确查询并直接返回,query 根本用不上.
@@ -389,6 +395,9 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   }));
   const records = settled.flatMap(({status, records: sourceRecords}) => status === 'fulfilled' ? sourceRecords : []);
   const warnings = settled.flatMap(({status, provider, error}) => status === 'rejected' ? [`${sourceNameFor(provider)} 搜索失败: ${error.message}`] : []);
+  if (records.length === 0 && !lrclibReachable) {
+    return {status: 502, body: {error: LYRICS_UNREACHABLE}};
+  }
   if (records.length === 0 && settled.every(({status}) => status === 'rejected')) {
     return {status: 502, body: {error: `歌词搜索失败: ${warnings.join('；')}`}};
   }
@@ -568,7 +577,7 @@ export const saveLyrics = async (root, body, {run = runProcess, fetcher, amllFet
 };
 
 /** GET /api/fetch/audio-search?q=<关键词> */
-export const searchAudioCandidates = async (query, {run = runProcess, runtime = sourceRuntimeLayout} = {}) => {
+export const searchAudioCandidates = async (query, {run = runProcess, runtime = sourceRuntimeLayout, reach} = {}) => {
   const normalized = typeof query === 'string' ? normalizeSearchQuery(query) : '';
   if (!normalized) {
     return {status: 400, body: {error: 'q 不能为空', field: 'q'}};
@@ -581,10 +590,15 @@ export const searchAudioCandidates = async (query, {run = runProcess, runtime = 
   }
   const result = await searchYtDlpAsync(normalized, run, runtime);
   if (!result.ok) {
+    if (result.status === null) {
+      return {status: 502, body: {error: AUDIO_SEARCH_FAILED, detail: result.stderr.split('\n').slice(-3).join('\n')}};
+    }
+    const reachable = await (reach ?? canReach)(YOUTUBE_REACH_URL);
+    if (!reachable) return {status: 502, body: {error: YOUTUBE_UNREACHABLE}};
     return {
       status: 502,
       body: {
-        error: '搜索失败(常见原因:网络需要代理、yt-dlp 版本过旧)',
+        error: AUDIO_SEARCH_FAILED,
         detail: result.stderr.split('\n').slice(-3).join('\n'),
       },
     };

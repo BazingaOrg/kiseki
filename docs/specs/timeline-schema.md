@@ -12,7 +12,7 @@
 
 - `version`：正整数
 - `duration`：正有限数
-- `audio`：字符串
+- `audio`：字符串。空字符串表示没有音乐，渲染器不挂音频，成片是无声视频。
 - `width`、`height`、`fps`：正整数
 - `background`：字符串
 - `photo_scale`：正有限数

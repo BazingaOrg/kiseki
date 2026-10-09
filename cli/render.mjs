@@ -6,6 +6,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {applyBrandingOverrides} from './branding.mjs';
 import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {FIXES} from './dependencies.mjs';
@@ -14,6 +15,7 @@ import {createPercentProgress} from './progress.mjs';
 import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {resolveTemplateComposition, TEMPLATES, templateMotionZoom} from './templates.mjs';
 import {term} from './term.mjs';
+import {resolveChromeExecutable} from './chrome-browser.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {validateTimeline} from './timeline-validator.mjs';
 import {cacheHit, captionsPathFor, loadCaptionCache} from './ai/photo-caption-cache.mjs';
@@ -128,7 +130,7 @@ const stripRuntimeCaptions = (timeline) => {
 
 export const applyRenderVariants = async (
   timeline,
-  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null, lyricsMode = 'bilingual'} = {},
+  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null, lyricsMode = 'bilingual', outroText, signature} = {},
   {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null} = {},
 ) => {
   if (!['original', 'bilingual', 'none'].includes(lyricsMode)) throw new Error('--lyrics-mode 必须是 original、bilingual 或 none');
@@ -147,6 +149,9 @@ export const applyRenderVariants = async (
   }
   if (template) {
     timeline.meta = {...timeline.meta, templateId: template};
+  }
+  if (outroText !== undefined || signature) {
+    applyBrandingOverrides(timeline, {outroText, signature});
   }
   // 逐张滤镜:CLI --filter > kiseki.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
   if (filterConfig) {
@@ -265,6 +270,13 @@ const main = async () => {
   const filterIntensityIndex = flagArgs.indexOf('--filter-intensity');
   const templateIndex = flagArgs.indexOf('--template');
   const lyricsModeIndex = flagArgs.indexOf('--lyrics-mode');
+  const readFlagValue = (flag) => {
+    const index = flagArgs.indexOf(flag);
+    if (index < 0) return undefined;
+    const value = flagArgs[index + 1];
+    if (value === undefined || value.startsWith('--')) throw new Error(`${flag} 缺少参数`);
+    return value;
+  };
   const flags = {
     exif: flagArgs.includes('--exif'),
     sign: flagArgs.includes('--sign'),
@@ -281,6 +293,8 @@ const main = async () => {
       : null,
     template: templateIndex >= 0 ? flagArgs[templateIndex + 1] : null,
     lyricsMode: lyricsModeIndex >= 0 ? flagArgs[lyricsModeIndex + 1] ?? null : 'bilingual',
+    outroText: readFlagValue('--outro-text'),
+    signature: readFlagValue('--signature'),
   };
 
   const timelinePath = path.resolve(timelineArg);
@@ -307,6 +321,7 @@ const main = async () => {
   const captionSources = inputProps._captionSources ?? [];
   delete inputProps._captionSources;
 
+  const browserExecutable = resolveChromeExecutable(sourceRuntimeLayout.chromium);
   try {
     fs.mkdirSync(path.dirname(outputPath), {recursive: true});
     const bundled = await bundleRenderer(publicDir, {
@@ -318,7 +333,7 @@ const main = async () => {
     progress.endLine();
 
     if (flags.photoCaption) {
-      browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable: sourceRuntimeLayout.chromium});
+      browser = await openBrowser('chrome', {logLevel: 'error', browserExecutable});
       const bundledCleanup = bundled.cleanup;
       cleanup = () => {
         Promise.resolve(browser.close({silent: true})).catch(() => {});
@@ -330,7 +345,7 @@ const main = async () => {
       id: resolveTemplateComposition(flags.template),
       inputProps,
       logLevel: 'error',
-      browserExecutable: sourceRuntimeLayout.chromium,
+      browserExecutable,
       ...(browser ? {puppeteerInstance: browser} : {}),
     });
     if (flags.photoCaption) {
@@ -372,7 +387,7 @@ const main = async () => {
       outputLocation: partialOutputPath,
       overwrite: true,
       logLevel: 'error',
-      browserExecutable: sourceRuntimeLayout.chromium,
+      browserExecutable,
       // 接管浏览器控制台输出:不再与进行中的进度行挤在同一行
       onBrowserLog: ({type, text, stackTrace}) => {
         if (type !== 'error' && type !== 'warning') return;

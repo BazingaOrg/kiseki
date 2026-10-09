@@ -56,10 +56,10 @@ export const scanFolderLoose = (folder) => {
  * reuse the same audio/lrc discovery rules without requiring photos to be present.
  * `videos` lists unsupported video files so callers can warn about them.
  */
-export const scanFolder = (folder, {requirePhotos = true} = {}) => {
+export const scanFolder = (folder, {requirePhotos = true, requireAudio = true} = {}) => {
   const {photos, audios, lyrics, videos} = scanFolderLoose(folder);
   if (audios.length > 1) throw new CliError(`文件夹里有多个音频,只能有一个:\n${audios.join('\n')}`);
-  if (audios.length === 0) {
+  if (requireAudio && audios.length === 0) {
     throw new CliError(
       `没有找到音频文件.目录约定:照片 + 唯一的音频文件(${[...AUDIO_EXTS].join(' ')})` +
       `\n└ 可运行 ${formatEquivalentCommand(['fetch', folder])} 补齐`,
@@ -71,7 +71,7 @@ export const scanFolder = (folder, {requirePhotos = true} = {}) => {
   if (lyrics.length > 1) {
     throw new CliError(`文件夹里有多个 LRC 歌词,只能有一个:\n${lyrics.join('\n')}`);
   }
-  return {photos, audio: audios[0], lyrics: lyrics[0] ?? null, videos};
+  return {photos, audio: audios[0] ?? null, lyrics: lyrics[0] ?? null, videos};
 };
 
 /**

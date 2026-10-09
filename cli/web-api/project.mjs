@@ -5,6 +5,8 @@ import path from 'node:path';
 import {cacheHit, loadCaptionCache, captionsPathFor} from '../ai/photo-caption-cache.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
 import {normalizePhotoKey} from '../ai/photo-key.mjs';
+import {DEFAULT_OUTRO_TEXT, effectiveOutroText} from '../branding.mjs';
+import {loadProjectConfig} from '../config.mjs';
 import {readFilterConfig, resolveProjectPaths, scanFolderLoose} from '../project.mjs';
 import {parseLrc} from '../lrc.mjs';
 import {readUsableRecognizedLyrics, recognizedLyricsStatus} from '../recognized-lyrics.mjs';
@@ -216,9 +218,18 @@ export const getProject = (root, requestedPath) => {
     }
   };
 
+  let outroText = DEFAULT_OUTRO_TEXT;
+  try {
+    const loaded = loadProjectConfig(safePath);
+    outroText = effectiveOutroText(loaded.explicitKeys, loaded.values);
+  } catch {
+    outroText = DEFAULT_OUTRO_TEXT;
+  }
+
   return {
     status: 200,
     body: {
+      outroText,
       path: safePath,
       name: path.basename(safePath),
       // 沙箱根.`kiseki web <folder>` 会把根锁定成那个素材夹,此时 root === path,

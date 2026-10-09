@@ -21,6 +21,12 @@ models/
 .env
 !.env.example
 
+# 桌面安装包的构建产物
+desktop/staging/
+desktop/node_modules/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+
 # 个人 agent 编排指令,不入库
 CLAUDE.md
 CLAUDE.md.bak*

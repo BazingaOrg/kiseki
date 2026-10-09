@@ -17,6 +17,7 @@ export interface RuntimeResponse {
   projectSelection: ProjectSelection;
   root: string | null;
   photoCaptionConfigured?: boolean;
+  portableTools?: boolean;
 }
 
 export type LyricsMode = 'original' | 'bilingual' | 'none';
@@ -103,6 +104,8 @@ export interface ProjectResponse {
   timelinePath: string | null;
   unsupportedVideos: string[];
   filterConfig: unknown;
+  /** 这次成片片尾白场上的字。素材夹没写 outro_text 时是 Thanks for watching :) */
+  outroText?: string;
   output: {
     stills: string[];
     videos: string[];

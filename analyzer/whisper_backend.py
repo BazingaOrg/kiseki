@@ -3,7 +3,7 @@
 优先级:mlx(arm64 Mac 且可导入)→ faster-whisper CUDA float16 → faster-whisper CPU int8。
 三后端收敛到 transcribe(audio) -> (language, [Segment]);探测结果打印一行日志。
 模型默认 mlx/CUDA=medium、CPU=small,可用环境变量 KISEKI_WHISPER_MODEL 覆盖(调试用)。
-国内网络:HF 直连超时自动切 hf-mirror.com,再失败才提示配代理。
+国内网络:优先探测 hf-mirror.com,再探测 huggingface.co;都连不上时仍使用镜像。
 """
 
 from __future__ import annotations
@@ -203,15 +203,20 @@ def _split_segment(
 
 
 def ensure_hf_reachable(timeout: float = 3.0) -> None:
-    """HuggingFace 连通性检测:不可达则自动设 HF_ENDPOINT 指向国内镜像。"""
+    """模型站点连通性检测:优先国内镜像,用户已设置 HF_ENDPOINT 时不改。"""
     if os.environ.get("HF_ENDPOINT"):
         return
-    try:
-        req = urllib.request.Request("https://huggingface.co", method="HEAD")
-        urllib.request.urlopen(req, timeout=timeout)
-    except Exception:
-        os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
-        term.warn("hf: 直连超时,已切换镜像 hf-mirror.com(仍失败请配置代理)")
+    for endpoint in ("https://hf-mirror.com", "https://huggingface.co"):
+        try:
+            req = urllib.request.Request(endpoint, method="HEAD")
+            urllib.request.urlopen(req, timeout=timeout)
+        except Exception:
+            continue
+        if endpoint != "https://huggingface.co":
+            os.environ["HF_ENDPOINT"] = endpoint
+        return
+    os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+    term.warn("模型站点暂时连不上，已改用镜像 hf-mirror.com")
 
 
 def _pick_backend() -> tuple[str, str]:
@@ -263,7 +268,7 @@ def transcribe(audio: Path) -> tuple[str, list[Segment], str]:
             local_dir = _download_model(backend, model)
         except Exception:
             term.error(
-                "模型下载失败:网络需要代理、磁盘空间不足或镜像不可用;"
+                "模型下载失败:网络暂时连不上、磁盘空间不足或镜像不可用;"
                 "重试会从断点继续,也可把模型手动放入 models/ 目录"
             )
             raise

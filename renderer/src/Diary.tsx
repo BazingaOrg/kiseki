@@ -167,10 +167,12 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
-      <Audio
-        src={staticFile(meta.audio.replace(/^\.\//, ''))}
-        volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
-      />
+      {meta.audio ? (
+        <Audio
+          src={staticFile(meta.audio.replace(/^\.\//, ''))}
+          volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
+        />
+      ) : null}
       {visiblePhotos.map(({clip, index, motionStart}) => (
         <Photo
           key={`${clip.src}-${index}`}

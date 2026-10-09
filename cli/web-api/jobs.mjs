@@ -6,6 +6,7 @@ import readline from 'node:readline';
 import {buildJobSpec, parseYtDlpProgress} from './job-spec.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 import {executorIdentity, executorLiveness, freezeExecutorTree, resumeFrozenExecutorTree, signalExecutorGroupOrRoot, signalExecutorTree, terminateExecutorTree} from '../runtime-lifecycle.mjs';
+import {YOUTUBE_REACH_URL} from '../reach.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createNodeCommandResolver} from '../command-resolver.mjs';
 
@@ -22,7 +23,7 @@ const FORCE_KILL_AFTER_MS = 3000;
 
 /**
  * fetch-audio 的停滞阈值.yt-dlp 下载期间每秒都在刷进度,超过这么久一条都没有,
- * 基本就是卡死了(代理挂了但 TCP 不断是最常见的形态).不加这个,一个永远到不了
+ * 基本就是卡死了(网络连上了但没有进度是最常见的形态).不加这个,一个永远到不了
  * 100% 的下载会一直占着并发锁,用户不点取消就再也起不了任何任务.
  *
  * **只对 fetch-audio 生效**:whisper 识别会先安静好几分钟再一次性吐结果,
@@ -104,6 +105,7 @@ export const createJobManager =({
   taskkillImpl = defaultTaskkill,
   executorLivenessImpl = executorLiveness,
   leaseManager = createTaskLeaseManager({terminateExecutor: terminateExecutorTree, executorLiveness}),
+  reach = null,
 } = {}) => {
   tempParent ??= runtime.tempRoot;
   /** @type {Map<string, object>} */
@@ -114,7 +116,7 @@ export const createJobManager =({
    * 记录一条事件并即时推给所有 SSE 订阅者.progress 是可变快照,历史只留最新
    * 一条;其余事件是可审阅的任务语义,必须完整保留并按原顺序重放.
    */
-  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'lyricsMode', 'scale', 'output'];
+  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'lyricsMode', 'scale', 'output', 'outroText', 'signatureName'];
   const publicOptions = (options = {}) => {
     const out = {};
     for (const key of PUBLIC_OPTION_KEYS) {
@@ -192,6 +194,7 @@ export const createJobManager =({
         fs.rmSync(spec.tempDir, {recursive: true, force: true});
         spec = buildJobSpec({kind, folder, options, tempParent: lease.taskRoot, runtime, commandResolver});
       }
+      if (reach) spec.reach = reach;
     } catch (error) {
       if (lease) leaseManager.release(lease);
       if (error instanceof ProjectBusyError) return {error: 'busy'};
@@ -239,7 +242,7 @@ export const createJobManager =({
       job.stallTimer = setInterval(() => {
         if (job.status !== 'running') return;
         if (now() - job.lastActivityAt < stallTimeoutMs) return;
-        emit(job, {kind: 'error', text: '下载长时间没有进展,已中止(网络或代理可能断了)'});
+        emit(job, {kind: 'error', text: '下载长时间没有进展，已中止。网络可能连不上，可以把歌放到素材夹里继续。'});
         cancelJob(job.id);
       }, stallCheckIntervalMs);
       job.stallTimer.unref?.();
@@ -329,11 +332,21 @@ export const createJobManager =({
       // finalize 决定"退出码 0 但收尾失败"这种情况(比如下载成功却装不进 audio/),
       // 必须在定 status 之前跑完,而且它自己保证不抛.
       const finalCode = job.exitCode ?? code;
-      const ok = runFinalize(job, spec, finalCode, {spawnFailed: false});
-      job.status = job.cancelled ? 'cancelled' : ok ? 'done' : 'failed';
-      job.exitCode = finalCode;
-      finish(job);
-      job.resolveClose();
+      const settle = (youtubeUnreachable = false) => {
+        if (job.finalized) return;
+        const ok = runFinalize(job, spec, finalCode, {spawnFailed: false, youtubeUnreachable});
+        job.status = job.cancelled ? 'cancelled' : ok ? 'done' : 'failed';
+        job.exitCode = finalCode;
+        finish(job);
+        job.resolveClose();
+      };
+      if (spec.reach && spec.progressSource === 'ytdlp-stdout' && finalCode !== 0 && !job.cancelled) {
+        Promise.resolve()
+          .then(() => spec.reach(YOUTUBE_REACH_URL))
+          .then((ok) => settle(ok !== true), () => settle(true));
+        return;
+      }
+      settle(false);
     });
 
     if (!Number.isInteger(child.pid) || child.pid <= 0) {
@@ -364,12 +377,12 @@ export const createJobManager =({
   };
 
   /** 跑任务自带的收尾钩子(安装下载结果、清临时目录),返回任务是否算成功. */
-  const runFinalize = (job, spec, code, {spawnFailed = false} = {}) => {
+  const runFinalize = (job, spec, code, {spawnFailed = false, youtubeUnreachable = false} = {}) => {
     if (!spec.finalize) return code === 0;
     let outcome;
     try {
       outcome = spec.finalize(code, {
-        stderrTail: job.stderrTail ?? [], spawnFailed,
+        stderrTail: job.stderrTail ?? [], spawnFailed, youtubeUnreachable,
         task: {lease: job.lease, manager: leaseManager},
       });
     } catch {

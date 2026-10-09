@@ -49,7 +49,8 @@ interface WorkbenchProps {
   onProjectRefresh: () => void;
   /** 最近一次 onProjectRefresh 失败了,当前看到的可能不是最新数据 */
   projectStale: boolean;
-  runtime?: Pick<RuntimeResponse, 'photoCaptionConfigured'> | null;
+  runtime?: Pick<RuntimeResponse, 'photoCaptionConfigured' | 'portableTools'> | null;
+  onCaptionKeySaved: () => void;
 }
 
 export const Workbench = ({
@@ -61,9 +62,10 @@ export const Workbench = ({
   onProjectRefresh,
   projectStale,
   runtime = null,
+  onCaptionKeySaved,
 }: WorkbenchProps) => {
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
-  const [doctorOpen, setDoctorOpen] = useState(false);
+  const [doctorRequest, setDoctorRequest] = useState(0);
   const capabilities = deriveCapabilities(project, doctor, runtime);
   const locked = projectSelection === 'sandbox' && project.root === project.path;
   // 导出静态图不需要音频，只要 renderVideo 或 exportStill 任一可用就该放行「制作」
@@ -207,7 +209,7 @@ export const Workbench = ({
   };
 
   const handleRemedy = (target: Remedy['target']) => {
-    if (target === 'doctor') setDoctorOpen(true);
+    if (target === 'doctor') setDoctorRequest((current) => current + 1);
     else if (sectionUnlocked(target)) setSection(target);
   };
   const performAsset = async (item: AssetItem, action: 'rename' | 'delete', stem?: string): Promise<boolean> => {
@@ -385,17 +387,19 @@ export const Workbench = ({
               <ChevronDown className="folder-switch-chevron" size={13} strokeWidth={1.7} aria-hidden="true" />
             </button>
           )}
-          <DoctorPanel
-            doctor={doctor}
-            open={doctorOpen}
-            onToggle={() => setDoctorOpen((v) => !v)}
-            onRecheck={onRecheckDoctor}
-          />
           <ThemeToggle />
         </div>
       </header>
 
       <div className="workbench-content">
+        <DoctorPanel
+          doctor={doctor}
+          onRecheck={onRecheckDoctor}
+          photoCaptionConfigured={runtime?.photoCaptionConfigured === true}
+          portableTools={runtime?.portableTools === true}
+          onCaptionKeySaved={onCaptionKeySaved}
+          requestOpen={doctorRequest}
+        />
         {/* 光把切换按钮禁掉不够 —— 得说清为什么换不了、以及怎么才能换 */}
         {locked && (
           <p className="locked-note">

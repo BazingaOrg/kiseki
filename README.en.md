@@ -1,6 +1,6 @@
 # kiseki (軌跡)
 
-> Photos + a song (+ optional lyrics) become a beat-synced visual diary. The local workbench manages material, makes video or stills, and shows results. Audio/timeline analysis and rendering stay on your machine. Fetch and explicit photo captions are optional online steps.
+> Photos, with an optional song, become a visual diary. Without a song the video is silent. The local workbench manages material, makes video or stills, and shows results. Audio analysis and rendering stay on your machine. YouTube audio, online lyrics, and explicit photo captions are optional online steps.
 
 [中文](README.md) · **English**
 
@@ -14,7 +14,7 @@ node cli/kiseki.mjs doctor
 node cli/kiseki.mjs ./osaka-trip
 ```
 
-A media folder contains photos, exactly one audio file, and an optional `.lrc`. Audio and lyrics may be at the root or in `audio/`. Without an `.lrc`, kiseki may download the required model on first use and recognize lyrics locally.
+A media folder contains photos, an optional song, and an optional `.lrc`. Audio and lyrics may be at the root or in `audio/`. Without a song, each photo stays on screen for 4 seconds in a silent video. Without an `.lrc`, kiseki may download the required model on first recognition and recognize lyrics locally.
 
 ## Usage
 
@@ -40,6 +40,8 @@ Optional photo captions:
 DEEPSEEK_API_KEY=... node cli/kiseki.mjs ./osaka-trip --photo-caption
 DEEPSEEK_API_KEY=... node cli/kiseki.mjs still ./photo.jpg --photo-caption
 ```
+
+On the Make page, the signature field comes before the closing line. The closing white field starts as `Thanks for watching :)` and stays hidden when the field is empty. A typed name becomes the opening handwritten signature for that render. Checking the photo signature also uses that generated mark. A still export draws the same name as its signature. None of these values are written back to `kiseki.toml`.
 
 The API key is read from the environment only and is not part of `kiseki.toml`. You can also put `DEEPSEEK_API_KEY=...` in a repo-root `.env` (see `.env.example`); CLI/web load it on startup and never override a key already set in the shell. When enabled, kiseki sends a downscaled JPEG preview to DeepSeek, caches captions in `output/metadata/ai-captions.json`, and starts rendering only after every required caption is ready. Original photos are never uploaded. With the option off, the existing local analysis and render path is unchanged.
 

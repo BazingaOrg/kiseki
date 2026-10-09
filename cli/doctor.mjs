@@ -103,17 +103,23 @@ const commandCheckAsync = (label, cmd, args, {versionRegex, fix, optional = fals
   }
 });
 
-const uvCheck = (runtime) =>
-  commandCheck('uv', runtime.uv, ['--version'], {
+const uvCheck = (runtime) => {
+  const found = commandCheck('uv', runtime.uv, ['--version'], {
     versionRegex: /uv (\S+)/,
     fix: FIXES.uv,
   });
+  if (found.ok || !runtime.bundledAnalyzer) return found;
+  return {id: 'uv', ok: true, line: 'uv 会随分析组件一起下载'};
+};
 
-const ffmpegCheck = (runtime) =>
-  commandCheck('ffmpeg', runtime.ffmpeg, ['-version'], {
+const ffmpegCheck = (runtime) => {
+  const found = commandCheck('ffmpeg', runtime.ffmpeg, ['-version'], {
     versionRegex: /ffmpeg version (\S+)/,
     fix: FIXES.ffmpeg,
   });
+  if (found.ok || !runtime.bundledAnalyzer) return found;
+  return {...found, line: 'FFmpeg 还没下载', fix: '点「下载 FFmpeg」'};
+};
 
 const rendererCheck = (runtime) => {
   const dir = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
@@ -138,11 +144,24 @@ const ytDlpCheck = (runtime) => {
   };
 };
 
-/** 分析器 Python 环境:仅提示,从不判定失败(uv 会在首次运行时自动构建). */
+const analyzerScript = (venv) => path.join(
+  venv,
+  process.platform === 'win32' ? 'Scripts' : 'bin',
+  process.platform === 'win32' ? 'kiseki-plan.exe' : 'kiseki-plan',
+);
+
+/** 开发机上的分析环境由 uv 在首次运行时构建。安装包里的分析组件要点下载后才算就绪。 */
 const analyzerEnvCheck = (runtime) => {
-  const venv = runtime.analyzerOffline ? runtime.analyzerEnvRoot : path.join(runtime.analyzerRoot, '.venv');
-  if (fs.existsSync(venv)) {
-    return {id: 'analyzer', ok: true, optional: true, line: 'analyzer 环境已就绪'};
+  const managed = runtime.analyzerOffline || runtime.bundledAnalyzer;
+  const venv = managed ? runtime.analyzerEnvRoot : path.join(runtime.analyzerRoot, '.venv');
+  const ready = runtime.bundledAnalyzer ? fs.existsSync(analyzerScript(venv)) : fs.existsSync(venv);
+  if (ready) {
+    return runtime.bundledAnalyzer
+      ? {id: 'analyzer', ok: true, line: '分析组件已就绪'}
+      : {id: 'analyzer', ok: true, optional: true, line: 'analyzer 环境已就绪'};
+  }
+  if (runtime.bundledAnalyzer) {
+    return {id: 'analyzer', ok: false, line: '分析组件还没下载', fix: '点「下载分析组件」'};
   }
   return {id: 'analyzer', ok: false, optional: true, line: 'analyzer 环境将在首次运行时由 uv 自动构建'};
 };
@@ -166,7 +185,7 @@ export const collectDoctorChecks = ({runtime = sourceRuntimeLayout} = {}) => [
  * 运行,并在返回前按 CLI 的稳定顺序重新组装.
  */
 export const collectWebDoctorChecks = async ({runtime = sourceRuntimeLayout, ...processOptions} = {}) => {
-  const [uv, ffmpeg, ytDlp] = await Promise.all([
+  const [uvFound, ffmpegFound, ytDlp] = await Promise.all([
     commandCheckAsync('uv', runtime.uv, ['--version'], {versionRegex: /uv (\S+)/, fix: FIXES.uv}, processOptions),
     commandCheckAsync('ffmpeg', runtime.ffmpeg, ['-version'], {versionRegex: /ffmpeg version (\S+)/, fix: FIXES.ffmpeg}, processOptions),
     commandCheckAsync(
@@ -177,6 +196,8 @@ export const collectWebDoctorChecks = async ({runtime = sourceRuntimeLayout, ...
       processOptions,
     ),
   ]);
+  const uv = uvFound.ok || !runtime.bundledAnalyzer ? uvFound : {id: 'uv', ok: true, line: 'uv 会随分析组件一起下载'};
+  const ffmpeg = ffmpegFound.ok || !runtime.bundledAnalyzer ? ffmpegFound : {...ffmpegFound, line: 'FFmpeg 还没下载', fix: '点「下载 FFmpeg」'};
   return [nodeCheck(), uv, ffmpeg, rendererCheck(runtime), ytDlp, analyzerEnvCheck(runtime)];
 };
 

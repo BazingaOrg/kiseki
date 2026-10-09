@@ -12,13 +12,13 @@ test('motion uses component-level reduced-motion rules and keeps panel exits mou
   const ordinaryPresence = appCss.slice(appCss.indexOf('.transition-presence {'), appCss.indexOf('}', appCss.indexOf('.transition-presence {')) + 1);
   const reducedSpinner = reducedMotion.slice(reducedMotion.indexOf('.job-spinner'), reducedMotion.indexOf('}', reducedMotion.indexOf('.job-spinner')) + 1);
   const reducedIndeterminate = reducedMotion.slice(reducedMotion.indexOf('.job-progress-indeterminate::after'), reducedMotion.indexOf('}', reducedMotion.indexOf('.job-progress-indeterminate::after')) + 1);
-  const reducedPresence = reducedMotion.slice(reducedMotion.indexOf('.doctor-panel.transition-presence'), reducedMotion.indexOf('}', reducedMotion.indexOf('.doctor-panel.transition-presence')) + 1);
+  const reducedPresence = reducedMotion.slice(reducedMotion.indexOf('.make-form-presence.transition-presence'), reducedMotion.indexOf('}', reducedMotion.indexOf('.make-form-presence.transition-presence')) + 1);
   assert.doesNotMatch(indexCss, /\*::before[\s\S]*0\.01ms/);
   assert.ok(appCss.includes('transition-duration: 200ms;'));
   assert.equal(reducedSpinner, '.job-spinner {\n    display: none;\n  }');
   assert.equal(reducedIndeterminate, '.job-progress-indeterminate::after {\n    display: none;\n  }');
   assert.match(ordinaryPresence, /transition: opacity 150ms ease-out, transform 150ms ease-out;/);
-  assert.match(reducedPresence, /\.doctor-panel\.transition-presence,\s*\.make-form-presence\.transition-presence\s*\{[\s\S]*transform: none;[\s\S]*transition-property: opacity;[\s\S]*transition-duration: 120ms;[\s\S]*transition-timing-function: ease-out;[\s\S]*transition-delay: 0;/);
+  assert.match(reducedPresence, /\.make-form-presence\.transition-presence\s*\{[\s\S]*transform: none;[\s\S]*transition-property: opacity;[\s\S]*transition-duration: 120ms;[\s\S]*transition-timing-function: ease-out;[\s\S]*transition-delay: 0;/);
   assert.doesNotMatch(reducedPresence, /transition-duration: 150ms/);
   assert.ok(!appCss.includes('job-status-pulse'));
   assert.match(appCss, /@keyframes welcome-in/);
@@ -32,9 +32,9 @@ test('motion uses component-level reduced-motion rules and keeps panel exits mou
   assert.ok(make.includes('aria-hidden={!expanded}'));
   assert.ok(make.includes('onTransitionEnd={optionsPresence.onTransitionEnd}'));
   assert.ok(make.includes("panel.setAttribute('inert', '')"));
-  assert.ok(doctor.includes('aria-hidden={!open}'));
-  assert.ok(doctor.includes('onTransitionEnd={panelPresence.onTransitionEnd}'));
-  assert.ok(doctor.includes("panel.setAttribute('inert', '')"));
+  assert.ok(doctor.includes('role="dialog"'));
+  assert.ok(doctor.includes('aria-modal="true"'));
+  assert.ok(doctor.includes("if (!visible) return null"));
 });
 
 test('photo hover and progress updates avoid layout-moving animation', async () => {

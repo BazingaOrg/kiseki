@@ -190,6 +190,13 @@ test('still accepts signature and explicit resume flags', () => {
   assert.equal(parsed.skipExisting, true);
 });
 
+test('still accepts a signature name and rejects a blank one', () => {
+  assert.equal(parseArgs(['still', './photos', '--signature-name', ' 张三 ']).signatureName, ' 张三 ');
+  assert.equal(parseArgs(['still', 'photo.jpg']).signatureName, undefined);
+  assert.throws(() => parseArgs(['still', 'photo.jpg', '--signature-name']), /需要一个名字/);
+  assert.throws(() => parseArgs(['still', 'photo.jpg', '--signature-name', '   ']), /需要一个名字/);
+});
+
 test('still accepts --dark alongside the other variant flags', () => {
   const parsed = parseArgs(['still', './photos', '--exif', '--sign', '--dark']);
   assert.equal(parsed.exif, true);
@@ -230,6 +237,15 @@ test('render command accepts --filter with optional --filter-intensity', () => {
 
 test('filter aliases are normalized to the registry id before render args are built', () => {
   assert.deepEqual(parseArgs(['album', '--filter', 'teal_orange']).filter, {id: 'teal-orange'});
+});
+
+test('render command accepts an outro line and a signature name', () => {
+  assert.equal(parseArgs(['album', '--outro-text', '谢谢观看']).outroText, '谢谢观看');
+  assert.equal(parseArgs(['album', '--outro-text', '   ']).outroText, '');
+  assert.equal(parseArgs(['album', '--signature-name', 'Alex']).signatureName, 'Alex');
+  assert.throws(() => parseArgs(['album', '--outro-text']), /需要片尾文字/);
+  assert.throws(() => parseArgs(['album', '--outro-text', `a\nb`]), /不能换行/);
+  assert.throws(() => parseArgs(['album', '--signature-name']), /需要一个名字/);
 });
 
 test('render command accepts --template with a known id', () => {

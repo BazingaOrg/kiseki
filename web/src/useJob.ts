@@ -33,6 +33,10 @@ export interface JobOptions {
   scale?: number;
   photoCaption?: boolean;
   lyricsMode?: 'original' | 'bilingual' | 'none';
+  /** 仅 render。空字符串隐藏片尾文字。 */
+  outroText?: string;
+  /** 空字符串沿用现有签名。视频写成片头；静态图写成签名落款。 */
+  signatureName?: string;
 }
 
 /** 起 fetch-audio 用的选项:后端拿 title/artist 拼落地文件名(buildAudioFilename)。 */

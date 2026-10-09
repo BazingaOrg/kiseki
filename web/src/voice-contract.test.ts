@@ -8,7 +8,8 @@ test('smiles sit on welcome, empty, ready and done — never on errors', async (
   const [app, materials, make, job] = await Promise.all([
     source('App.tsx'), source('Materials.tsx'), source('Make.tsx'), source('JobPanel.tsx'),
   ]);
-  assert.match(app, /剩下的交给 <span className="welcome-signoff">kiseki ：）<\/span>/);
+  assert.match(app, /做成一支影像日记 <span className="welcome-signoff">：）<\/span>/);
+  assert.doesNotMatch(app, /<br\s*\/?>/);
   assert.match(materials, /jpg \/ png \/ webp 都可以 ：）/);
   assert.match(materials, /没搜到，换个说法试试 ：）/);
   assert.match(make, /素材齐了，可以开工 ：）/);

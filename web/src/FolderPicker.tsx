@@ -187,8 +187,13 @@ export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: F
         </nav>
       )}
 
-      {runtime.projectSelection === 'sandbox' && columns.length > 0 && (
-        <div className="folder-columns" ref={columnsRef} aria-busy={loading}>
+      {runtime.projectSelection === 'sandbox' && (
+        <div className="folder-columns" ref={columnsRef} aria-busy={loading || columns.length === 0}>
+          {columns.length === 0 && (
+            <section className="folder-column" aria-label="正在读取文件夹">
+              <p className="folder-empty">{error ? '' : '正在读取文件夹…'}</p>
+            </section>
+          )}
           {columns.map((column, columnIndex) => (
             <section className="folder-column" key={column.path} aria-label={`${splitBreadcrumb(column.path, column.root).slice(-1)[0]?.label ?? column.path}中的文件夹`}>
               <ul className="folder-list">

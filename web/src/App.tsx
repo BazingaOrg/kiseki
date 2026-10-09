@@ -8,6 +8,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react';
 
 import './App.css';
+import {DoctorPanel} from './DoctorPanel';
 import {FolderPicker} from './FolderPicker';
 import {createLatestGate, createSelectionEpoch} from './latest';
 import {Logo} from './Logo';
@@ -65,7 +66,7 @@ const App = () => {
 
   useEffect(loadDoctor, []);
 
-  useEffect(() => {
+  const loadRuntime = useCallback(() => {
     const epoch = selectionEpoch.capture();
     fetch('/api/runtime')
       .then((res) => {
@@ -74,10 +75,13 @@ const App = () => {
       })
       .then((data: RuntimeResponse) => {
         setRuntime(data);
+        setRuntimeUnavailable(false);
         if (data.projectSelection === 'native' && data.root && selectionEpoch.isCurrent(epoch)) void loadProject(data.root);
       })
       .catch(() => setRuntimeUnavailable(true));
   }, [loadProject, selectionEpoch]);
+
+  useEffect(() => { loadRuntime(); }, [loadRuntime]);
 
   useEffect(() => window.kisekiDesktop?.onProjectChanged((targetPath) => {
     setProject(null);
@@ -110,9 +114,15 @@ const App = () => {
       <main className="welcome">
         <Logo size={56} variant="hero" />
         <p className="welcome-lead">
-          先挑一个素材夹。<br />
-          里面放着照片、一首歌，剩下的交给 <span className="welcome-signoff">kiseki ：）</span>
+          挑一个素材夹。放进照片，做成一支影像日记 <span className="welcome-signoff">：）</span>
         </p>
+        <DoctorPanel
+          doctor={doctor}
+          onRecheck={() => loadDoctor(true)}
+          photoCaptionConfigured={runtime?.photoCaptionConfigured === true}
+          portableTools={runtime?.portableTools === true}
+          onCaptionKeySaved={loadRuntime}
+        />
         {runtime && <FolderPicker runtime={runtime} onProjectSelected={selectProject} onInteractionStart={() => setProjectLoadError(null)} />}
         {!runtime && !runtimeUnavailable && <p className="hint">正在准备项目选择…</p>}
         {runtimeUnavailable && <p className="hint hint-error" role="alert">无法读取运行环境。</p>}
@@ -131,6 +141,7 @@ const App = () => {
       onProjectRefresh={refreshProject}
       projectStale={projectStale}
       runtime={runtime}
+      onCaptionKeySaved={loadRuntime}
     />
   );
 };

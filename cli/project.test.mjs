@@ -29,6 +29,20 @@ test('scanFolder returns an empty videos list when none are present', () => {
   assert.deepEqual(scanFolder(dir).videos, []);
 });
 
+test('scanFolder can return photos without audio when audio is optional', () => {
+  const dir = makeFolder(['a.jpg', 'b.png']);
+  try {
+    assert.deepEqual(scanFolder(dir, {requireAudio: false}), {
+      photos: ['a.jpg', 'b.png'],
+      audio: null,
+      lyrics: null,
+      videos: [],
+    });
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
 test('missing audio error points to the fetch recovery command', () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-scan-'));
   const dir = path.join(root, 'my trip');

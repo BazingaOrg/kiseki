@@ -26,10 +26,10 @@
 - `demucs = true`：默认 `true`；布尔值。
 - `intro = true`：默认 `true`；布尔值。
 - `opening_recap = true`：默认 `true`；布尔值。片头开启、照片不少于 8 张且正文仍能容纳全部照片时，在签名后按音乐节拍倒序预览全部照片；图片过多时自动改为联系印样式的分组网格。`false` 时保留原片头与正文节奏。
-- `outro_text = ""`：默认空字符串；不含换行的双引号字符串。
-- `signature = ""`：默认空字符串；空字符串，或素材夹内存在的相对 `.svg` 路径。
+- `outro_text = ""`：不写这个键时，片尾白场显示 `Thanks for watching :)`。写成空字符串则不显示。不含换行。制作页的「片尾文字」只覆盖这一次渲染。
+- `signature = ""`：默认空字符串，用内置片头签名；或素材夹内存在的相对 `.svg` 路径。制作页可以输入名字，生成本次成片的片头签名；导出静态图时，这份签名作为落款。不改这个键。
 
-`--portrait`、`--square` 和 `--dark` 只覆盖本次视频或 still 输出，不写回配置或 timeline。`--trim` 只覆盖本次视频运行；交互式自动裁剪选择保存于 `output/metadata/preferences.json`。`--photo-caption` 同样只覆盖本次运行；`DEEPSEEK_API_KEY` 不属于 `kiseki.toml`。可在仓库根目录的 `.env` 里写 `DEEPSEEK_API_KEY=...`（已被 gitignore），启动进程时读入；shell 里已有的同名变量不会被覆盖。
+`--portrait`、`--square` 和 `--dark` 只覆盖本次视频或 still 输出，不写回配置或 timeline。`--trim` 只覆盖本次视频运行；交互式自动裁剪选择保存于 `output/metadata/preferences.json`。`--photo-caption` 同样只覆盖本次运行；`DEEPSEEK_API_KEY` 不属于 `kiseki.toml`。在工作台环境面板填写后会写入仓库根目录的 `.env`（已被 gitignore）并立即生效。shell 里已有的同名变量不会被文件覆盖。
 
 ## 示例
 

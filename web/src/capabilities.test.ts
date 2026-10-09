@@ -83,13 +83,15 @@ test('an empty folder only leaves the actions that need nothing', () => {
   assert.deepEqual(enabledSet(emptyProject, ALL_DEPS_OK), new Set(['fetchAudio']));
 });
 
-test('photos but no audio: stills yes, video no', () => {
+test('photos but no audio can render a silent video without uv or the analyzer', () => {
   const project = {...emptyProject, photos: ['/tmp/trip/a.jpg']};
-  const caps = deriveCapabilities(project, ALL_DEPS_OK);
+  const caps = deriveCapabilities(project, withMissingDep('uv'));
   assert.equal(caps.exportStill.enabled, true);
-  assert.equal(caps.renderVideo.enabled, false);
+  assert.equal(caps.renderVideo.enabled, true);
   assert.equal(caps.browsePhotos.enabled, true);
-  assert.equal(caps.renderVideo.blockers[0].reason, '还差一首歌。');
+  assert.equal(caps.recognizeLyrics.enabled, false);
+  assert.equal(caps.followLyrics.enabled, false);
+  assert.equal(deriveCapabilities(project, withMissingDep('ffmpeg')).renderVideo.enabled, false);
 });
 
 test('audio but no photos: lyrics work, neither render nor still does', () => {
@@ -164,6 +166,22 @@ test('missing renderer blocks both render and still', () => {
   assert.equal(caps.exportStill.enabled, false);
 });
 
+test('a required analyzer download blocks render and lyric recognition', () => {
+  const doctor = withMissingDep('analyzer');
+  doctor.checks = doctor.checks.map((check) => check.id === 'analyzer' ? {...check, optional: false} : check);
+  const caps = deriveCapabilities(fullProject, doctor);
+  assert.equal(caps.renderVideo.enabled, false);
+  assert.match(caps.renderVideo.blockers.map((blocker) => blocker.reason).join(' '), /分析组件还没下载/);
+  assert.equal(caps.recognizeLyrics.enabled, false);
+  assert.equal(caps.exportStill.enabled, true);
+});
+
+test('an optional analyzer gap does not block render', () => {
+  const caps = deriveCapabilities(fullProject, withMissingDep('analyzer'));
+  assert.equal(caps.renderVideo.enabled, true);
+  assert.equal(caps.recognizeLyrics.enabled, true);
+});
+
 test('missing uv blocks render and lyric recognition, not playback', () => {
   const caps = deriveCapabilities(fullProject, withMissingDep('uv'));
   assert.equal(caps.renderVideo.enabled, false);
@@ -182,7 +200,9 @@ test('missing yt-dlp only blocks fetching audio', () => {
 test('all blockers are reported, not just the first one', () => {
   const caps = deriveCapabilities(emptyProject, withMissingDep('ffmpeg'));
   const reasons = caps.renderVideo.blockers.map((blocker) => blocker.reason);
-  assert.ok(reasons.length >= 3, `期望同时报出缺照片/缺音频/缺 ffmpeg,实际: ${reasons.join(' | ')}`);
+  assert.ok(reasons.length >= 2, `期望同时报出缺照片和缺 ffmpeg,实际: ${reasons.join(' | ')}`);
+  assert.match(reasons.join(' '), /还没有照片/);
+  assert.match(reasons.join(' '), /ffmpeg/);
 });
 
 test('while doctor is still loading, dependency blockers are withheld', () => {

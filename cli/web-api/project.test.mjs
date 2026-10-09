@@ -37,6 +37,16 @@ test('assembles photos, audio, lyrics and output listings', () => {
   assert.equal(result.body.output.videos.length, 1);
 });
 
+test('echoes the visible outro, including an explicit empty string', () => {
+  const root = makeTempRoot();
+  fs.writeFileSync(path.join(root, 'a.jpg'), '');
+  assert.equal(getProject(root, root).body.outroText, 'Thanks for watching :)');
+  fs.writeFileSync(path.join(root, 'kiseki.toml'), 'outro_text = ""\n');
+  assert.equal(getProject(root, root).body.outroText, '');
+  fs.writeFileSync(path.join(root, 'kiseki.toml'), 'outro_text = "谢谢观看"\n');
+  assert.equal(getProject(root, root).body.outroText, '谢谢观看');
+});
+
 test('includes filterConfig when kiseki.json is present and valid', () => {
   const root = makeTempRoot();
   fs.writeFileSync(path.join(root, 'kiseki.json'), JSON.stringify({filter: 'riso', intensity: 0.5}));

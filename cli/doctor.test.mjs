@@ -7,6 +7,8 @@
  */
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {collectDoctorChecks, collectWebDoctorChecks, FIXES, runDoctor} from './doctor.mjs';
@@ -146,6 +148,29 @@ test('web probe timeout kills every hung child and returns normal failed checks'
   assert.deepEqual(checks.slice(1, 3).map((check) => check.ok), [false, false]);
   assert.equal(checks[4].optional, true);
   assert.equal(checks[4].ok, false);
+});
+
+test('packaged runtime asks for the analyzer download and folds uv into it', () => {
+  const checks = collectDoctorChecks({
+    runtime: {
+      uv: path.join(os.tmpdir(), 'kiseki-missing-uv'),
+      ffmpeg: path.join(os.tmpdir(), 'kiseki-missing-ffmpeg'),
+      ytDlp: path.join(os.tmpdir(), 'kiseki-missing-yt-dlp'),
+      rendererRoot: path.join(os.tmpdir(), 'kiseki-missing-renderer'),
+      analyzerRoot: path.join(os.tmpdir(), 'kiseki-missing-analyzer'),
+      analyzerEnvRoot: path.join(os.tmpdir(), 'kiseki-missing-env'),
+      bundledAnalyzer: true,
+    },
+  });
+  const byId = Object.fromEntries(checks.map((check) => [check.id, check]));
+  assert.equal(byId.uv.ok, true);
+  assert.equal(byId.uv.line, 'uv 会随分析组件一起下载');
+  assert.equal(byId.ffmpeg.ok, false);
+  assert.equal(byId.ffmpeg.optional, undefined);
+  assert.equal(byId.ffmpeg.line, 'FFmpeg 还没下载');
+  assert.equal(byId.analyzer.ok, false);
+  assert.equal(byId.analyzer.optional, undefined);
+  assert.equal(byId.analyzer.line, '分析组件还没下载');
 });
 
 test('a web probe spawn error settles once as the normal missing check and cleans up its timer', async () => {

@@ -46,6 +46,27 @@ test('portrait and square override render props without changing the source time
   await assert.rejects(() => applyRenderVariants(timeline(), {portrait: true, square: true}), /不能同时使用/);
 });
 
+test('outro text and a signature are applied in memory and a short video grows enough for the intro', async () => {
+  const source = {
+    meta: {duration: 4, audio: '', branding: {intro: false}},
+    photos: [{src: 'a.jpg', start: 0, end: 4}],
+    subtitles: [],
+  };
+  const result = await applyRenderVariants(source, {
+    outroText: '  再见  ',
+    signature: 'output/metadata/generated-signature.svg',
+  }, {resolvePhotoPath: (src) => src});
+  assert.equal(result.meta.branding.outro_text, '再见');
+  assert.equal(result.meta.branding.signature, 'output/metadata/generated-signature.svg');
+  assert.equal(result.meta.branding.intro, true);
+  assert.equal(result.meta.duration, 5.95);
+  assert.equal(result.photos[0].end, 5.95);
+  await assert.rejects(
+    () => applyRenderVariants(timeline(), {signature: '../secret.svg'}, {resolvePhotoPath: (src) => src}),
+    /素材夹/,
+  );
+});
+
 test('sign sets meta.sign to true', async () => {
   const result = await applyRenderVariants(timeline(), {sign: true}, {resolvePhotoPath: (src) => src});
   assert.equal(result.meta.sign, true);

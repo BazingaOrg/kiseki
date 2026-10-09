@@ -2,10 +2,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
+import {packagedDataRoot} from './desktop-runtime.mjs';
+import {prependToolPaths} from './web-api/setup-tools.mjs';
+
 const ALLOWED_KEYS = new Set(['DEEPSEEK_API_KEY']);
 
 export const repoEnvPath = (fromFile = fileURLToPath(import.meta.url)) =>
   path.resolve(path.dirname(fromFile), '..', '.env');
+
+export const envFilePath = (env = process.env) => (
+  env.KISEKI_DESKTOP === '1' ? path.join(packagedDataRoot(env), '.env') : repoEnvPath()
+);
 
 export const parseEnvFile = (text) => {
   const out = {};
@@ -40,16 +47,17 @@ export const applyLocalEnv = (parsed, env = process.env) => {
 };
 
 export const loadLocalEnv = ({
-  envPath = repoEnvPath(),
   env = process.env,
+  envPath = envFilePath(env),
   readFileSync = fs.readFileSync,
 } = {}) => {
   let text;
   try {
     text = readFileSync(envPath, 'utf8');
   } catch {
-    return env;
+    text = null;
   }
-  applyLocalEnv(parseEnvFile(text), env);
+  if (text !== null) applyLocalEnv(parseEnvFile(text), env);
+  prependToolPaths(env);
   return env;
 };

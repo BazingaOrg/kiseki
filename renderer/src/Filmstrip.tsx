@@ -12,6 +12,7 @@ import {ChapterCard} from './ChapterCard';
 import {childOpacityForParent, filmstripLayerPresentation, photoCaptionLayerPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
+import {Outro} from './Outro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
 import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
@@ -19,7 +20,7 @@ import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
 import {CAPTION_SUBJECT_GAP, FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION, isCaptionLayout} from './photoCaptionLayout.mjs';
-import {ANIMATION, INTRO, getPalette, getVisualScale} from './theme';
+import {ANIMATION, INTRO, OUTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 
@@ -112,6 +113,8 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
       : photoClips[0].end >= introDuration + INTRO.minPhotoVisible &&
         durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
   const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
+  const outroText = meta.branding?.outro_text ?? OUTRO.text;
+  const outroOpacity = outroText === '' ? 0 : interpolate(whiteFade, [...OUTRO.fadeRange], [0, 1], clamp);
   const captionState = photoCaptionPresentation({
     clips: visualClips,
     frame,
@@ -123,10 +126,12 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   });
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>
-      <Audio
-        src={staticFile(meta.audio.replace(/^\.\//, ''))}
-        volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
-      />
+      {meta.audio ? (
+        <Audio
+          src={staticFile(meta.audio.replace(/^\.\//, ''))}
+          volume={(f) => interpolate(f, [audioFadeStart, durationInFrames - 1], [1, 0], clamp)}
+        />
+      ) : null}
       {visibleMainPhotos.map(({clip, opacity}) => {
         const caption = photoCaptionLayerPresentation({clip, hasLayout: isCaptionLayout(clip.captionLayout), state: captionState});
         return (
@@ -217,6 +222,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         photoScale={mainScale / 0.92}
       />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
+      <Outro text={outroText} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
       {showIntro && frame <= Math.round(introDuration * fps) ? (
         <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />
       ) : null}

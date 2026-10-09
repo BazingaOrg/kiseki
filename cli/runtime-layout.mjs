@@ -60,6 +60,7 @@ export const createRuntimeLayout = (overrides = {}) => {
     wheelhouseRoot: overrides.wheelhouseRoot ?? path.join(sourceRoot, 'analyzer', 'wheelhouse'),
     chromium: overrides.chromium ?? null,
     analyzerOffline: overrides.analyzerOffline ?? false,
+    bundledAnalyzer: overrides.bundledAnalyzer ?? false,
     python: overrides.python ?? 'python3',
   };
   return Object.freeze({
@@ -80,6 +81,7 @@ export const createRuntimeLayout = (overrides = {}) => {
     wheelhouseRoot: normalizePath(layout.wheelhouseRoot, 'wheelhouseRoot'),
     chromium: layout.chromium === null ? null : normalizePath(layout.chromium, 'chromium'),
     analyzerOffline: Boolean(layout.analyzerOffline),
+    bundledAnalyzer: Boolean(layout.bundledAnalyzer),
     python: normalizeCommand(layout.python, 'python'),
   });
 };

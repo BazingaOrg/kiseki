@@ -1,3 +1,4 @@
+import {outroTextError} from './branding.mjs';
 import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 import {TEMPLATE_IDS, normalizeTemplateId} from './templates.mjs';
 
@@ -10,6 +11,19 @@ export class JobValidationError extends Error {
 
 const FORMATS = ['landscape', 'portrait', 'square'];
 const TRIM_VALUES = ['auto', 'full'];
+
+const signatureNameFlags = (opts) => {
+  if (opts.signatureName === undefined || opts.signatureName === null || opts.signatureName === '') return [];
+  if (typeof opts.signatureName !== 'string' || /[\r\n]/.test(opts.signatureName)) {
+    throw new JobValidationError('signatureName', '签名名字需要是一行文字');
+  }
+  const signatureName = opts.signatureName.trim();
+  if (!signatureName) return [];
+  if ([...new Intl.Segmenter(undefined, {granularity: 'grapheme'}).segment(signatureName)].length > 24) {
+    throw new JobValidationError('signatureName', '名字最长 24 个字');
+  }
+  return ['--signature-name', signatureName];
+};
 
 /**
  * 把 {kind, folder, options} 组装成 kiseki CLI 的 argv 数组.
@@ -43,8 +57,10 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
     return value;
   };
 
+  const signatureFlags = signatureNameFlags(opts);
+
   if (readBool('exif')) flags.push('--exif');
-  if (readBool('sign')) flags.push('--sign');
+  if (readBool('sign') || (kind === 'still' && signatureFlags.length > 0)) flags.push('--sign');
   if (readBool('photoCaption')) flags.push('--photo-caption');
   if (readBool('dark')) flags.push('--dark');
 
@@ -98,9 +114,17 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
       throw new JobValidationError('template', `template 必须是以下之一: ${TEMPLATE_IDS.join(', ')}`);
     }
     if (template) flags.push('--template', template);
+
+    if (opts.outroText !== undefined) {
+      const error = outroTextError(opts.outroText);
+      if (error) throw new JobValidationError('outroText', error);
+      flags.push('--outro-text', opts.outroText.trim());
+    }
+    flags.push(...signatureFlags);
   }
 
   if (kind === 'still') {
+    flags.push(...signatureFlags);
     const scale = opts.scale === undefined ? 2 : opts.scale;
     if (typeof scale !== 'number' || !Number.isInteger(scale) || scale < 1 || scale > 4) {
       throw new JobValidationError('scale', 'scale 必须是 1–4 的整数');

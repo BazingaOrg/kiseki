@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "kiseki 窗口只加载本机工作台",
+  "windows": ["main"],
+  "permissions": []
+}

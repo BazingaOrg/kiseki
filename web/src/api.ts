@@ -50,6 +50,9 @@ export const searchLyrics = (
   return getJson(`/api/fetch/lyrics-search?${params}`);
 };
 
+export const previewSignature = (name: string): Promise<ApiResult<{svg: string}>> =>
+  postAsset('/api/signature', {name});
+
 export const installLyrics = async (
   folder: string,
   id: LyricsCandidate['id'],
@@ -93,6 +96,12 @@ export const mutateAsset = (folder: string, assetId: string, action: 'rename' | 
 
 export const generatePhotoCaption = (folder: string, assetId: string, hint?: string) =>
   postAsset<{caption: string}>('/api/captions/generate', {folder, assetId, ...(hint ? {hint} : {})});
+
+export const saveCaptionKey = (apiKey: string) =>
+  postAsset<{configured: boolean}>('/api/settings/caption-key', {apiKey});
+
+export const installSetupTool = (tool: 'uv' | 'ffmpeg' | 'analyzer') =>
+  postAsset<{ok: boolean; tool: string}>('/api/setup/install', {tool});
 
 export const undoAssetDelete = (folder: string, undoId: string) =>
   postAsset<{restored: number}>('/api/assets/undo', {folder, undoId});

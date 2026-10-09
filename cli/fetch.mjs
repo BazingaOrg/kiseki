@@ -16,6 +16,7 @@ import {
 } from './lrc.mjs';
 import {PICK_BACK, withPrompts} from './prompts.mjs';
 import {AUDIO_DIR, scanFolderLoose} from './project.mjs';
+import {canReach, LRCLIB_REACH_URL, YOUTUBE_REACH_URL} from './reach.mjs';
 import {term} from './term.mjs';
 import {checkYtDlp, downloadWithYtDlpProgress, searchYtDlp} from './ytdlp.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
@@ -358,7 +359,11 @@ export const searchLyricsRecords = async (
   return await fetcher('/search', {q: query});
 };
 
-const NETWORK_HINT = '检查网络是否可达 lrclib.net(请求经 curl 发出,走系统代理设置)';
+const NETWORK_HINT = '检查网络是否连得上 lrclib.net。请求由 curl 发出，会沿用系统里已有的网络设置。';
+const YOUTUBE_UNREACHABLE = '连不上 YouTube，这次没能获取音频。可以把歌放到素材夹里继续。';
+const AUDIO_SEARCH_FAILED = '搜索没有完成。可以换个关键词，或把歌放到素材夹里。';
+const AUDIO_DOWNLOAD_FAILED = '这次没能获取音频。可以换一个结果，或把歌放到素材夹里。';
+const LYRICS_UNREACHABLE = '连不上歌词服务，这次没能在线查找。可以把 .lrc 放进素材夹。';
 
 // ---------------------------------------------------------------------------
 // 交互层
@@ -385,9 +390,13 @@ const audioFlow = async (ask, folder, {existing = null, task = null, runtime = s
       const search = searchYtDlp(input, {runtime});
       if (!search.ok) {
         searchTask.fail();
-        term.error('搜索失败');
-        if (search.stderr) term.detail(search.stderr.split('\n').slice(-3).join('\n'));
-        term.detail('常见原因:网络需要代理、yt-dlp 版本过旧(yt-dlp -U 可更新)');
+        const reachable = await canReach(YOUTUBE_REACH_URL);
+        if (!reachable) {
+          term.error(YOUTUBE_UNREACHABLE);
+        } else {
+          term.error(AUDIO_SEARCH_FAILED);
+          if (search.stderr) term.detail(search.stderr.split('\n').slice(-3).join('\n'));
+        }
         if (!(await ask.confirm('换个关键词再试?', {
           defaultValue: false, defaultLabel: '结束', alternateKey: 'r', alternateLabel: '重试',
         }))) return false;
@@ -414,9 +423,13 @@ const audioFlow = async (ask, folder, {existing = null, task = null, runtime = s
     const result = await downloadWithYtDlpProgress(url, {tempParent: task?.lease.taskRoot, runtime});
     if (!result.ok) {
       downloadTask.fail();
-      term.error('下载失败');
-      if (result.stderr) term.detail(result.stderr);
-      term.detail('常见原因:网络需要代理、视频地区受限或已下架;可换一个结果或 URL');
+      const reachable = await canReach(YOUTUBE_REACH_URL);
+      if (!reachable) {
+        term.error(YOUTUBE_UNREACHABLE);
+      } else {
+        term.error(AUDIO_DOWNLOAD_FAILED);
+        if (result.stderr) term.detail(result.stderr);
+      }
       if (!(await ask.confirm('再试一次(可换关键词/URL)?', {
         defaultValue: false, defaultLabel: '结束', alternateKey: 'r', alternateLabel: '重试',
       }))) return false;
@@ -494,6 +507,11 @@ export const lyricsFlow = async (
   const usingDefaultLrclib = fetcher === lrclibFetch;
   if (usingDefaultLrclib && runtime !== sourceRuntimeLayout) fetcher = createLrclibFetch(runtime);
   if (amllFetcher === undefined && usingDefaultLrclib) amllFetcher = runtime === sourceRuntimeLayout ? amllFetch : createAmllFetch(runtime);
+  let lrclibUnreachable = false;
+  if (usingDefaultLrclib && !(await canReach(LRCLIB_REACH_URL))) {
+    lrclibUnreachable = true;
+    fetcher = null;
+  }
   const title = confirmedTitle || probe.title;
   const artist = confirmedArtist ?? probe.artist;
   const defaultQuery = buildLyricsQuery({title, artist, audioFile: audio});
@@ -538,8 +556,12 @@ export const lyricsFlow = async (
     }
     if (sources.length === 0) {
       lyricsSearchTask.fail();
-      term.error(`歌词搜索失败: ${warnings.join('；') || '没有可用歌词源'}`);
-      term.detail(NETWORK_HINT);
+      if (lrclibUnreachable) {
+        term.error(LYRICS_UNREACHABLE);
+      } else {
+        term.error(`歌词搜索失败: ${warnings.join('；') || '没有可用歌词源'}`);
+        term.detail(NETWORK_HINT);
+      }
       return false;
     }
     lyricsSearchTask.succeed();

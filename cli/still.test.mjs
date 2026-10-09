@@ -5,9 +5,19 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
-import {formatStillDiagnostics, loadStillCanvasConfig, prepareStillJobs, resolveJobs} from './still.mjs';
+import {formatStillDiagnostics, loadStillCanvasConfig, prepareStillJobs, resolveJobs, resolveStillSignature} from './still.mjs';
 
 const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-still-'));
+
+test('still uses a generated signature ahead of the configured file', () => {
+  assert.deepEqual(resolveStillSignature({sign: false}), {sign: false});
+  assert.deepEqual(resolveStillSignature({sign: true, configuredSignature: 'mark.svg'}), {sign: true, signatureSrc: 'mark.svg'});
+  assert.deepEqual(resolveStillSignature({sign: false, configuredSignature: 'mark.svg', generatedSignature: 'output/metadata/generated-signature.svg'}), {
+    sign: true,
+    signatureSrc: 'output/metadata/generated-signature.svg',
+  });
+  assert.deepEqual(resolveStillSignature({sign: true}), {sign: true});
+});
 
 test('still projects the shared strict config and preserves # inside quoted text', () => {
   const dir = fixture();
