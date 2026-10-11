@@ -596,6 +596,19 @@ test('lyrics-search:歌词站连不上且没有其他结果时说明网络原因
   assert.equal(result.body.error.includes('代理'), false);
 });
 
+test('lyrics-search:歌词站连不上但 AMLL 已正常返回空结果时不说连不上', async () => {
+  const root = makeTempRoot();
+  const folder = makeFolderWithAudio(root);
+  const result = await searchLyricsCandidates(root, folder, {
+    run: fakeRun({}),
+    reach: async () => false,
+    amllFetcher: async () => ({items: []}),
+  });
+  assert.equal(result.status, 200);
+  assert.deepEqual(result.body.candidates, []);
+  assert.equal(JSON.stringify(result.body).includes('连不上'), false);
+});
+
 test('lyrics-search:歌词站连不上但已有其他结果时不额外提示', async () => {
   const root = makeTempRoot();
   const folder = makeFolderWithAudio(root);

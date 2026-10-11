@@ -25,6 +25,7 @@ import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {normalizeAmllCandidate, parseAmllLyrics} from './amll.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
+const LRCLIB_PROBE_URL = `${LRCLIB_BASE}/search?q=a`;
 // LRCLIB 要求调用方带可识别的 User-Agent
 const LRCLIB_UA = 'kiseki (https://github.com/BazingaOrg/kiseki)';
 const AMLL_BASE = 'https://api.amll.dev/v1/lyrics';
@@ -325,6 +326,18 @@ const createLrclibFetch = (runtime = sourceRuntimeLayout) => (pathname, params) 
 };
 const lrclibFetch = createLrclibFetch();
 
+export const lrclibProbeArgs = () => [
+  '-sS', '-o', '/dev/null', '-w', '%{http_code}', '--max-time', '8',
+  '-H', `User-Agent: ${LRCLIB_UA}`,
+  LRCLIB_PROBE_URL,
+];
+
+export const lrclibProbeOk = (result) => {
+  if (!result || result.status !== 0) return false;
+  const code = Number.parseInt(String(result.stdout ?? '').trim(), 10);
+  return code >= 200 && code < 400;
+};
+
 const createAmllFetch = (runtime = sourceRuntimeLayout) => (pathname, params = {}) => {
   const url = new URL(`${AMLL_BASE}${pathname}`);
   for (const [key, value] of Object.entries(params)) {
@@ -508,7 +521,7 @@ export const lyricsFlow = async (
   if (usingDefaultLrclib && runtime !== sourceRuntimeLayout) fetcher = createLrclibFetch(runtime);
   if (amllFetcher === undefined && usingDefaultLrclib) amllFetcher = runtime === sourceRuntimeLayout ? amllFetch : createAmllFetch(runtime);
   let lrclibUnreachable = false;
-  if (usingDefaultLrclib && !(await canReach(LRCLIB_REACH_URL))) {
+  if (usingDefaultLrclib && !lrclibProbeOk(spawnSync(runtime.curl, lrclibProbeArgs(), {encoding: 'utf8'}))) {
     lrclibUnreachable = true;
     fetcher = null;
   }

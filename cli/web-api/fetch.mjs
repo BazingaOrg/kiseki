@@ -16,6 +16,8 @@ import {
   probeAudio,
   resolveAmllLyrics,
   safeAmllLyricsFilename,
+  lrclibProbeArgs,
+  lrclibProbeOk,
   searchLyricsRecords,
   searchAmllItems,
   selectLyricsCandidatesBySource,
@@ -363,7 +365,11 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   const query = override || normalizeSearchQuery(buildLyricsQuery({title: expectedTitle, artist: expectedArtist, audioFile: audio}));
   const useInjectedFetchers = fetcher !== undefined || amllFetcher !== undefined;
   const usesRealLrclib = fetcher === undefined;
-  const lrclibReachable = usesRealLrclib ? await (reach ?? canReach)(LRCLIB_REACH_URL) : true;
+  const lrclibReachable = usesRealLrclib
+    ? reach
+      ? await reach(LRCLIB_REACH_URL)
+      : lrclibProbeOk(await run(runtime.curl, lrclibProbeArgs(), {timeout: 9000}))
+    : true;
   const requests = [];
   if (lrclibReachable && (!useInjectedFetchers || fetcher !== undefined)) {
     requests.push(['lrclib', async () => searchLyricsRecords(
@@ -395,7 +401,8 @@ export const searchLyricsCandidates = async (root, folderParam, {run = runProces
   }));
   const records = settled.flatMap(({status, records: sourceRecords}) => status === 'fulfilled' ? sourceRecords : []);
   const warnings = settled.flatMap(({status, provider, error}) => status === 'rejected' ? [`${sourceNameFor(provider)} 搜索失败: ${error.message}`] : []);
-  if (records.length === 0 && !lrclibReachable) {
+  const amllAnswered = settled.some(({provider, status}) => provider === 'amll' && status === 'fulfilled');
+  if (records.length === 0 && !lrclibReachable && !amllAnswered) {
     return {status: 502, body: {error: LYRICS_UNREACHABLE}};
   }
   if (records.length === 0 && settled.every(({status}) => status === 'rejected')) {
