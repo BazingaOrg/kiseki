@@ -2,7 +2,7 @@
 
 kiseki 是本地工作台：读取照片、可选的一首歌和可选 LRC。有歌时分析并规划时间线；没有歌时按每张照片 4 秒写成无声时间线，不运行音频分析。输出是视频或静态 PNG。`fetch` 是可选在线备料；音频分析与渲染仍在本机完成。用户显式开启图片旁白时，任务会在渲染前把缩小后的预览发给 DeepSeek，文案写入 `output/metadata/ai-captions.json`。DeepSeek API Key 在环境面板保存到被忽略的 `.env`，并立即进入当前进程；它不进入 `kiseki.toml`、页面回显或 Renderer。
 
-给普通人的入口是安装包。`desktop/` 用系统窗口打开同一套网页，安装包里有 Node 和渲染器。FFmpeg 与分析组件在「准备这台电脑」里点下载，优先走国内镜像，存到本机应用数据，不写进安装包，也不装到系统里。本机已有 Chrome、Chromium 或 Edge 时，出片直接用它；否则第一次渲染仍会下载 Remotion 的浏览器，那个地址在国内可能连不上。识别模型优先走国内镜像。YouTube 和在线歌词站本身不在国内镜像里，连不上时提示网络原因，可以把歌或 `.lrc` 放进素材夹。macOS 与 Windows 在各自系统上执行 `npm --prefix desktop run build`，得到不同的安装包。开发时仍可双击 `启动.command` 或 `启动.bat`，CLI 仍可用。
+给普通人的入口是安装包。`desktop/` 用系统窗口打开同一套网页，安装包里有 Node 和渲染器。FFmpeg 与分析组件在「下载缺少的工具」里点下载，优先走国内镜像，存到本机应用数据，不写进安装包，也不装到系统里。本机已有 Chrome、Chromium 或 Edge 时，出片直接用它；否则第一次渲染仍会下载 Remotion 的浏览器，那个地址在国内可能连不上。识别模型优先走国内镜像。YouTube 和在线歌词站本身不在国内镜像里，连不上时提示网络原因，可以把歌或 `.lrc` 放进素材夹。macOS 与 Windows 在各自系统上执行 `npm --prefix desktop run build`，得到不同的安装包。开发时仍可双击 `启动.command` 或 `启动.bat`，CLI 仍可用。
 
 ## 本地工作台
 

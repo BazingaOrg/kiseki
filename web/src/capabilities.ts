@@ -21,6 +21,8 @@ export interface Remedy {
 export interface Blocker {
   reason: string;
   remedy: Remedy | null;
+  /** 可在「下载缺少的工具」里处理的依赖，展示前会收成一句。 */
+  tool?: 'uv' | 'ffmpeg' | 'analyzer';
 }
 
 export interface Capability {
@@ -33,6 +35,8 @@ export type Capabilities = Record<CapabilityId, Capability>;
 const MATERIALS: Remedy = {label: '去补素材', target: 'materials'};
 const MAKE: Remedy = {label: '去制作', target: 'make'};
 const DOCTOR: Remedy = {label: '查看环境', target: 'doctor'};
+const DOWNLOAD_TOOLS: Remedy = {label: '下载缺少的工具', target: 'doctor'};
+const TOOL_LABEL = {uv: 'uv', ffmpeg: 'FFmpeg', analyzer: '分析组件'} as const;
 
 /**
  * 依赖类 blocker。三态各有各的处理:
@@ -45,7 +49,7 @@ const requiredAnalyzerBlocker = (doctor: DoctorState): Blocker | null => {
   if (typeof doctor === 'string') return null;
   const check = doctor.checks.find((item) => item.id === 'analyzer');
   if (!check || check.ok || check.optional) return null;
-  return {reason: '分析组件还没下载。', remedy: DOCTOR};
+  return {reason: '分析组件还没下载。', remedy: DOCTOR, tool: 'analyzer'};
 };
 
 const depBlocker = (doctor: DoctorState, id: string, what: string): Blocker | null => {
@@ -54,7 +58,8 @@ const depBlocker = (doctor: DoctorState, id: string, what: string): Blocker | nu
     return {reason: '环境检查没能完成，暂时说不准能不能开工。', remedy: DOCTOR};
   }
   if (doctor.checks.some((check) => check.id === id && check.ok)) return null;
-  return {reason: `${what}需要 ${id}，现在还没装好。`, remedy: DOCTOR};
+  const tool = id === 'uv' || id === 'ffmpeg' || id === 'analyzer' ? id : undefined;
+  return {reason: `${what}需要 ${id}，现在还没装好。`, remedy: tool ? DOWNLOAD_TOOLS : DOCTOR, tool};
 };
 
 const dedupeBlockers = (blockers: Blocker[]): Blocker[] => {
@@ -69,8 +74,30 @@ const dedupeBlockers = (blockers: Blocker[]): Blocker[] => {
 const compact = (blockers: (Blocker | null)[]): Blocker[] =>
   blockers.filter((blocker): blocker is Blocker => blocker !== null);
 
+const foldToolBlockers = (blockers: Blocker[]): Blocker[] => {
+  const names: string[] = [];
+  const rest: Blocker[] = [];
+  for (const blocker of blockers) {
+    if (!blocker.tool) {
+      rest.push(blocker);
+      continue;
+    }
+    const name = TOOL_LABEL[blocker.tool];
+    if (!names.includes(name)) names.push(name);
+  }
+  if (names.length === 0) return blockers;
+  const tail = names[names.length - 1];
+  const head = names.slice(0, -1).join('、');
+  const spaceBefore = /[A-Za-z0-9]$/.test(head);
+  const spaceAfter = /^[A-Za-z0-9]/.test(tail);
+  const and = names.length === 1 ? '' : `${spaceBefore ? ' ' : ''}和${spaceAfter ? ' ' : ''}`;
+  const listed = names.length === 1 ? tail : `${head}${and}${tail}`;
+  const gap = /^[A-Za-z0-9]/.test(listed) ? ' ' : '';
+  return [...rest, {reason: `还缺${gap}${listed}。`, remedy: DOWNLOAD_TOOLS}];
+};
+
 const make = (blockers: (Blocker | null)[]): Capability => {
-  const list = dedupeBlockers(compact(blockers));
+  const list = foldToolBlockers(dedupeBlockers(compact(blockers)));
   return {enabled: list.length === 0, blockers: list};
 };
 

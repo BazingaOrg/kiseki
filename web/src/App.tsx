@@ -114,7 +114,7 @@ const App = () => {
       <main className="welcome">
         <Logo size={56} variant="hero" />
         <p className="welcome-lead">
-          挑一个素材夹。放进照片，做成一支影像日记 <span className="welcome-signoff">：）</span>
+          挑一个素材夹，放进照片，做成一支影像日记 <span className="welcome-signoff">：）</span>
         </p>
         <DoctorPanel
           doctor={doctor}

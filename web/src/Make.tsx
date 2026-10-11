@@ -8,7 +8,6 @@ import type {Capability, Capabilities, Remedy} from './capabilities';
 import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
 import {thumbUrl} from './media';
-import {deletePreset, loadPresets, savePreset, type RenderPreset} from './presets';
 import {LYRICS_MODE_EVENT, lyricsModeStorageKey, type ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import {FieldHelp} from './FieldHelp';
@@ -439,8 +438,6 @@ const ActionCard = ({
   const [expanded, setExpanded] = useState(true);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? {...RENDER_DEFAULTS, outroText} : STILL_DEFAULTS);
   const [submittedOptions, setSubmittedOptions] = useState<JobOptions | null>(null);
-  const [presets, setPresets] = useState<RenderPreset[]>(() => loadPresets(folder));
-  const [presetName, setPresetName] = useState('');
   const optionsPresence = useTransitionPresence(expanded);
   const optionsPanelRef = useRef<HTMLDivElement>(null);
   const lyricsModeKey = lyricsModeStorageKey(folder);
@@ -484,23 +481,6 @@ const ActionCard = ({
     }
     setOptions(constrainOptions(kind, next));
   };
-
-  const applyPreset = (preset: RenderPreset) => {
-    handleOptionsChange({
-      ...preset.options,
-      photoCaption: preset.options.photoCaption === true,
-      lyricsMode: preset.options.lyricsMode === 'original' || preset.options.lyricsMode === 'none' ? preset.options.lyricsMode : 'bilingual',
-    });
-  };
-
-  const isCurrentPreset = (preset: RenderPreset) => JSON.stringify(preset.options) === JSON.stringify(options);
-
-  const handleSavePreset = () => {
-    setPresets(savePreset(folder, presetName, options, []));
-    setPresetName('');
-  };
-
-  const handleDeletePreset = (id: string) => setPresets(deletePreset(folder, id));
 
   useEffect(() => {
     if (!isActive || !job.snapshotOptions || submittedOptions) return;
@@ -567,44 +547,6 @@ const ActionCard = ({
                   style={{pointerEvents: expanded ? undefined : 'none'}}
                   onTransitionEnd={optionsPresence.onTransitionEnd}
                 >
-                  {kind === 'render' && (
-                    <div className="make-presets">
-                      {presets.length > 0 && (
-                        <div className="make-preset-row">
-                          {presets.map((preset) => (
-                            <div className={`make-preset-chip${isCurrentPreset(preset) ? ' make-preset-chip-active' : ''}`} key={preset.id}>
-                              <button
-                                type="button"
-                                className="make-preset-apply"
-                                onClick={() => applyPreset(preset)}
-                                title={`应用预设:${preset.name}`}
-                              >
-                                {preset.name}
-                              </button>
-                              <button
-                                type="button"
-                                className="make-preset-delete"
-                                onClick={() => handleDeletePreset(preset.id)}
-                                aria-label={`删除预设 ${preset.name}`}
-                              >
-                                ×
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                      <div className="make-preset-save">
-                        <input
-                          className="make-preset-name"
-                          value={presetName}
-                          onChange={(event) => setPresetName(event.target.value)}
-                          placeholder="预设名称,如 复古暗夜"
-                          aria-label="预设名称"
-                        />
-                        <button className="link-button" disabled={!presetName.trim()} onClick={handleSavePreset}>存为预设</button>
-                      </div>
-                    </div>
-                  )}
                   <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} captionCapability={captionCapability} hasTranslation={hasTranslation} />
                 </div>
               )}

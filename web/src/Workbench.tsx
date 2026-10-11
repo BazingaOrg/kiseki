@@ -387,19 +387,19 @@ export const Workbench = ({
               <ChevronDown className="folder-switch-chevron" size={13} strokeWidth={1.7} aria-hidden="true" />
             </button>
           )}
+          <DoctorPanel
+            doctor={doctor}
+            onRecheck={onRecheckDoctor}
+            photoCaptionConfigured={runtime?.photoCaptionConfigured === true}
+            portableTools={runtime?.portableTools === true}
+            onCaptionKeySaved={onCaptionKeySaved}
+            requestOpen={doctorRequest}
+          />
           <ThemeToggle />
         </div>
       </header>
 
       <div className="workbench-content">
-        <DoctorPanel
-          doctor={doctor}
-          onRecheck={onRecheckDoctor}
-          photoCaptionConfigured={runtime?.photoCaptionConfigured === true}
-          portableTools={runtime?.portableTools === true}
-          onCaptionKeySaved={onCaptionKeySaved}
-          requestOpen={doctorRequest}
-        />
         {/* 光把切换按钮禁掉不够 —— 得说清为什么换不了、以及怎么才能换 */}
         {locked && (
           <p className="locked-note">

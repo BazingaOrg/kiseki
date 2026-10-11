@@ -12,7 +12,7 @@
 
 不需要手改 `kiseki.toml`。常用选项都在制作页里，文件配置只留给想固定偏好的人。
 
-安装包和网页用的是同一套界面与任务代码。macOS 与 Windows 各自打包：在对应系统上先执行 `npm --prefix web run build`，再执行 `npm --prefix desktop install` 和 `npm --prefix desktop run build`。安装包只带打开界面需要的 Node 和渲染器。第一次打开后，在「准备这台电脑」里点下载 FFmpeg 和分析组件。这些下载优先走国内镜像，存到这台电脑的应用数据里。本机已经安装 Chrome、Chromium 或 Edge 时，出片直接用它；否则第一次做视频仍会下载渲染用的浏览器，那个地址在国内可能连不上。没有歌词文件、需要识别时才下载识别模型，优先走国内镜像。从 YouTube 获取音频和在线查找歌词依赖对应网站，连不上时会说明是网络原因，可以把歌或 `.lrc` 放进素材夹。
+安装包和网页用的是同一套界面与任务代码。macOS 与 Windows 各自打包：在对应系统上先执行 `npm --prefix web run build`，再执行 `npm --prefix desktop install` 和 `npm --prefix desktop run build`。安装包只带打开界面需要的 Node 和渲染器。第一次打开后，在「下载缺少的工具」里点下载 FFmpeg 和分析组件。这些下载优先走国内镜像，存到这台电脑的应用数据里。本机已经安装 Chrome、Chromium 或 Edge 时，出片直接用它；否则第一次做视频仍会下载渲染用的浏览器，那个地址在国内可能连不上。没有歌词文件、需要识别时才下载识别模型，优先走国内镜像。从 YouTube 获取音频和在线查找歌词依赖对应网站，连不上时会说明是网络原因，可以把歌或 `.lrc` 放进素材夹。
 
 开发者仍可用：
 

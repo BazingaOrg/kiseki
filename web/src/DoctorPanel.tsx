@@ -33,6 +33,7 @@ export const DoctorPanel = ({doctor, onRecheck, photoCaptionConfigured, portable
   const [notice, setNotice] = useState<string | null>(null);
   const checks = typeof doctor === 'string' ? [] : doctor.checks;
   const missing = checks.filter((check) => !check.ok && !check.optional);
+  const needsDownload = missing.some((check) => DOWNLOADABLE.has(check.id));
   const needsTools = doctor === 'unavailable' || missing.length > 0;
   const needsKey = !photoCaptionConfigured;
   const visible = doctor !== 'loading' && (needsTools || needsKey);
@@ -56,12 +57,13 @@ export const DoctorPanel = ({doctor, onRecheck, photoCaptionConfigured, portable
 
   if (!visible) return null;
 
-  const title = needsTools ? '准备这台电脑' : '给照片写一句旁白';
+  const toolLabel = needsDownload ? '下载缺少的工具' : '检查这台电脑';
+  const title = needsTools ? toolLabel : '给照片写一句旁白';
 
   return (
     <div className="doctor">
       <button className="doctor-trigger" onClick={() => setOpen(true)}>
-        {needsTools ? '准备这台电脑' : '填写 DeepSeek API Key'}
+        {needsTools ? toolLabel : '填写 DeepSeek API Key'}
       </button>
 
       {open && (
@@ -74,41 +76,44 @@ export const DoctorPanel = ({doctor, onRecheck, photoCaptionConfigured, portable
         >
           <section className="dialog doctor-dialog" role="dialog" aria-modal="true" aria-labelledby="doctor-title">
             <h2 id="doctor-title">{title}</h2>
-            {portableTools && needsTools && (
-              <p className="hint">FFmpeg 用来处理画面和声音。分析组件用来对齐节拍，没有歌词文件时也会在这台电脑上识别歌词。下载后保存在这台电脑里。</p>
+            {portableTools && needsDownload && (
+              <p className="hint">下载后保存在这台电脑里，不装进系统。</p>
             )}
-
             {doctor === 'unavailable' && (
               <p>没能检查这台电脑。确认工作台还开着，再试一次。</p>
             )}
 
-            {needsTools && checks.filter((check) => !check.ok && !check.optional).map((check) => (
+            {needsTools && (
+              <div className="doctor-downloads">
+                {checks.filter((check) => !check.ok && !check.optional && DOWNLOADABLE.has(check.id)).map((check) => (
+                  <button
+                    key={check.id}
+                    className="primary-button"
+                    disabled={busy !== null}
+                    onClick={() => {
+                      setBusy(check.id);
+                      setNotice(check.id === 'analyzer' ? '分析组件要下载一会儿。' : null);
+                      void installSetupTool(check.id as 'uv' | 'ffmpeg' | 'analyzer').then((result) => {
+                        setBusy(null);
+                        if (!result.ok) setNotice(result.message);
+                        else {
+                          const done = check.id === 'ffmpeg' ? 'FFmpeg' : check.id === 'analyzer' ? '分析组件' : 'uv';
+                          setNotice(`${done}已${portableTools ? '下载' : '安装'}，正在重新检查。`);
+                          onRecheck();
+                        }
+                      });
+                    }}
+                  >
+                    {toolAction(check.id, portableTools, busy === check.id)}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {needsTools && checks.filter((check) => !check.ok && !check.optional && !DOWNLOADABLE.has(check.id)).map((check) => (
               <div className="doctor-row" key={check.id}>
                 <span className="doctor-icon"><X size={14} /></span>
-                <div>
-                  <span>{check.line}</span>
-                  {DOWNLOADABLE.has(check.id) && (
-                    <button
-                      className="doctor-recheck"
-                      disabled={busy !== null}
-                      onClick={() => {
-                        setBusy(check.id);
-                        setNotice(check.id === 'analyzer' ? '分析组件要下载一会儿。' : null);
-                        void installSetupTool(check.id as 'uv' | 'ffmpeg' | 'analyzer').then((result) => {
-                          setBusy(null);
-                          if (!result.ok) setNotice(result.message);
-                          else {
-                            const done = check.id === 'ffmpeg' ? 'FFmpeg' : check.id === 'analyzer' ? '分析组件' : 'uv';
-                            setNotice(`${done}已${portableTools ? '下载' : '安装'}，正在重新检查。`);
-                            onRecheck();
-                          }
-                        });
-                      }}
-                    >
-                      {toolAction(check.id, portableTools, busy === check.id)}
-                    </button>
-                  )}
-                </div>
+                <span>{check.line}</span>
               </div>
             ))}
 

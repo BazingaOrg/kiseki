@@ -171,7 +171,7 @@ test('a required analyzer download blocks render and lyric recognition', () => {
   doctor.checks = doctor.checks.map((check) => check.id === 'analyzer' ? {...check, optional: false} : check);
   const caps = deriveCapabilities(fullProject, doctor);
   assert.equal(caps.renderVideo.enabled, false);
-  assert.match(caps.renderVideo.blockers.map((blocker) => blocker.reason).join(' '), /分析组件还没下载/);
+  assert.match(caps.renderVideo.blockers.map((blocker) => blocker.reason).join(' '), /还缺分析组件/);
   assert.equal(caps.recognizeLyrics.enabled, false);
   assert.equal(caps.exportStill.enabled, true);
 });
@@ -202,7 +202,7 @@ test('all blockers are reported, not just the first one', () => {
   const reasons = caps.renderVideo.blockers.map((blocker) => blocker.reason);
   assert.ok(reasons.length >= 2, `期望同时报出缺照片和缺 ffmpeg,实际: ${reasons.join(' | ')}`);
   assert.match(reasons.join(' '), /还没有照片/);
-  assert.match(reasons.join(' '), /ffmpeg/);
+  assert.match(reasons.join(' '), /FFmpeg/);
 });
 
 test('while doctor is still loading, dependency blockers are withheld', () => {
@@ -229,6 +229,13 @@ test('the unavailable-doctor reason is only stated once per capability', () => {
   // renderVideo 依赖 uv + ffmpeg + renderer 三项,不该把同一句话重复三遍
   const blockers = deriveCapabilities(fullProject, 'unavailable').renderVideo.blockers;
   assert.equal(blockers.length, 1);
+});
+
+test('missing ffmpeg and analyzer are one sentence, not two environment prompts', () => {
+  const doctor = withMissingDep('ffmpeg');
+  doctor.checks = doctor.checks.map((check) => check.id === 'analyzer' ? {...check, ok: false, optional: false} : check);
+  const reasons = deriveCapabilities(fullProject, doctor).recognizeLyrics.blockers.map((blocker) => blocker.reason);
+  assert.deepEqual(reasons, ['还缺分析组件和 FFmpeg。']);
 });
 
 test('recognizing lyrics needs ffmpeg, because analyzer falls back to it for m4a', () => {
