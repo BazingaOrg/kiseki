@@ -21,6 +21,7 @@ import soundfile as sf
 
 import term
 from beat_features import BEAT_FEATURES_VERSION
+from cut_planner import local_downbeat_times
 from lyrics_input import LrcError, parse_lrc
 from atomic_json import write_json_atomic
 from task_temp import temporary_directory
@@ -73,6 +74,34 @@ def beat_energy(y: np.ndarray, sr: int, beat_times: np.ndarray, duration: float)
     return [round(float(v), 6) for v in np.clip((db - low) / (high - low), 0, 1)]
 
 
+def _robust_unit(values: np.ndarray) -> list[float]:
+    """把一串拍点特征压到 0–1。整段几乎没变化时记为中性 0.5。"""
+    series = np.asarray(values, dtype=np.float64)
+    if series.size == 0:
+        return []
+    low, high = np.percentile(series, [10, 90])
+    if not np.isfinite(low) or not np.isfinite(high) or high - low < 1e-6:
+        return [0.5] * int(series.size)
+    return [round(float(v), 6) for v in np.clip((series - low) / (high - low), 0, 1)]
+
+
+def beat_onset_features(y: np.ndarray, sr: int, beat_times: np.ndarray, onset_env: np.ndarray, beat_frames: np.ndarray) -> tuple[list[float], list[float]]:
+    """每拍的起音强度,以及 40–160Hz 的低频突然增强(更接近底鼓)。"""
+    if len(beat_times) == 0:
+        return [], []
+    onset = _robust_unit(onset_env[np.minimum(beat_frames, len(onset_env) - 1)])
+    hop = 512
+    spectrum = np.abs(librosa.stft(y, hop_length=hop))
+    freqs = librosa.fft_frequencies(sr=sr)
+    band = spectrum[(freqs >= 40) & (freqs <= 160)]
+    if band.size == 0:
+        return onset, [0.5] * len(beat_times)
+    flux = np.maximum(0, np.diff(band.mean(axis=0), prepend=0))
+    frame_times = librosa.frames_to_time(np.arange(len(flux)), sr=sr, hop_length=hop)
+    sampled = [float(flux[int(np.argmin(np.abs(frame_times - beat)))]) for beat in beat_times]
+    return onset, _robust_unit(np.asarray(sampled))
+
+
 def analyze_beats(audio_path: Path) -> dict:
     y, sr = load_audio(audio_path)
     duration = float(librosa.get_duration(y=y, sr=sr))
@@ -82,16 +111,8 @@ def analyze_beats(audio_path: Path) -> dict:
     beat_times = librosa.frames_to_time(beat_frames, sr=sr)
 
     onset_env = librosa.onset.onset_strength(y=y, sr=sr)
-
-    # downbeat 启发式(madmom 升级前的 MVP):按 4 拍一小节,
-    # 取节拍点 onset 强度按相位求和最大的相位作为重拍相位
-    if len(beat_frames) >= 4:
-        idx = np.minimum(beat_frames, len(onset_env) - 1)
-        strengths = onset_env[idx]
-        phase = int(np.argmax([strengths[p::4].sum() for p in range(4)]))
-        downbeat_times = beat_times[phase::4]
-    else:
-        downbeat_times = beat_times
+    onset, low_onset = beat_onset_features(y, sr, beat_times, onset_env, beat_frames)
+    downbeat_times = local_downbeat_times([float(t) for t in beat_times], onset)
 
     # 首个强 onset:避开前奏静音/弱起,首个切换点从这里起算
     onset_frames = librosa.onset.onset_detect(onset_envelope=onset_env, sr=sr, units="frames")
@@ -110,6 +131,8 @@ def analyze_beats(audio_path: Path) -> dict:
         "bpm": round(bpm, 2),
         "beats": [round(float(t), 3) for t in beat_times],
         "energy": beat_energy(y, sr, beat_times, duration),
+        "onset": onset,
+        "low_onset": low_onset,
         "downbeats": [round(float(t), 3) for t in downbeat_times],
         "first_strong_onset": round(first_strong_onset, 3),
     }

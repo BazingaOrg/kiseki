@@ -98,15 +98,23 @@ def test_seconds_at_or_beyond_song_duration_keeps_complete_song(
     assert timeline["meta"]["trim"]["applied"] is False
 
 
-def test_seconds_shorter_than_photo_constraints_drops_photos_with_warning(
+def test_seconds_shorter_than_photo_constraints_keeps_photos_on_the_beat(
     tmp_path: Path, capsys
 ):
     make_photos(tmp_path, 10)
     cfg = {**plan.DEFAULTS, "trim": 5}
     timeline = plan.build_timeline(tmp_path, make_beats(), [], cfg, None)
     assert timeline["meta"]["duration"] == 20.0
-    assert len(timeline["photos"]) == 9
-    assert "时长塞不下全部照片,丢弃末尾 1 张" in capsys.readouterr().err
+    assert len(timeline["photos"]) == 10
+    assert "丢弃末尾" not in capsys.readouterr().err
+
+
+def test_song_shorter_than_every_beat_still_drops_the_tail(tmp_path: Path, capsys):
+    make_photos(tmp_path, 10)
+    cfg = {**plan.DEFAULTS, "trim": "full", "chapters": False, "intro": False}
+    timeline = plan.build_timeline(tmp_path, make_beats(3), [], cfg, None)
+    assert len(timeline["photos"]) == 6
+    assert "时长塞不下全部照片,丢弃末尾 4 张" in capsys.readouterr().err
 
 
 def test_dynamic_pacing_does_not_drop_photos_when_uniform_fits(tmp_path: Path, capsys):

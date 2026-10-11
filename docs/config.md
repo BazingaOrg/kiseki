@@ -14,12 +14,12 @@
 - `transition = "album"`：默认 `"album"`；`"album"`、`"cut"` 或 `"crossfade"`。
 - `album_fade = 0.4`：默认 `0.4`；大于等于 0 的有限数字。
 - `crossfade = 0.6`：默认 `0.6`；大于等于 0 的有限数字。
-- `min_gap = 2.0`：默认 `2.0`；大于 0 的有限数字。
-- `flash_min_gap = 0.8`：默认 `0.8`；大于 0 的有限数字。
-- `flash_avg_threshold = 2.0`：默认 `2.0`；大于 0 的有限数字。
+- `min_gap = 2.0`：默认 `2.0`；大于 0 的有限数字。裁剪落点和日期章节卡使用的最短停留。照片切换的最短间隔是这一首的一小节，塞不下全部照片时退到一拍。
+- `flash_min_gap = 0.8`：默认 `0.8`；大于 0 的有限数字。平均每张短于 `flash_avg_threshold` 时，开场回顾是否放得下，以及日期章节卡，用这个最短停留。
+- `flash_avg_threshold = 2.0`：默认 `2.0`；大于 0 的有限数字。平均每张短于这个值时不预留片头，日期章节卡改用每拍。
 - `trim_avg_threshold = 10.0`：默认 `10.0`；大于 0 的有限数字。
 - `trim_target_avg = 8.0`：默认 `8.0`；大于 0 的有限数字。
-- `pacing = "dynamic"`：默认 `"dynamic"`；`"dynamic"` 或 `"uniform"`。
+- `pacing = "dynamic"`：默认 `"dynamic"`；`"dynamic"` 或 `"uniform"`。`dynamic` 让响度变化参与选哪一拍；`uniform` 不看响度。两者都在拍点上选。
 - `trim = "full"`：默认 `"full"`；`"auto"`、`"full"` 或大于 0 的有限秒数。 `auto` 会在照片偏少时于合适节拍处收尾。
 - `subtitles = true`：默认 `true`；布尔值。
 - `chapters = true`：默认 `true`；布尔值。

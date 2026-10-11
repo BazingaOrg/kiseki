@@ -1,7 +1,8 @@
 import numpy as np
 import pytest
 
-from analyze import beat_energy
+from analyze import beat_energy, beat_onset_features
+import librosa
 from beat_alloc import allocate_switch_points, dynamic_switch_ideals
 
 
@@ -13,6 +14,19 @@ def test_energy_is_per_beat_bounded_stable_and_tracks_loudness():
     assert len(first) == 3 and all(0 <= value <= 1 for value in first)
     assert first[1] > first[2] > first[0]
     assert beat_energy(y, sr, beats, 3.0) == first
+
+
+def test_low_onset_is_stronger_on_the_kick_than_on_silence():
+    sr = 22050
+    y = np.zeros(sr * 2, dtype=np.float32)
+    click = np.sin(2 * np.pi * 80 * np.arange(sr // 20) / sr).astype(np.float32)
+    y[sr // 2:sr // 2 + click.size] += click
+    beat_times = np.array([0.5, 1.5])
+    onset_env = librosa.onset.onset_strength(y=y, sr=sr)
+    frames = librosa.time_to_frames(beat_times, sr=sr)
+    onset, low = beat_onset_features(y, sr, beat_times, onset_env, frames)
+    assert len(onset) == len(low) == 2
+    assert low[0] > low[1]
 
 
 def test_silence_and_constant_energy_use_neutral_half():

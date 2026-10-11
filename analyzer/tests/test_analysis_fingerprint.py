@@ -11,7 +11,7 @@ def test_fingerprint_tracks_effective_backend_model_and_demucs(monkeypatch):
 
     assert analysis_fingerprint.build_fingerprint() == {
         "version": 1,
-        "beat_features_version": 1,
+        "beat_features_version": 2,
         "backend": "cpu",
         "model": "small",
         "demucs_available": True,

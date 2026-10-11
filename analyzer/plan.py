@@ -2,9 +2,10 @@
 
 自动决策:
 - 照片顺序:EXIF 拍摄时间优先,无 EXIF 按文件名排序(打印一行告知)
-- 快闪模式:平均每张展示 < 2s → 吸附目标从重拍降级为每拍,min_gap 放宽到 0.8s
+- 照片切换:在拍点上选,最短一小节;塞不下全部照片时退到一拍
+- 平均每张短于 2s:不预留片头;日期章节改用每拍
 - 字幕:lyrics.json 存在则并入,否则空数组(纯音乐)
-配置:文件夹内可选 kiseki.toml(photo_scale / min_gap 等),缺省即默认值。
+配置:文件夹内可选 kiseki.toml(photo_scale / trim 等),缺省即默认值。
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from PIL import ExifTags, Image
 
 import term
 from atomic_json import write_json_atomic
-from beat_alloc import allocate_switch_points, dynamic_switch_ideals
+from cut_planner import plan_photo_cuts
 
 IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp"}
 
@@ -44,7 +45,7 @@ DEFAULTS = {
     "trim": "full",             # auto(自动裁剪)| full(整首)| 正数秒数
     "subtitles": True,           # 字幕轨总开关
     "chapters": True,            # EXIF 跨天时插入日期章节卡
-    "pacing": "dynamic",        # dynamic(按能量疏密)|uniform(旧版均匀)
+    "pacing": "dynamic",        # dynamic(响度参与选拍)|uniform(不看响度)
     # 片头/片尾运行默认仅用于规划;展示默认值的单一来源在 renderer/theme.ts
     "outro_text": "",
     "signature": "",             # 空串 = 内置签名;非空为素材夹内 .svg 相对路径
@@ -431,7 +432,7 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     is_flash = body_average < cfg["flash_avg_threshold"]
     if is_flash:
         candidates, min_gap = beats["beats"], cfg["flash_min_gap"]
-        term.info(f"快闪模式: 平均每张 {body_average:.1f}s < {cfg['flash_avg_threshold']}s,吸附每拍,min_gap={min_gap}s")
+        term.info(f"照片偏密: 平均每张 {body_average:.1f}s,不预留片头")
     else:
         candidates, min_gap = beats["downbeats"], cfg["min_gap"]
 
@@ -449,8 +450,7 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     # n == 2 时只有一个切换点,须同时满足头(>= SHOW_INTRO_MIN_PHOTO0_END)与
     # 尾(<= duration - WHITE_FADE_DURATION - MIN_PHOTO_VISIBLE)两个约束,可行
     # 窗口非空要求 duration >= SHOW_INTRO_MIN_T + MIN_PHOTO_VISIBLE(6.75s),
-    # 比 n>=3 时头尾分属不同切换点的门槛(5.95s)更紧;否则窄窗口内找不到候选
-    # 会直接丢弃第二张照片(min_gap 优先于预留,详见 beat_alloc 回退分支)。
+    # 比 n>=3 时头尾分属不同切换点的门槛(5.95s)更紧。更短则不预留片头。
     intro_enabled = bool(cfg.get("intro", True))
     min_duration_for_reserve = SHOW_INTRO_MIN_T + (MIN_PHOTO_VISIBLE if n == 2 else 0.0)
     head_offset = 0.0
@@ -467,18 +467,29 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
         head_offset = INTRO_DURATION
 
     # 片尾预留:任何时长都尝试让末张照片在片尾白场开始前留有可见时间,
-    # 但绝不比"均分网格"本该落点更早(allocate_switch_points 内部取 max 兜底)
+    # 但绝不比均分网格的末位更早
     not_after = duration - WHITE_FADE_DURATION - MIN_PHOTO_VISIBLE
 
-    ideal_points = None
-    if not is_flash and cfg["pacing"] == "dynamic":
-        ideal_points = dynamic_switch_ideals(duration, n, beats["beats"], beats.get("energy"), head_offset=head_offset)
-    switches = allocate_switch_points(
-        duration, n, candidates,
-        min_gap=min_gap, not_before=not_before,
-        head_offset=head_offset, start_offset=body_start, not_after=not_after,
-        ideal_points=ideal_points,
+    lyric_spans = [
+        (float(line["start"]), float(line["end"]))
+        for line in lyrics
+        if isinstance(line, dict) and isinstance(line.get("start"), (int, float)) and isinstance(line.get("end"), (int, float))
+    ]
+    photo_cuts = plan_photo_cuts(
+        duration=duration,
+        n_photos=n,
+        beat_times=[float(beat) for beat in beats.get("beats", [])],
+        energy=beats.get("energy") if cfg["pacing"] == "dynamic" else None,
+        onset=beats.get("onset"),
+        low_onset=beats.get("low_onset"),
+        lyric_spans=lyric_spans,
+        not_before=not_before,
+        head_offset=head_offset,
+        start_offset=body_start,
+        not_after=not_after,
+        fps=int(cfg["fps"]),
     )
+    switches = [cut.time for cut in photo_cuts]
     if len(switches) < n - 1:
         dropped = n - 1 - len(switches)
         term.warn(f"时长塞不下全部照片,丢弃末尾 {dropped} 张")
@@ -496,12 +507,18 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     bounds = [body_start, *switches, duration]
     clips = []
     for i, p in enumerate(photos):
+        if i == 0:
+            transition = {"type": "none", "duration": 0}
+        elif photo_cuts[i - 1].hard and cfg["transition"] != "crossfade":
+            transition = {"type": "cut", "duration": 0}
+        else:
+            transition = dict(later_transition)
         clips.append({
             "kind": "photo",
             "src": f"./{p.relative_to(folder)}",
             "start": round(bounds[i], 3),
             "end": round(bounds[i + 1], 3),
-            "transition": {"type": "none", "duration": 0} if i == 0 else dict(later_transition),
+            "transition": transition,
             "motion": dict(motion),
         })
 
