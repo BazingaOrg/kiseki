@@ -126,7 +126,7 @@ def test_new_timeline_always_uses_static_motion(monkeypatch, tmp_path):
         photo["motion"] == {"type": "none", "from": 1.0, "to": 1.0}
         for photo in timeline["photos"]
     )
-    assert timeline["photos"][1]["transition"] == {"type": "album", "duration": 0.4}
+    assert timeline["photos"][1]["transition"] == {"type": "album", "duration": 0.25}
 
 
 def test_json_events_mirror_messages_when_enabled(monkeypatch):

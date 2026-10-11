@@ -17,7 +17,7 @@ export type MotionSpec = {
 export type PhotoClip = {
   kind?: 'photo';
   src: string;
-  start: number; // seconds; switch point = crossfade midpoint
+  start: number; // seconds; album fade begins here, crossfade is centered here
   end: number;
   transition: TransitionSpec;
   /** @deprecated 仅供 timeline v1 兼容;渲染时为 no-op。 */

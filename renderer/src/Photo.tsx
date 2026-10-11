@@ -7,7 +7,7 @@ import {Signature, getSignatureDisplayWidth, type SignatureData} from './Signatu
 import {CAPTION_BAND_PAD, CAPTION_SUBJECT_GAP, signaturePhotoLift} from './photoCaptionLayout.mjs';
 import {resolveFontFamily} from './fontFamily';
 import {STILL, getExifLayout, getVisualScale, signaturePathProps, type FontFamily, type Palette} from './theme';
-import {getFadeDuration} from './transition';
+import {fadeRange} from './transition';
 import {motionTransform} from './motion';
 import {childOpacityForParent} from './compositionTiming';
 import type {TemplateMotion} from './templates';
@@ -45,13 +45,12 @@ export const Photo: React.FC<{
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
 
-  const dIn = getFadeDuration(clip.transition);
-  const fadeIn =
-    dIn > 0
-      ? interpolate(t, [clip.start - dIn / 2, clip.start + dIn / 2], [0, 1], clamp)
-      : t >= clip.start
-        ? 1
-        : 0;
+  const range = fadeRange(clip.transition, clip.start);
+  const fadeIn = range
+    ? interpolate(t, range, [0, 1], clamp)
+    : t >= clip.start
+      ? 1
+      : 0;
   const renderScale = getVisualScale(width, height);
 
   const hasExif = hasDisplayableExif(clip.exif);

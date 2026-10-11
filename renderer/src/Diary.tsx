@@ -19,7 +19,7 @@ import {resolveSubtitleMode, subtitleSignatureInsets, subtitleVisibilityEnd} fro
 import {isCaptionLayout, resolveVideoPhotoScale} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
 import {photoCaptionPresentation} from './compositionTiming';
-import {getFadeDuration, resolvePhotoTransition} from './transition';
+import {coverUntil, fadeLead, resolvePhotoTransition} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 import {templateById, resolveTemplatePresentation} from './templates';
 
@@ -91,12 +91,11 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         openingRecapFirst,
       }),
     };
-    const dIn = getFadeDuration(effective.transition);
     const nextClip = visualClips[index + 1];
-    const dOut = isPhotoClip(nextClip) ? getFadeDuration(template.transition ?? nextClip.transition) : 0;
+    const nextTransition = isPhotoClip(nextClip) ? template.transition ?? nextClip.transition : undefined;
     if (
-      t >= effective.start - dIn / 2 - 1 / fps &&
-      t <= clip.end + dOut / 2 + 1 / fps
+      t >= effective.start - fadeLead(effective.transition) - 1 / fps &&
+      t <= coverUntil(nextTransition, clip.end) + 1 / fps
     ) {
       visiblePhotos.push({clip: effective, index, motionStart: clip.start});
     }

@@ -128,9 +128,9 @@ export const templateById = (id: string | undefined): Template | undefined =>
   TEMPLATES.find((template) => template.id === id);
 
 // 模板转场 id → TransitionSpec 的规范时长(与 plan.py 用 config 默认值产出的
-// 一致:album 0.4s / crossfade 0.6s;cut 硬切无淡化)。timeline 本身不携带
+// 一致:album 0.25s / crossfade 0.6s;cut 硬切无淡化)。timeline 本身不携带
 // album_fade/crossfade 配置值,渲染器只能按规范值解析。
-const TEMPLATE_TRANSITION_DURATIONS = {album: 0.4, cut: 0, crossfade: 0.6} as const;
+const TEMPLATE_TRANSITION_DURATIONS = {album: 0.25, cut: 0, crossfade: 0.6} as const;
 
 export interface ResolvedTemplatePresentation {
   /** 照片切换 spec;undefined 时逐 clip 用 timeline 里的 transition */

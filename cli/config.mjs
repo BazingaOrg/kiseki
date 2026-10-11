@@ -66,8 +66,8 @@ export const CONFIG_SCHEMA = {
     validate: (value, kind) => kind === 'string' && ['album', 'cut', 'crossfade'].includes(value),
   },
   album_fade: {
-    default: 0.4,
-    example: 'album_fade = 0.4',
+    default: 0.25,
+    example: 'album_fade = 0.25',
     expected: '大于等于 0 的数字',
     validate: (value, kind) => isNumericKind(kind) && isFiniteNumber(value) && value >= 0,
   },

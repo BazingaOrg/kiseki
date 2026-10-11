@@ -36,7 +36,7 @@ DEFAULTS = {
     "photo_scale": 0.8,
     "min_gap": 2.0,
     "transition": "album",    # album(透明度切换,默认)| cut(纯硬切)| crossfade
-    "album_fade": 0.4,
+    "album_fade": 0.25,
     "crossfade": 0.6,
     "flash_avg_threshold": 2.0,
     "flash_min_gap": 0.8,
