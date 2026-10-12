@@ -81,7 +81,7 @@ def test_invalid_dates_and_short_or_sparse_boundaries_leave_photos_unchanged(tmp
     assert "EXIF 时间不完整" in capsys.readouterr().out
 
 
-def test_chapter_helper_uses_front_then_back_and_stamps_the_photo_when_a_card_does_not_fit(tmp_path, capsys):
+def test_chapter_helper_uses_front_then_back_and_a_short_card_when_a_beat_card_does_not_fit(tmp_path, capsys):
     photos(tmp_path, ["07:13", "07:14"])
     paths = [tmp_path / "0.jpg", tmp_path / "1.jpg"]
     clips = [{"kind": "photo", "start": 0.0, "end": 8.0}, {"kind": "photo", "start": 8.0, "end": 16.0}]
@@ -98,8 +98,21 @@ def test_chapter_helper_uses_front_then_back_and_stamps_the_photo_when_a_card_do
     assert len([clip for clip in back if clip.get("kind") == "photo"]) == len(clips)
 
     impossible, meta = plan._insert_chapters([dict(clip) for clip in clips], paths, [1.0, 20.0], 2.0)
-    assert meta == {"enabled": True, "day_count": 2, "card_count": 0}
-    assert [(clip["start"], clip["end"]) for clip in impossible] == [(0.0, 8.0), (8.0, 16.0)]
-    assert impossible[1]["day_mark"] == "7月14日 · 第2天"
-    assert "day_mark" not in impossible[0]
-    assert "7月14日的照片还在，日期写在照片上" in capsys.readouterr().out
+    assert meta == {"enabled": True, "day_count": 2, "card_count": 1}
+    short = next(clip for clip in impossible if clip.get("kind") == "chapter")
+    assert short["text"] == "7月14日 · 第2天 ♪"
+    assert (short["start"], short["end"]) == (7.5, 8.5)
+    photos_only = [clip for clip in impossible if clip.get("kind") == "photo"]
+    assert [(clip["start"], clip["end"]) for clip in photos_only] == [(0.0, 7.5), (8.5, 16.0)]
+    assert all("day_mark" not in clip for clip in impossible)
+    assert "写在照片上" not in capsys.readouterr().out
+
+    tight, tight_meta = plan._insert_chapters(
+        [{"kind": "photo", "start": 0.0, "end": 0.5}, {"kind": "photo", "start": 0.5, "end": 1.0}],
+        paths,
+        [],
+        2.0,
+    )
+    assert tight_meta["card_count"] == 0
+    assert all(clip.get("kind") != "chapter" and "day_mark" not in clip for clip in tight)
+    assert "7月14日前后太挤，没有日期卡" in capsys.readouterr().out

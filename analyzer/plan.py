@@ -359,6 +359,32 @@ def _photo_days(photos: list[Path]) -> list[str] | None:
     return days
 
 
+SMALL_CHAPTER_TARGET = 1.0
+SMALL_CHAPTER_MIN = 0.6
+CHAPTER_PHOTO_FLOOR = 0.45
+
+
+def _fit_small_chapter(before: dict, after: dict, boundary: float) -> tuple[float, float] | None:
+    before_room = max(0.0, (boundary - before["start"]) - CHAPTER_PHOTO_FLOOR)
+    after_room = max(0.0, (after["end"] - boundary) - CHAPTER_PHOTO_FLOOR)
+    room = before_room + after_room
+    if room + 1e-9 < SMALL_CHAPTER_MIN:
+        return None
+    duration = min(SMALL_CHAPTER_TARGET, room)
+    take_before = min(before_room, duration / 2)
+    take_after = duration - take_before
+    if take_after > after_room + 1e-9:
+        take_after = after_room
+        take_before = duration - take_after
+    start = round(boundary - take_before, 3)
+    end = round(boundary + take_after, 3)
+    if end - start + 1e-9 < SMALL_CHAPTER_MIN or start < before["start"] or end > after["end"]:
+        return None
+    before["end"] = start
+    after["start"] = end
+    return start, end
+
+
 def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], min_gap: float) -> tuple[list[dict], dict]:
     days = _photo_days(photos)
     if days is None or len(set(days)) < 2:
@@ -386,13 +412,14 @@ def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], 
             after["start"] = round(cut, 3)
             start, end = boundary, cut
         else:
-            after["day_mark"] = f"{month}月{day_num}日 · 第{ordinal}天"
-            term.detail(f"{month}月{day_num}日的照片还在，日期写在照片上")
-            continue
+            small = _fit_small_chapter(before, after, boundary)
+            if small is None:
+                term.detail(f"{month}月{day_num}日前后太挤，没有日期卡")
+                continue
+            start, end = small
         cards.append({"kind": "chapter", "text": f"{month}月{day_num}日 · 第{ordinal}天 {CHAPTER_SYMBOLS[(ordinal - 1) % len(CHAPTER_SYMBOLS)]}", "start": round(start, 3), "end": round(end, 3)})
     merged = sorted([*clips, *cards], key=lambda clip: (clip["start"], clip.get("kind") == "chapter"))
-    marked = any(clip.get("day_mark") for clip in clips)
-    return merged, {"enabled": bool(cards) or marked, "day_count": len(day_number), "card_count": len(cards)}
+    return merged, {"enabled": bool(cards), "day_count": len(day_number), "card_count": len(cards)}
 
 
 def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,

@@ -36,7 +36,6 @@ export type PhotoClip = {
     fontSize: number;
     letterSpacing: string;
   } | null;
-  /** 整屏日期卡放不下时，写在当天第一张照片上 */
   day_mark?: string;
 };
 
