@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {resolveFontFamily} from './fontFamily.ts';
-import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, resolveSubtitleMode, subtitleBlockHeight, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout.ts';
+import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, resolveSubtitleMode, subtitleBlockBottom, subtitleBlockHeight, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout.ts';
 
 test('resolveFontFamily routes by script within the serif family by default', () => {
   assert.match(resolveFontFamily('hello', 'en'), /Noto Serif/);
@@ -115,9 +115,23 @@ test('fitDiaryPhotoScale keeps default 30px captions at photo_scale 0.8', () => 
   assert.equal(fitted, 0.8);
 });
 
+test('a full-height photo keeps the lyric block below its edge', () => {
+  const blockHeight = 70.8;
+  const bandTop = 122 + blockHeight + 28;
+  const bottom = subtitleBlockBottom({
+    bandBottomFromBottom: 122,
+    bandTopFromBottom: bandTop,
+    blockHeight,
+    photoGap: 28,
+  });
+  assert.ok(bottom + blockHeight <= bandTop - 28 + 1e-6);
+  assert.ok(bottom >= 122);
+});
+
 test('bilingual adjacent lines do not share a fade-out window, including a missing translation', () => {
   const first = {text: 'first', lang: 'en' as const, translation: {text: '第一句', lang: 'zh' as const}, start: 0, end: 1, confidence: 1};
   const second = {text: 'second', lang: 'en' as const, start: 1, end: 2, confidence: 1};
   assert.equal(subtitleVisibilityEnd({line: first, nextLine: second, fadeOutDuration: 0.25, bilingual: true}), 1);
+  assert.equal(subtitleVisibilityEnd({line: first, nextLine: second, fadeOutDuration: 0.25, nextFadeInDuration: 0.3, bilingual: true}), 0.7);
   assert.equal(subtitleVisibilityEnd({line: first, nextLine: second, fadeOutDuration: 0.25, bilingual: false}), 1.25);
 });

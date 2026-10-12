@@ -66,6 +66,27 @@ test('legacy grid metadata still returns reverse-ordered single photos without l
   assert.deepEqual([...seen].sort((a, b) => a - b), [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
 });
 
+test('a crowded rewind keeps each shown photo for at least four frames', () => {
+  const seen = new Map<number, number>();
+  let previous: number | null = null;
+  let run = 0;
+  for (let frame = 180; frame < 240; frame += 1) {
+    const [index] = openingRecapFrameState({frame, fps: 60, photoCount: 40, spec: single}).photoIndices;
+    assert.equal(typeof index, 'number');
+    if (index === previous) run += 1;
+    else {
+      if (previous !== null) assert.ok(run >= 4, `photo ${previous} lasted ${run} frames`);
+      previous = index;
+      run = 1;
+    }
+    seen.set(index, (seen.get(index) ?? 0) + 1);
+  }
+  assert.ok(run >= 4);
+  assert.ok(seen.size < 40);
+  assert.equal(seen.has(39), true);
+  assert.equal(seen.has(0), true);
+});
+
 test('fractional beat timestamps cover the handoff frame without a blank', () => {
   const fractional = {...single, settle_start: 3.767, end: 4.017};
   assert.equal(openingRecapFrameState({frame: 241, fps: 60, photoCount: 5, spec: fractional}).visible, true);

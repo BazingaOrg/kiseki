@@ -15,7 +15,7 @@ import {ChapterCard} from './ChapterCard';
 import {OpeningRecap} from './OpeningRecap';
 import {getSignatureDisplayWidth, useSignatureData} from './Signature';
 import {Subtitle} from './Subtitle';
-import {resolveSubtitleMode, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout';
+import {resolveSubtitleMode, subtitlePhotoGap, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout';
 import {isCaptionLayout, resolveVideoPhotoScale} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
 import {photoCaptionPresentation} from './compositionTiming';
@@ -69,6 +69,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     riseDistance: captionsStyle.riseDistance,
     exitRise: captionsStyle.exitRise,
     subtitleBottomInset: portraitSignatureReserve,
+    subtitlePhotoGap: subtitleMode !== 'none' && subtitles.length > 0 ? subtitlePhotoGap(scale) : 0,
   });
   const safeWidth = meta.width * photoScale;
   const safeHeight = meta.height * photoScale;
@@ -105,10 +106,10 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   }
 
   const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
-    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, bilingual});
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
       line.confidence >= SUBTITLE.confidenceThreshold &&
-      t >= line.start - 1 / fps &&
+      t >= line.start - SUBTITLE.fadeInDuration - 1 / fps &&
       t <= visibilityEnd + 1 / fps
       ? [{line, visibilityEnd}]
       : [];

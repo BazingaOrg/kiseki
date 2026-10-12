@@ -1,4 +1,5 @@
 import {fullwidthLength} from './fontFamily.ts';
+import {SUBTITLE_PHOTO_GAP} from './photoCaptionLayout.mjs';
 import type {SubtitleLine} from './types.ts';
 
 const TRANSLATION_FONT_RATIO = 0.8;
@@ -49,15 +50,17 @@ export const subtitleVisibilityEnd = ({
   line,
   nextLine,
   fadeOutDuration,
+  nextFadeInDuration = 0,
   bilingual,
 }: {
   line: SubtitleLine;
   nextLine: SubtitleLine | undefined;
   fadeOutDuration: number;
+  nextFadeInDuration?: number;
   bilingual: boolean;
 }): number => {
   const naturalEnd = line.end + fadeOutDuration;
-  return bilingual && nextLine ? Math.min(naturalEnd, nextLine.start) : naturalEnd;
+  return bilingual && nextLine ? Math.min(naturalEnd, nextLine.start - nextFadeInDuration) : naturalEnd;
 };
 
 export const fitSubtitleFontSize = ({
@@ -100,6 +103,26 @@ export const subtitleBlockHeight = ({
 
 export const subtitleTranslationGap = (scale: number): number => BILINGUAL_GAP * scale;
 
+export const subtitleBlockBottom = ({
+  bandBottomFromBottom,
+  bandTopFromBottom,
+  blockHeight,
+  photoGap,
+}: {
+  bandBottomFromBottom: number;
+  bandTopFromBottom: number;
+  blockHeight: number;
+  photoGap: number;
+}): number => {
+  const room = Math.max(0, bandTopFromBottom - bandBottomFromBottom - blockHeight);
+  const gap = Math.min(Math.max(0, photoGap), room);
+  const centered = (bandBottomFromBottom + bandTopFromBottom) / 2 - blockHeight / 2;
+  const cleared = bandTopFromBottom - gap - blockHeight;
+  return Math.max(bandBottomFromBottom, Math.min(centered, cleared));
+};
+
+export const subtitlePhotoGap = (scale: number): number => SUBTITLE_PHOTO_GAP * scale;
+
 export const assertSubtitleSafeHeight = ({
   blockHeight,
   bandBottomFromBottom,
@@ -127,6 +150,7 @@ export const fitDiaryPhotoScale = ({
   scale,
   riseDistance = 0,
   exitRise = 0,
+  photoGap = SUBTITLE_PHOTO_GAP,
 }: {
   photoScale: number;
   canvasHeight: number;
@@ -134,9 +158,10 @@ export const fitDiaryPhotoScale = ({
   scale: number;
   riseDistance?: number;
   exitRise?: number;
+  photoGap?: number;
 }): number => {
   if (!(canvasHeight > 0) || !(photoScale >= 0)) return photoScale;
   const blockHeight = subtitleBlockHeight({fontSize: fontSize * scale, bilingual: true, scale});
-  const requiredBand = blockHeight + Math.abs(riseDistance) * scale + Math.abs(exitRise) * scale;
+  const requiredBand = blockHeight + photoGap * scale + Math.abs(riseDistance) * scale + Math.abs(exitRise) * scale;
   return Math.max(0, Math.min(photoScale, 1 - (2 * requiredBand) / canvasHeight));
 };

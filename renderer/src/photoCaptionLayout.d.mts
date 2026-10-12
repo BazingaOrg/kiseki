@@ -7,6 +7,7 @@ export const CAPTION_COMPACT_THRESHOLD: number;
 export const CAPTION_MAX_WIDTH_RATIO: number;
 export const CAPTION_LINE_HEIGHT: number;
 export const CAPTION_BAND_PAD: number;
+export const SUBTITLE_PHOTO_GAP: number;
 export const CAPTION_SUBJECT_GAP: number;
 export const CAPTION_EDGE_PAD: number;
 export const STILL_CAPTION_RESERVE: number;
@@ -84,6 +85,7 @@ export function resolveVideoPhotoScale(args: {
   riseDistance?: number;
   exitRise?: number;
   subtitleBottomInset?: number;
+  subtitlePhotoGap?: number;
 }): number;
 export function layoutStillCaption(args: {
   canvasWidth: number;

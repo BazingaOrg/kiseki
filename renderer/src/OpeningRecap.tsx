@@ -102,6 +102,7 @@ export const OpeningRecap: React.FC<{
                 />
               ) : (
                 <FramedPhoto
+                  key={clip.src}
                   src={toStatic(clip.src)}
                   maxWidth={cellWidth}
                   maxHeight={cellHeight}
@@ -152,6 +153,7 @@ export const OpeningRecap: React.FC<{
       <AbsoluteFill style={{backgroundColor: meta.background, opacity: recapOpacity}}>
         <AbsoluteFill style={{...motionStyle, justifyContent: 'center', alignItems: 'center'}}>
           <Img
+            key={clip.src}
             src={toStatic(clip.src)}
             style={{
               display: 'block',
@@ -204,6 +206,7 @@ export const OpeningRecap: React.FC<{
     <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center', opacity: recapOpacity}}>
       <div style={motionStyle}>
         <FramedPhoto
+          key={clip.src}
           src={toStatic(clip.src)}
           maxWidth={meta.width * photoScale}
           maxHeight={meta.height * photoScale}

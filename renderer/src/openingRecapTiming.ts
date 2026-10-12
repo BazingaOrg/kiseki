@@ -1,5 +1,21 @@
 import type {OpeningRecapSpec} from './types';
 
+const MIN_REWIND_SLOT_FRAMES = 4;
+
+const rewindSamples = (reversed: number[], slotCount: number): number[] => {
+  if (slotCount >= reversed.length) return reversed;
+  if (slotCount <= 1) return [reversed[reversed.length - 1] ?? 0];
+  const picked = Array.from({length: slotCount}, (_, slot) => {
+    const index = Math.round((slot * (reversed.length - 1)) / (slotCount - 1));
+    return reversed[index];
+  });
+  const sequence: number[] = [];
+  for (const index of picked) {
+    if (sequence[sequence.length - 1] !== index) sequence.push(index);
+  }
+  return sequence;
+};
+
 export type OpeningRecapFrameState = {
   visible: boolean;
   settled: boolean;
@@ -36,16 +52,17 @@ export const openingRecapFrameState = ({
   }
 
   const reversed = Array.from({length: photoCount}, (_, index) => photoCount - 1 - index);
-  const batchSize = 1;
-  const slotCount = Math.max(1, Math.ceil(reversed.length / batchSize));
-  const lastRewind = reversed.length === 0
-    ? [0]
-    : reversed.slice((slotCount - 1) * batchSize, slotCount * batchSize);
+  const rewindFrames = Math.max(1, settleFrame - startFrame);
+  const sequence = rewindSamples(
+    reversed,
+    Math.min(reversed.length, Math.max(1, Math.floor(rewindFrames / MIN_REWIND_SLOT_FRAMES))),
+  );
+  const slotCount = Math.max(1, sequence.length);
+  const held = sequence[sequence.length - 1] ?? 0;
   if (frame >= settleFrame || photoCount === 1) {
-    return {visible: true, settled: true, photoIndices: lastRewind, slotProgress: 1};
+    return {visible: true, settled: true, photoIndices: [held], slotProgress: 1};
   }
 
-  const rewindFrames = Math.max(1, settleFrame - startFrame);
   const localFrame = frame - startFrame;
   const slotIndex = Math.min(slotCount - 1, Math.floor(localFrame * slotCount / rewindFrames));
   const slotStart = Math.floor(slotIndex * rewindFrames / slotCount);
@@ -54,7 +71,7 @@ export const openingRecapFrameState = ({
   return {
     visible: true,
     settled: false,
-    photoIndices: reversed.slice(slotIndex * batchSize, (slotIndex + 1) * batchSize),
+    photoIndices: [sequence[slotIndex] ?? held],
     slotProgress,
   };
 };

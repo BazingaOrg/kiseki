@@ -20,8 +20,8 @@ import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
-import {CAPTION_SUBJECT_GAP, FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION, isCaptionLayout} from './photoCaptionLayout.mjs';
-import {ANIMATION, INTRO, OUTRO, getPalette, getVisualScale} from './theme';
+import {FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION, isCaptionLayout} from './photoCaptionLayout.mjs';
+import {ANIMATION, INTRO, OUTRO, SUBTITLE, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
 import {fitFadeDuration} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
@@ -94,10 +94,10 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     : [];
 
   const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
-    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: 0.25, bilingual});
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: 0.25, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
       line.confidence >= 0.6 &&
-      t >= line.start - 1 / fps &&
+      t >= line.start - SUBTITLE.fadeInDuration - 1 / fps &&
       t <= visibilityEnd + 1 / fps
       ? [{line, visibilityEnd}]
       : [];
@@ -140,18 +140,16 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         const caption = photoCaptionLayerPresentation({clip, hasLayout: isCaptionLayout(clip.captionLayout), state: captionState});
         return (
         <AbsoluteFill key={`${clip.src}-${clip.start}`} style={{justifyContent: 'center', alignItems: 'center', opacity}}>
-          <div style={{display: 'flex', flexDirection: 'column', alignItems: 'center', gap: caption.render ? CAPTION_SUBJECT_GAP * scale : 0, maxWidth: '86%'}}>
-            {caption.render ? (
-              <PhotoCaption
-                text={clip.caption!}
-                layout={clip.captionLayout}
-                palette={palette}
-                fontFamily={resolveFontFamily(clip.caption!, 'zh')}
-                opacity={childOpacityForParent(caption.opacity, opacity)}
-                flow
-              />
-            ) : null}
-            <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
+          {caption.render ? (
+            <PhotoCaption
+              text={clip.caption!}
+              layout={clip.captionLayout}
+              palette={palette}
+              fontFamily={resolveFontFamily(clip.caption!, 'zh')}
+              opacity={childOpacityForParent(caption.opacity, opacity)}
+            />
+          ) : null}
+          <div style={{position: 'relative', display: 'inline-flex', maxWidth: '86%'}}>
               <Img
                 src={toStatic(clip.src)}
                 style={{
@@ -165,7 +163,6 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
               />
               <DayStamp text={clip.day_mark} scale={scale} fontFamily={template.fontFamily} />
             </div>
-          </div>
         </AbsoluteFill>
         );
       })}

@@ -5,7 +5,7 @@ import {SUBTITLE, type FontFamily, type Palette} from './theme';
 import {fullwidthLength, resolveFontFamily} from './fontFamily';
 import type {SubtitleLine} from './types';
 import type {TemplateCaptionsStyle} from './templates';
-import {assertSubtitleSafeHeight, fitSubtitleFontSize, subtitleBlockHeight, subtitleTranslationGap, translationFontSize} from './subtitleLayout';
+import {assertSubtitleSafeHeight, fitSubtitleFontSize, subtitleBlockBottom, subtitleBlockHeight, subtitlePhotoGap, subtitleTranslationGap, translationFontSize} from './subtitleLayout';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 const easeOut = {...clamp, easing: Easing.out(Easing.cubic)} as const;
@@ -75,14 +75,15 @@ export const Subtitle: React.FC<{
   // 模板只覆盖"长相"(字号/字重/字距/位移),淡入淡出等时序仍走全局常量
   const style = {...SUBTITLE, ...captions};
 
-  const inEnd = line.start + style.fadeInDuration;
+  const inStart = line.start - style.fadeInDuration;
+  const inEnd = line.start;
   const outEnd = Math.min(line.end + style.fadeOutDuration, visibilityEnd ?? Infinity);
-  const fadeIn = interpolate(t, [line.start, inEnd], [0, 1], clamp);
+  const fadeIn = interpolate(t, [inStart, inEnd], [0, 1], clamp);
   const fadeOut = outEnd <= line.end ? (t < outEnd ? 1 : 0) : interpolate(t, [line.end, outEnd], [1, 0], clamp);
   const opacity = Math.min(fadeIn, fadeOut);
 
   // 摄影展题签式动效:只保留克制的淡化与短距离位移。
-  const riseIn = interpolate(t, [line.start, inEnd], [style.riseDistance * scale, 0], easeOut);
+  const riseIn = interpolate(t, [inStart, inEnd], [style.riseDistance * scale, 0], easeOut);
   const riseOut = outEnd <= line.end ? 0 : interpolate(t, [line.end, outEnd], [0, -style.exitRise * scale], easeOut);
   const rise = riseIn + riseOut;
 
@@ -119,8 +120,12 @@ export const Subtitle: React.FC<{
   const riseDown = Math.abs(style.riseDistance * scale);
   const riseUp = Math.abs(style.exitRise * scale);
   assertSubtitleSafeHeight({blockHeight, bandBottomFromBottom, bandTopFromBottom, riseDown, riseUp, bilingual});
-  const bandCenter = (bandBottomFromBottom + bandTopFromBottom) / 2;
-  const bottom = bandCenter - blockHeight / 2;
+  const bottom = subtitleBlockBottom({
+    bandBottomFromBottom,
+    bandTopFromBottom,
+    blockHeight,
+    photoGap: subtitlePhotoGap(scale),
+  });
 
   return (
     <div

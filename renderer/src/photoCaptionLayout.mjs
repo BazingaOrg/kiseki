@@ -7,6 +7,7 @@ export const CAPTION_COMPACT_THRESHOLD = 18;
 export const CAPTION_MAX_WIDTH_RATIO = 0.86;
 export const CAPTION_LINE_HEIGHT = 1.35;
 export const CAPTION_BAND_PAD = 40;
+export const SUBTITLE_PHOTO_GAP = 28;
 export const CAPTION_SUBJECT_GAP = 56;
 const LAYOUT_EPSILON = 1e-6;
 export const CAPTION_EDGE_PAD = CAPTION_BAND_PAD;
@@ -170,13 +171,14 @@ export const resolveVideoPhotoScale = ({
   riseDistance = 0,
   exitRise = 0,
   subtitleBottomInset = 0,
+  subtitlePhotoGap = 0,
 }) => {
   let scale = photoScale;
-  if ((bilingual || subtitleBottomInset > 0) && canvasHeight > 0) {
+  if ((bilingual || subtitleBottomInset > 0 || subtitlePhotoGap > 0) && canvasHeight > 0) {
     const blockHeight = bilingual
       ? fontSize * visualScale * 1.2 + 6 * visualScale + fontSize * visualScale * 0.8 * 1.2
       : fontSize * visualScale;
-    const requiredBand = subtitleBottomInset + blockHeight + Math.abs(riseDistance) * visualScale + Math.abs(exitRise) * visualScale;
+    const requiredBand = subtitleBottomInset + subtitlePhotoGap + blockHeight + Math.abs(riseDistance) * visualScale + Math.abs(exitRise) * visualScale;
     scale = Math.max(0, Math.min(scale, 1 - (2 * requiredBand) / canvasHeight));
   }
   if (hasCaption && canvasHeight > 0) {

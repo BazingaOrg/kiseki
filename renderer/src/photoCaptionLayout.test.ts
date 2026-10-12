@@ -339,6 +339,16 @@ test('portrait signature reserve leaves a non-overlapping subtitle band', () => 
   });
   const bandHeight = 1920 * (1 - fitted) / 2;
   assert.ok(bandHeight >= 122 + 70.8 - 1e-6);
+  const withGap = resolveVideoPhotoScale({
+    photoScale: 0.9,
+    canvasHeight: 1920,
+    visualScale: 1,
+    bilingual: true,
+    fontSize: 30,
+    subtitleBottomInset: 122,
+    subtitlePhotoGap: 28,
+  });
+  assert.ok(1920 * (1 - withGap) / 2 >= 122 + 70.8 + 28 - 1e-6);
 });
 
 test('video subject top follows the no-EXIF signature lift', () => {

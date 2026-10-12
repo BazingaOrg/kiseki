@@ -148,10 +148,10 @@ export const INTRO = {
 export const OUTRO = {
   // 片尾谢幕语:淡场过半后居中浮现,持续到最后一帧;字族随模板走 FONT_FAMILY
   text: 'Thanks for watching :)',
-  fontSize: 32,
+  fontSize: 46,
   fontWeight: 500,
   letterSpacing: '0em',
-  creditFontSize: 18,
+  creditFontSize: 28,
   fadeRange: [0.5, 0.85] as const, // 随白场进度淡入的区间
   riseDistance: 0,
 } as const;

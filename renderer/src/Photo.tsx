@@ -58,13 +58,11 @@ export const Photo: React.FC<{
   const pad = CAPTION_BAND_PAD * renderScale;
   const captionGap = CAPTION_SUBJECT_GAP * renderScale;
   const captionText = typeof clip.caption === 'string' && clip.captionLayout ? clip.caption : '';
-  const captionHeight = clip.captionLayout?.height ?? 0;
-  const captionBlock = captionText ? captionHeight + captionGap : 0;
   const signReserve = sign && signature && !hasExif
     ? (STILL.signature.bottomInset + STILL.signature.height) * renderScale + captionGap
     : pad;
   const maxPhotoWidth = Math.min(safeWidth, Math.max(1, canvasWidth - pad * 2));
-  const maxPhotoHeight = Math.min(safeHeight, Math.max(1, canvasHeight - pad - captionBlock - signReserve));
+  const maxPhotoHeight = Math.min(safeHeight, Math.max(1, canvasHeight - pad - signReserve));
   const lift = captionText ? 0 : signaturePhotoLift({
     canvasHeight,
     maxPhotoHeight: maxPhotoHeight,
@@ -79,7 +77,6 @@ export const Photo: React.FC<{
       palette={palette}
       fontFamily={resolveFontFamily(captionText, 'zh')}
       opacity={childOpacityForParent(captionOpacity, fadeIn)}
-      flow
     />
   ) : null;
   const stage = (photo: React.ReactNode) => (
@@ -97,14 +94,13 @@ export const Photo: React.FC<{
           display: 'flex',
           flexDirection: 'column',
           alignItems: 'center',
-          gap: captionText ? captionGap : 0,
           maxWidth: '100%',
           maxHeight: '100%',
         }}
       >
-        {captionNode}
         {photo}
       </div>
+      {captionNode}
       {sign && signature && !hasExif ? (
         <div
           style={{
@@ -131,9 +127,7 @@ export const Photo: React.FC<{
     </AbsoluteFill>
   );
 
-  // 运镜包一层 transform:无 motion 时原样返回 FramedPhoto,输出逐字节不变。
-  // 缩放带着相框与阴影一起走,克制的 6% 推近下观感自然,也省去图内裁切复杂度。
-  const Framed = ({maxWidth, maxHeight}: {maxWidth: number; maxHeight: number}) => {
+  const framedPhoto = (maxWidth: number, maxHeight: number) => {
     const framed = (
       <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
         <FramedPhoto
@@ -158,7 +152,7 @@ export const Photo: React.FC<{
         safeWidth,
         safeHeight,
       });
-      node = <div style={{transform: `translate(${x}px, ${y}px) scale(${scale})`}}>{framed}</div>;
+      node = <div style={{transform: `translate(${x}px, ${y}px) scale(${scale})`}}>{node}</div>;
     }
     if (lift) {
       node = <div style={{display: 'inline-flex', transform: `translateY(${-lift}px)`}}>{node}</div>;
@@ -184,16 +178,11 @@ export const Photo: React.FC<{
           maxHeight: '100%',
         }}
       >
-        <Framed
-          maxWidth={Math.min(layout.photoMaxWidth, maxPhotoWidth)}
-          maxHeight={photoMaxHeight}
-        />
+        {framedPhoto(Math.min(layout.photoMaxWidth, maxPhotoWidth), photoMaxHeight)}
         <ExifPanel exif={clip.exif!} scale={renderScale} width={Math.min(layout.panelWidth, maxPhotoWidth)} sign={sign} signature={signature ?? null} palette={palette} fontFamily={fontFamily} align={stacked ? 'center' : 'left'} />
       </div>,
     );
   }
 
-  return stage(
-    <Framed maxWidth={maxPhotoWidth} maxHeight={maxPhotoHeight} />,
-  );
+  return stage(framedPhoto(maxPhotoWidth, maxPhotoHeight));
 };
