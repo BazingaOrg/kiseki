@@ -4,8 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import {CACHE_VERSION, loadCaptionCache} from '../ai/photo-caption-cache.mjs';
+import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from '../ai/photo-caption-prompt.mjs';
+import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
 import {createTaskLeaseManager} from '../task-lease.mjs';
-import {CaptionRequestError, generatePhotoCaption} from './captions.mjs';
+import {CaptionRequestError, generatePhotoCaption, savePhotoCaption} from './captions.mjs';
 
 const fixture = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-captions-api-')));
 const stubLeaseManager = () => ({acquire: () => ({}), release: () => true});
@@ -15,6 +18,47 @@ const deps = () => ({
   leaseManager: stubLeaseManager(),
   getApiKey: () => 'test-key',
   prepare: successfulPrepare,
+});
+
+test('saving a caption keeps the wording and marks it as edited', async () => {
+  const dir = fixture();
+  try {
+    const photo = path.join(dir, 'photo.jpg');
+    fs.writeFileSync(photo, 'image');
+    const identity = sourceIdentityRecord('photo.jpg', readSourceStat(photo), PREVIEW_WIDTH);
+    fs.mkdirSync(path.join(dir, 'output', 'metadata'), {recursive: true});
+    fs.writeFileSync(path.join(dir, 'output', 'metadata', 'ai-captions.json'), JSON.stringify({
+      version: CACHE_VERSION,
+      model: CAPTION_MODEL,
+      prompt_hash: promptHash,
+      prompt_version: PROMPT_VERSION,
+      revision: 1,
+      items: {
+        'photo.jpg': {text: '伞忘在门口了', hint: '伞', source_identity: identity, preview_sha256: 'a'.repeat(64)},
+      },
+    }));
+    const result = await savePhotoCaption({
+      folder: dir,
+      assetId: 'photo:photo.jpg',
+      text: '比昨天还轻',
+      isJobRunning: () => false,
+      leaseManager: stubLeaseManager(),
+    });
+    assert.deepEqual(result, {caption: '比昨天还轻', captionEdited: true, captionHint: '伞'});
+    assert.equal(loadCaptionCache(path.join(dir, 'output', 'metadata', 'ai-captions.json')).items['photo.jpg'].edited, true);
+    await assert.rejects(
+      () => savePhotoCaption({
+        folder: dir,
+        assetId: 'photo:photo.jpg',
+        text: '字'.repeat(31),
+        isJobRunning: () => false,
+        leaseManager: stubLeaseManager(),
+      }),
+      (error) => error instanceof CaptionRequestError && error.status === 400 && error.message === '最多 30 个字',
+    );
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
 });
 
 test('single caption generation rejects non-photo assets and missing files', async () => {

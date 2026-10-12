@@ -27,14 +27,14 @@ const classifyStatus = (status) => {
   return null;
 };
 
-export const buildCaptionRequestBody = ({jpegBase64, repairReason = null, hint = ''}) => ({
+export const buildCaptionRequestBody = ({jpegBase64, repairReason = null, hint = '', rejected = ''}) => ({
   model: CAPTION_MODEL,
   messages: [
     {role: 'system', content: SYSTEM_PROMPT},
     {
       role: 'user',
       content: [
-        {type: 'text', text: repairReason ? repairUserPrompt(repairReason, hint) : userPromptWithHint(hint)},
+        {type: 'text', text: repairReason ? repairUserPrompt(repairReason, hint, rejected) : userPromptWithHint(hint)},
         {type: 'image_url', image_url: {url: `data:image/jpeg;base64,${jpegBase64}`, detail: 'low'}},
       ],
     },
@@ -64,13 +64,14 @@ export const requestCaption = async ({
   apiKey,
   signal,
   repairReason = null,
+  rejected = '',
   hint = '',
   fetchImpl = fetch,
   timeoutMs = CAPTION_TIMEOUT_MS,
   now = Date.now,
 }) => {
   const jpegBase64 = Buffer.from(jpegBuffer).toString('base64');
-  const body = buildCaptionRequestBody({jpegBase64, repairReason, hint});
+  const body = buildCaptionRequestBody({jpegBase64, repairReason, hint, rejected});
   if (body.messages[0].role !== 'system' || typeof body.messages[0].content !== 'string') {
     throw new CaptionHttpError('request-shape', 0, false, true);
   }

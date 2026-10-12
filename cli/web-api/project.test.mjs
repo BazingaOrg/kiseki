@@ -227,7 +227,7 @@ test('attaches cached captions when the cache is usable', () => {
     prompt_version: PROMPT_VERSION,
     revision: 1,
     items: {
-      'a.jpg': {text: '窗边那点光先到了', hint: '窗边', source_identity: identity, preview_sha256: 'a'.repeat(64)},
+      'a.jpg': {text: '窗边那点光先到了', hint: '窗边', edited: true, source_identity: identity, preview_sha256: 'a'.repeat(64)},
     },
   }));
   const {status, body} = getProject(root, root);
@@ -236,6 +236,7 @@ test('attaches cached captions when the cache is usable', () => {
   assert.ok(photo);
   assert.equal(photo.caption, '窗边那点光先到了');
   assert.equal(photo.captionHint, '窗边');
+  assert.equal(photo.captionEdited, true);
 });
 
 test('omits stale captions and hints whose source identity no longer matches', () => {

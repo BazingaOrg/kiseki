@@ -61,6 +61,7 @@ const assetItem = ({kind, origin, folder, relativePath, manageable = true, actio
     actionHint,
     ...(caption ? {caption} : {}),
     ...(captionHint ? {captionHint} : {}),
+    ...(caption && captionItem?.edited === true ? {captionEdited: true} : {}),
   };
 };
 

@@ -2,9 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {requireCaptionApiKey, preparePhotoCaptions} from '../ai/photo-caption-service.mjs';
-import {captionsPathFor} from '../ai/photo-caption-cache.mjs';
-import {PREVIEW_WIDTH, captionSourceIdentity, readSourceStat} from '../image-identity.mjs';
-import {normalizeCaptionHint} from '../ai/photo-caption-prompt.mjs';
+import {cacheHit, captionsPathFor, loadCaptionCache, upsertCaptionItem, writeCaptionCache} from '../ai/photo-caption-cache.mjs';
+import {PREVIEW_WIDTH, captionSourceIdentity, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
+import {normalizeCaptionHint, normalizeManualCaption} from '../ai/photo-caption-prompt.mjs';
 import {CliError} from '../options.mjs';
 import {scanFolderLoose} from '../project.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
@@ -74,6 +74,61 @@ const resolvePhotoAsset = (folder, assetId) => {
   return {relativePath, absPath};
 };
 
+const releaseCaptionLease = (leaseManager, lease, operationFailed) => {
+  if (!lease) return;
+  let released = false;
+  try { released = leaseManager.release(lease) === true; } catch (error) { if (!operationFailed) throw error; }
+  if (!released && !operationFailed) throw new Error('任务 lease 释放失败');
+};
+
+export const savePhotoCaption = async ({
+  folder,
+  assetId,
+  text = '',
+  isJobRunning,
+  signal,
+  leaseManager = createTaskLeaseManager(),
+}) => {
+  folder = canonicalProject(folder);
+  let lease;
+  try {
+    lease = leaseManager.acquire({kind: 'caption', resources: [folder]});
+  } catch (error) {
+    if (error instanceof ProjectBusyError) throw new CaptionRequestError(409, '项目已有任务在执行');
+    throw error;
+  }
+  let operationFailed = false;
+  try {
+    if (isJobRunning?.()) throw new CaptionRequestError(409, '任务运行中,不能修改旁白');
+    if (signal?.aborted) throw new CaptionRequestError(499, '图片旁白已取消');
+    const normalized = normalizeManualCaption(text);
+    if (!normalized.ok) throw new CaptionRequestError(400, normalized.error);
+    const {relativePath, absPath} = resolvePhotoAsset(folder, assetId);
+    const cachePath = captionsPathFor(folder);
+    assertSafeCachePath(folder, cachePath);
+    const stat = readSourceStat(absPath);
+    if (!stat) throw new CaptionRequestError(404, '找不到这张照片');
+    const cache = loadCaptionCache(cachePath);
+    const hit = cacheHit(cache, relativePath, sourceIdentityRecord(relativePath, stat, PREVIEW_WIDTH));
+    if (!hit) throw new CaptionRequestError(409, '先生成这句旁白，再改字');
+    const stored = {...hit, text: normalized.text, edited: true};
+    writeCaptionCache(cachePath, upsertCaptionItem(cache, relativePath, stored));
+    const hintText = typeof hit.hint === 'string' && hit.hint.trim() ? hit.hint.trim() : '';
+    return {
+      caption: normalized.text,
+      captionEdited: true,
+      ...(hintText ? {captionHint: hintText} : {}),
+    };
+  } catch (error) {
+    operationFailed = true;
+    if (error instanceof CaptionRequestError) throw error;
+    if (error instanceof ProjectBusyError) throw new CaptionRequestError(409, '项目已有任务在执行');
+    throw error;
+  } finally {
+    releaseCaptionLease(leaseManager, lease, operationFailed);
+  }
+};
+
 export const generatePhotoCaption = async ({
   folder,
   assetId,
@@ -139,10 +194,6 @@ export const generatePhotoCaption = async ({
     if (error?.code === 'source-changed') throw new CaptionRequestError(409, error.message);
     throw error;
   } finally {
-    if (lease) {
-      let released = false;
-      try { released = leaseManager.release(lease) === true; } catch (error) { if (!operationFailed) throw error; }
-      if (!released && !operationFailed) throw new Error('任务 lease 释放失败');
-    }
+    releaseCaptionLease(leaseManager, lease, operationFailed);
   }
 };

@@ -94,6 +94,36 @@ test('warm cache hits skip generate and materialize', async () => {
   }
 });
 
+test('a rejected comparison is rewritten until the caption is usable', async () => {
+  const dir = fixture();
+  try {
+    const photo = writePhoto(dir, '001.jpg');
+    const reasons = [];
+    const rejected = [];
+    let calls = 0;
+    const result = await preparePhotoCaptions({
+      projectRoot: dir,
+      sources: [photo],
+      apiKey: 'k',
+      generateCaption: async ({repairReason, rejected: previous}) => {
+        calls += 1;
+        reasons.push(repairReason);
+        rejected.push(previous);
+        if (calls < 3) return {validation: validateCaption('比昨天还轻'), text: '比昨天还轻', usage: {input_tokens: 1, output_tokens: 1}};
+        return {validation: validateCaption('伞忘在门口了'), usage: {input_tokens: 1, output_tokens: 1}};
+      },
+      materialize: async () => jpegPreview,
+    });
+    assert.equal(calls, 3);
+    assert.deepEqual(reasons, [null, 'more-than', 'more-than']);
+    assert.deepEqual(rejected, ['', '比昨天还轻', '比昨天还轻']);
+    assert.equal(result.generated, 1);
+    assert.equal(result.results.get('001.jpg').text, '伞忘在门口了');
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
 test('401 aborts the rest of the batch', async () => {
   const dir = fixture();
   try {

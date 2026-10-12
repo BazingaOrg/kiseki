@@ -18,7 +18,7 @@ import {
   upsertCaptionItem,
 } from './photo-caption-cache.mjs';
 import {normalizePhotoKey} from './photo-key.mjs';
-import {CAPTION_MODEL, promptHash} from './photo-caption-prompt.mjs';
+import {CAPTION_MODEL, captionRejectionRule, promptHash} from './photo-caption-prompt.mjs';
 
 export const CAPTION_REQUEST_CONCURRENCY = 4;
 export const CAPTION_ATTEMPT_BUDGET = 3;
@@ -129,6 +129,7 @@ export const preparePhotoCaptions = async ({
     }
 
     let repairReason = null;
+    let rejectedText = '';
     let lastValidation = null;
     for (let attempt = 0; attempt < CAPTION_ATTEMPT_BUDGET; attempt += 1) {
       if (workSignal.aborted) throw Object.assign(new Error('cancelled'), {code: 'cancelled', failureStage: 'photo-caption'});
@@ -140,6 +141,7 @@ export const preparePhotoCaptions = async ({
           apiKey,
           signal: workSignal,
           repairReason,
+          rejected: rejectedText,
           hint,
         });
         lastValidation = result.validation;
@@ -165,8 +167,8 @@ export const preparePhotoCaptions = async ({
           report();
           return {key: entry.key, text: stored.text, reused: false, identity, preview};
         }
-        if (repairReason) break;
         repairReason = result.validation.reason;
+        rejectedText = result.validation.text || result.text || '';
         retry = attempt < CAPTION_ATTEMPT_BUDGET - 1;
       } catch (error) {
         if (error instanceof CaptionHttpError && error.batchFatal) {
@@ -188,7 +190,8 @@ export const preparePhotoCaptions = async ({
       }
       if (retry) await delay(backoffMs(attempt), workSignal);
     }
-    throw Object.assign(new Error(lastValidation ? `文案未通过校验: ${lastValidation.reason}` : '图片旁白生成失败'), {
+    const rule = lastValidation ? captionRejectionRule(lastValidation.reason) : '';
+    throw Object.assign(new Error(rule ? `「${path.basename(entry.absPath)}」的旁白没写好，${rule}` : '图片旁白生成失败'), {
       code: 'caption-invalid',
       failureStage: 'photo-caption',
     });

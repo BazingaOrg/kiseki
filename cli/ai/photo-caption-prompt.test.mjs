@@ -7,11 +7,19 @@ import {
   USER_PROMPT,
   normalizeCaption,
   normalizeCaptionHint,
+  normalizeManualCaption,
   promptHash,
+  captionRejectionRule,
   repairUserPrompt,
   userPromptWithHint,
   validateCaption,
 } from './photo-caption-prompt.mjs';
+
+test('a hand-written caption keeps the wording and only limits length', () => {
+  assert.deepEqual(normalizeManualCaption('  比昨天还轻 \n'), {ok: true, text: '比昨天还轻'});
+  assert.deepEqual(normalizeManualCaption('   '), {ok: false, error: '旁白不能是空的'});
+  assert.deepEqual(normalizeManualCaption('字'.repeat(31)), {ok: false, error: '最多 30 个字'});
+});
 
 test('prompt hash is stable for the current prompt version', () => {
   assert.equal(promptHash.length, 64);
@@ -51,4 +59,7 @@ test('caption hints collapse whitespace and cap length without changing the defa
   assert.match(userPromptWithHint('这是外婆'), /拍摄者补充/);
   assert.match(userPromptWithHint('这是外婆'), /这是外婆/);
   assert.match(repairUserPrompt('too-long', '这是外婆'), /这是外婆/);
+  assert.match(repairUserPrompt('more-than', '', '比昨天还轻'), /上一句「比昨天还轻」不合规/);
+  assert.match(repairUserPrompt('more-than'), /不要用「比……还……」/);
+  assert.equal(captionRejectionRule('more-than'), '不要用「比……还……」');
 });

@@ -10,7 +10,7 @@ import {getExif} from './web-api/exif.mjs';
 import {fetchLyricsPreview, resetFetchState, runProcess, searchAudioCandidates, searchLyricsCandidates, saveLyrics, validateLyricsCandidate} from './web-api/fetch.mjs';
 import {createJobManager, JobValidationError} from './web-api/jobs.mjs';
 import {AssetMutationError, clearRecognizedLyrics, mutateAsset, resetAssetMutationState, undoAssetDelete} from './web-api/assets.mjs';
-import {CaptionRequestError, generatePhotoCaption} from './web-api/captions.mjs';
+import {CaptionRequestError, generatePhotoCaption, savePhotoCaption} from './web-api/captions.mjs';
 import {saveCaptionKey} from './web-api/caption-key.mjs';
 import {installTool} from './web-api/setup-tools.mjs';
 import {getProject} from './web-api/project.mjs';
@@ -163,6 +163,7 @@ const CLEAR_RECOGNIZED_LYRICS_RE = /^\/api\/assets\/recognized-lyrics\/clear$/;
 const VALIDATE_LYRICS_PATH = '/api/fetch/lyrics-validate';
 const LYRICS_PREVIEW_PATH = '/api/fetch/lyrics-preview';
 const CAPTIONS_GENERATE_PATH = '/api/captions/generate';
+const CAPTIONS_TEXT_PATH = '/api/captions/text';
 const CAPTION_KEY_PATH = '/api/settings/caption-key';
 const SETUP_INSTALL_PATH = '/api/setup/install';
 const SIGNATURE_PATH = '/api/signature';
@@ -170,7 +171,7 @@ const SIGNATURE_PATH = '/api/signature';
 // 仅这些路径接受 POST；其他方法必须在进入 SPA fallback 前被拒绝。
 const isAllowedPostRoute = (method, pathname) =>
   method === 'POST'
-  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || pathname === CAPTIONS_GENERATE_PATH || pathname === CAPTION_KEY_PATH || pathname === SETUP_INSTALL_PATH || pathname === SIGNATURE_PATH || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
+  && (pathname === '/api/jobs' || pathname === '/api/fetch/lyrics' || pathname === VALIDATE_LYRICS_PATH || pathname === '/api/assets/mutate' || pathname === CAPTIONS_GENERATE_PATH || pathname === CAPTIONS_TEXT_PATH || pathname === CAPTION_KEY_PATH || pathname === SETUP_INSTALL_PATH || pathname === SIGNATURE_PATH || ASSET_UNDO_RE.test(pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(pathname) || JOB_CANCEL_RE.test(pathname));
 
 /**
  * @param {string} root 路径沙箱允许的根目录(绝对路径)
@@ -328,7 +329,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
         .finally(releaseRequest);
       return;
     }
-    if (req.method === 'POST' && url.pathname === CAPTIONS_GENERATE_PATH) {
+    if (req.method === 'POST' && (url.pathname === CAPTIONS_GENERATE_PATH || url.pathname === CAPTIONS_TEXT_PATH)) {
       if (!checkToken(req, res)) return;
       const releaseWrite = writeGate.enter();
       const requestController = new AbortController();
@@ -358,15 +359,25 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
             sendJson(res, {status: 400, body: {error: 'folder 不是一个存在的目录'}});
             return;
           }
+          const savingText = url.pathname === CAPTIONS_TEXT_PATH;
           try {
-            const data = await generatePhotoCaption({
-              ...captionDeps,
-              folder,
-              assetId: body?.assetId,
-              hint: body?.hint,
-              isJobRunning: jobManager.hasRunningJob,
-              signal: requestController.signal,
-            });
+            const data = savingText
+              ? await savePhotoCaption({
+                ...captionDeps,
+                folder,
+                assetId: body?.assetId,
+                text: body?.text,
+                isJobRunning: jobManager.hasRunningJob,
+                signal: requestController.signal,
+              })
+              : await generatePhotoCaption({
+                ...captionDeps,
+                folder,
+                assetId: body?.assetId,
+                hint: body?.hint,
+                isJobRunning: jobManager.hasRunningJob,
+                signal: requestController.signal,
+              });
             if (!res.destroyed) sendJson(res, {status: 200, body: data});
           } catch (error) {
             if (res.destroyed) return;
@@ -374,11 +385,11 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
               sendJson(res, {status: error.status, body: {error: error.message}});
               return;
             }
-            sendJson(res, {status: 500, body: {error: error instanceof Error ? error.message : '图片旁白生成失败'}});
+            sendJson(res, {status: 500, body: {error: error instanceof Error ? error.message : (savingText ? '旁白没有保存' : '图片旁白生成失败')}});
           }
         })
         .catch(() => {
-          if (!res.destroyed) sendJson(res, {status: 500, body: {error: '图片旁白生成失败'}});
+          if (!res.destroyed) sendJson(res, {status: 500, body: {error: url.pathname === CAPTIONS_TEXT_PATH ? '旁白没有保存' : '图片旁白生成失败'}});
         })
         .finally(() => {
           asyncController.signal.removeEventListener('abort', abortRequest);
@@ -599,7 +610,7 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
       );
       return;
     }
-    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || url.pathname === CAPTIONS_GENERATE_PATH || url.pathname === CAPTION_KEY_PATH || url.pathname === SETUP_INSTALL_PATH || url.pathname === SIGNATURE_PATH || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
+    if (JOB_CANCEL_RE.test(url.pathname) || url.pathname === '/api/fetch/lyrics' || url.pathname === VALIDATE_LYRICS_PATH || url.pathname === '/api/assets/mutate' || url.pathname === CAPTIONS_GENERATE_PATH || url.pathname === CAPTIONS_TEXT_PATH || url.pathname === CAPTION_KEY_PATH || url.pathname === SETUP_INSTALL_PATH || url.pathname === SIGNATURE_PATH || ASSET_UNDO_RE.test(url.pathname) || CLEAR_RECOGNIZED_LYRICS_RE.test(url.pathname)) {
       // 走到这里说明路径形状是"取消任务"/"保存歌词"但方法不是 POST(POST 请求在上面
       // 已经被具体分支接住并 return 了)——不该把它当成 SPA 路由回退成页面.
       res.writeHead(405);

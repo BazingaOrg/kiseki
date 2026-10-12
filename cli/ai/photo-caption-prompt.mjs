@@ -33,6 +33,13 @@ export const SYSTEM_PROMPT = `你是一位为「电子相框」撰写旁白短�
 export const USER_PROMPT = '请看着这张照片，写一句符合规则的中文旁白。';
 export const CAPTION_HINT_MAX_CODE_POINTS = 40;
 
+export const normalizeManualCaption = (value) => {
+  const text = String(value ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return {ok: false, error: '旁白不能是空的'};
+  if ([...text].length > CAPTION_MAX_CODE_POINTS) return {ok: false, error: '最多 30 个字'};
+  return {ok: true, text};
+};
+
 export const normalizeCaptionHint = (value) => {
   if (typeof value !== 'string') return '';
   const text = value.replace(/\s+/g, ' ').trim();
@@ -80,5 +87,22 @@ export const validateCaption = (raw) => {
   return {ok: true, reason: null, text};
 };
 
-export const repairUserPrompt = (reason, hint = '') =>
-  `${userPromptWithHint(hint)}\n上一句不合规（${reason}），请只输出一句不超过 30 个汉字的中文短句，不要换行、引号或解释。`;
+const REJECTION_RULE = {
+  empty: '不要留空',
+  newline: '不要换行',
+  quoted: '不要加引号',
+  'too-long': '不要超过 30 个汉字',
+  'photo-deixis': '不要写「这张照片」「这一刻」或「那天」',
+  'world-in': '不要用「里……着整个世界」',
+  'summer-in': '不要用「里……着整个夏天」',
+  like: '不要用「得像」',
+  'more-than': '不要用「比……还……」',
+  'even-more': '不要用「得比……更……」',
+};
+
+export const captionRejectionRule = (reason) => REJECTION_RULE[reason] ?? '请换一种说法';
+
+export const repairUserPrompt = (reason, hint = '', rejected = '') => {
+  const previous = rejected ? `上一句「${rejected}」不合规。` : '上一句不合规。';
+  return `${userPromptWithHint(hint)}\n${previous}${captionRejectionRule(reason)}。请只输出一句不超过 30 个汉字的中文短句，不要换行、引号或解释。`;
+};
