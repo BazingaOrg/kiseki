@@ -2,7 +2,7 @@ import {lazy, Suspense, useEffect, useId, useRef, useState} from 'react';
 import {ArrowDown, ArrowUp, Columns3, LayoutGrid} from 'lucide-react';
 
 import {basename, thumbUrl} from './media';
-import {captionHintDraftKey, openPhotoIndex, type PhotoOpenState} from './photo-grid-state';
+import {captionHintDraftKey, openPhotoIndex, resolveOpenPhoto, type PhotoOpenState} from './photo-grid-state';
 import {PHOTO_LAYOUT_OPTIONS, photoLayoutStorageKey, readPhotoLayout, type PhotoLayout} from './photo-layout';
 import {PHOTO_SORT_LABELS, photoSortStorageKey, readPhotoSort, sortPhotoPaths, togglePhotoSort, type PhotoSortDirection} from './photo-sort';
 import type {AssetItem, ExifResponse, ProjectResponse} from './types';
@@ -29,11 +29,15 @@ interface PhotoGridProps {
   captionBlockedReason?: string | null;
   onDelete?: (item: AssetItem) => void;
   onCaption?: (item: AssetItem, hint: string) => Promise<string | null>;
+  onSaveCaption?: (item: AssetItem, text: string) => Promise<string | null>;
+  onConfirmRewrite?: (item: AssetItem) => Promise<boolean>;
   onDeleteAll?: (assets: AssetItem[]) => void;
 }
 
+const captionCodePoints = (value: string) => [...value].length;
+
 const PhotoItem = ({
-  path, asset, draftKey, busy, captionEnabled = false, captionBlockedReason = null, captionDescriptionId, onOpen, onDelete, onCaption,
+  path, asset, draftKey, busy, captionEnabled = false, captionBlockedReason = null, captionDescriptionId, onOpen, onDelete, onCaption, onSaveCaption, onConfirmRewrite,
 }: {
   path: string;
   asset?: AssetItem;
@@ -45,17 +49,24 @@ const PhotoItem = ({
   onOpen: () => void;
   onDelete?: (item: AssetItem) => void;
   onCaption?: (item: AssetItem, hint: string) => Promise<string | null>;
+  onSaveCaption?: (item: AssetItem, text: string) => Promise<string | null>;
+  onConfirmRewrite?: (item: AssetItem) => Promise<boolean>;
 }) => {
   const [imageReady, setImageReady] = useState(false);
   const [drafting, setDrafting] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [captionDraft, setCaptionDraft] = useState(asset?.caption ?? '');
   const [hint, setHint] = useState(
     () => captionHintDrafts.get(draftKey) ?? asset?.captionHint ?? '',
   );
   const [captionError, setCaptionError] = useState<string | null>(null);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
   const name = asset?.name ?? basename(path);
   const disabled = busy || generating || asset?.manageable === false;
-  const captionActionDisabled = busy || generating || !onCaption || !captionEnabled;
+  const captionActionDisabled = busy || generating || saving || !onCaption || !captionEnabled;
+  const captionPointCount = captionCodePoints(captionDraft);
+  const captionTooLong = captionPointCount > 30;
 
   useEffect(() => {
     const remembered = captionHintDrafts.get(draftKey);
@@ -64,9 +75,11 @@ const PhotoItem = ({
     } else {
       setHint(asset?.captionHint ?? '');
     }
+    setCaptionDraft(asset?.caption ?? '');
     setDrafting(false);
+    setEditing(false);
     setCaptionError(null);
-  }, [asset, asset?.captionHint, draftKey]);
+  }, [asset, asset?.caption, asset?.captionHint, draftKey]);
 
   return (
     <article className="photo-item">
@@ -75,7 +88,60 @@ const PhotoItem = ({
         <img src={thumbUrl(path, 400)} alt="" loading="lazy" decoding="async" onLoad={() => setImageReady(true)} onError={() => setImageReady(true)} />
       </button>
       <div className="photo-item-meta">
-        {drafting && onCaption && asset ? (
+        {editing && onSaveCaption && asset?.caption ? (
+          <form
+            className="photo-item-caption-editor"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const text = captionDraft.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+              if (!text) {
+                setCaptionError('旁白不能是空的');
+                return;
+              }
+              if (captionCodePoints(text) > 30) {
+                setCaptionError('最多 30 个字');
+                return;
+              }
+              setSaving(true);
+              setCaptionError(null);
+              void onSaveCaption(asset, text).then((error) => {
+                setSaving(false);
+                if (error) setCaptionError(error);
+                else setEditing(false);
+              });
+            }}
+          >
+            <input
+              className="photo-caption-input"
+              value={captionDraft}
+              disabled={saving}
+              autoFocus
+              aria-label={`修改 ${name} 的旁白`}
+              onChange={(event) => {
+                setCaptionDraft(event.target.value);
+                setCaptionError(null);
+              }}
+              onKeyDown={(event) => {
+                if (event.key !== 'Escape' || saving) return;
+                event.preventDefault();
+                setCaptionDraft(asset.caption ?? '');
+                setEditing(false);
+                setCaptionError(null);
+              }}
+            />
+            <span className="asset-actions photo-item-actions">
+              <button type="submit" className="link-button" disabled={saving || captionTooLong || !captionDraft.trim()}>保存</button>
+              <button type="button" className="link-button" disabled={saving} onClick={() => {
+                setCaptionDraft(asset.caption ?? '');
+                setEditing(false);
+                setCaptionError(null);
+              }}>取消</button>
+              <span className={captionTooLong ? 'photo-caption-count photo-caption-count-over' : 'photo-caption-count'}>{captionPointCount}/30</span>
+            </span>
+            {captionTooLong && <p className="hint hint-error">最多 30 个字</p>}
+            {captionError && <p className="hint hint-error">{captionError}</p>}
+          </form>
+        ) : drafting && onCaption && asset ? (
           <form
             className="photo-item-caption-editor"
             onSubmit={(event) => {
@@ -119,11 +185,24 @@ const PhotoItem = ({
             {captionError && <p className="hint hint-error">{captionError}</p>}
           </form>
         ) : asset?.caption ? (
-          <p className="photo-item-caption-wrap" data-tooltip={asset.caption} aria-label={asset.caption}><span className="photo-item-caption">{asset.caption}</span></p>
+          <p className="photo-item-caption-wrap" data-tooltip={asset.caption}>
+            <button
+              type="button"
+              className="photo-item-caption"
+              aria-label={`修改 ${name} 的旁白`}
+              disabled={!onSaveCaption || busy || saving}
+              onClick={() => {
+                setDrafting(false);
+                setCaptionDraft(asset.caption ?? '');
+                setCaptionError(null);
+                setEditing(true);
+              }}
+            >{asset.caption}</button>
+          </p>
         ) : null}
         <span className="photo-item-name-wrap" data-tooltip={name} aria-label={name}><span className="photo-item-name">{name}</span></span>
         {asset && (onDelete || onCaption) && <span className="asset-actions photo-item-actions">
-            {onCaption && (
+            {onCaption && !editing && (
               <button
                 type="button"
                 className="link-button"
@@ -132,9 +211,13 @@ const PhotoItem = ({
                 aria-label={asset.caption ? `重写 ${name} 的旁白` : `为 ${name} 写旁白`}
                 aria-describedby={!captionEnabled ? captionDescriptionId : undefined}
                 onClick={() => {
-                  setDrafting(true);
-                  setCaptionError(null);
-                  setHint(captionHintDrafts.get(draftKey) ?? asset.captionHint ?? hint);
+                  void (async () => {
+                    if (asset.caption && onConfirmRewrite && !(await onConfirmRewrite(asset))) return;
+                    setEditing(false);
+                    setDrafting(true);
+                    setCaptionError(null);
+                    setHint(captionHintDrafts.get(draftKey) ?? asset.captionHint ?? hint);
+                  })();
                 }}
               >
                 {asset.caption ? '重写' : '写旁白'}
@@ -147,17 +230,12 @@ const PhotoItem = ({
   );
 };
 
-/**
- * 大分组(数千张)全量挂载 DOM 会让整页卡死:按批挂载,哨兵进入视口(提前
- * 600px 预取)时再追加一批,直到渲染完。paths 本身不裁剪 —— lightbox 的
- * 导航索引和计数始终基于完整列表,分批只影响 DOM 挂载量。
- */
 const deletableAssets = (group: PhotoGroup): AssetItem[] =>
   (group.assets ?? []).filter((item) => item.manageable !== false);
 
 const PHOTO_CHUNK_SIZE = 60;
 
-const PhotoChunkGrid = ({projectPath, paths, assetsByPath, busy, layout, captionEnabled, captionBlockedReason, captionDescriptionId, onOpen, onDelete, onCaption}: {
+const PhotoChunkGrid = ({projectPath, paths, assetsByPath, busy, layout, captionEnabled, captionBlockedReason, captionDescriptionId, onOpen, onDelete, onCaption, onSaveCaption, onConfirmRewrite}: {
   projectPath: string;
   paths: string[];
   assetsByPath: Map<string, AssetItem>;
@@ -169,32 +247,26 @@ const PhotoChunkGrid = ({projectPath, paths, assetsByPath, busy, layout, caption
   onOpen: (path: string) => void;
   onDelete?: (item: AssetItem) => void;
   onCaption?: (item: AssetItem, hint: string) => Promise<string | null>;
+  onSaveCaption?: (item: AssetItem, text: string) => Promise<string | null>;
+  onConfirmRewrite?: (item: AssetItem) => Promise<boolean>;
 }) => {
   const [limit, setLimit] = useState(PHOTO_CHUNK_SIZE);
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const membershipKey = [...paths].sort().join('\n');
 
   useEffect(() => {
-    setLimit(PHOTO_CHUNK_SIZE);
-  }, [membershipKey]);
-
-  useEffect(() => {
     const sentinel = sentinelRef.current;
-    if (!sentinel) return;
+    if (!sentinel || limit >= paths.length) return;
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries.some((entry) => entry.isIntersecting)) return;
-        setLimit((current) => {
-          const next = Math.min(current + PHOTO_CHUNK_SIZE, paths.length);
-          if (next >= paths.length) observer.disconnect();
-          return next;
-        });
+        setLimit((current) => Math.min(current + PHOTO_CHUNK_SIZE, paths.length));
       },
       {rootMargin: '600px 0px'},
     );
     observer.observe(sentinel);
     return () => observer.disconnect();
-  }, [membershipKey, paths.length]);
+  }, [membershipKey, paths.length, limit]);
 
   const done = limit >= paths.length;
 
@@ -213,15 +285,16 @@ const PhotoChunkGrid = ({projectPath, paths, assetsByPath, busy, layout, caption
           onOpen={() => onOpen(photoPath)}
           onDelete={onDelete}
           onCaption={onCaption}
+          onSaveCaption={onSaveCaption}
+          onConfirmRewrite={onConfirmRewrite}
         />)}
       </div>
-      {/* 哨兵始终挂载:渲染完(或列表又变长)时 effect 会重建观察,不依赖条件挂载 */}
       {!done && <div ref={sentinelRef} className="photo-grid-sentinel" aria-hidden="true" />}
     </>
   );
 };
 
-export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, captionEnabled = false, captionBlockedReason = null, onDelete, onCaption, onDeleteAll}: PhotoGridProps) => {
+export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, captionEnabled = false, captionBlockedReason = null, onDelete, onCaption, onSaveCaption, onConfirmRewrite, onDeleteAll}: PhotoGridProps) => {
   const [open, setOpen] = useState<PhotoOpenState | null>(null);
   const captionDescriptionId = useId();
   const [sort, setSort] = useState<PhotoSortDirection>(() => readPhotoSort(project.path));
@@ -295,7 +368,18 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, captio
   const activePaths = activeGroup
     ? sortPhotoPaths(activeGroup.paths, {assetsByPath: new Map(activeGroup.assets?.map((item) => [item.path, item])), sort, shotTimes})
     : [];
-  const openPathAvailable = Boolean(open && activePaths.includes(open.path));
+  const openIndexRef = useRef(0);
+  if (open && activePaths.includes(open.path)) openIndexRef.current = openPhotoIndex(activePaths, open.path);
+  const resolvedOpen = resolveOpenPhoto({
+    open,
+    groupKey: activeGroup?.key ?? null,
+    paths: activePaths,
+    lastIndex: openIndexRef.current,
+  });
+  if ((open?.path ?? null) !== (resolvedOpen?.path ?? null) || (open?.groupKey ?? null) !== (resolvedOpen?.groupKey ?? null)) {
+    setOpen(resolvedOpen);
+  }
+  const openAsset = activeGroup?.assets?.find((item) => item.path === resolvedOpen?.path);
   const unavailableCaptionReason = onCaption && !captionEnabled
     ? captionBlockedReason ?? '图片旁白尚未配置。'
     : null;
@@ -383,21 +467,26 @@ export const PhotoGrid = ({project, groups: suppliedGroups, busy = false, captio
             onOpen={(path) => setOpen({groupKey: group.key, path})}
             onDelete={onDelete}
             onCaption={onCaption}
+            onSaveCaption={onSaveCaption}
+            onConfirmRewrite={onConfirmRewrite}
           />
         </div>;
       })}
 
-      {activeGroup && open && openPathAvailable && (
+      {activeGroup && resolvedOpen && (
         <Suspense fallback={null}>
           <PhotoLightbox
             paths={activePaths}
             captions={new Map((activeGroup.assets ?? []).flatMap((item) => item.caption ? [[item.path, item.caption] as const] : []))}
-            index={openPhotoIndex(activePaths, open.path)}
+            index={openPhotoIndex(activePaths, resolvedOpen.path)}
             onIndexChange={(index) => {
               const path = activePaths[index];
               if (path) setOpen({groupKey: activeGroup.key, path});
             }}
             onClose={() => setOpen(null)}
+            deleteName={openAsset?.name}
+            deleteDisabled={busy}
+            onDelete={onDelete && openAsset && openAsset.manageable !== false ? () => onDelete(openAsset) : undefined}
           />
         </Suspense>
       )}

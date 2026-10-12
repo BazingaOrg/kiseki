@@ -1,4 +1,5 @@
 import {useEffect, useRef, useState} from 'react';
+import {createPortal} from 'react-dom';
 
 interface DialogProps {
   title: string;
@@ -52,7 +53,7 @@ export const Dialog = ({title, message, confirmLabel = '知道了', destructive 
     }
   };
 
-  return (
+  return createPortal(
     <div className="dialog-backdrop" role="presentation" onMouseDown={(event) => {
       if (event.target === event.currentTarget && !busy) onClose();
     }}>
@@ -66,6 +67,7 @@ export const Dialog = ({title, message, confirmLabel = '知道了', destructive 
           </button>
         </div>
       </section>
-    </div>
+    </div>,
+    document.body,
   );
 };

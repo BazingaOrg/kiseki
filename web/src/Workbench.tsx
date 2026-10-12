@@ -15,7 +15,7 @@ import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
 import {clearLastJobRecord, readLastJobRecord} from './lastJob';
-import {clearRecognizedLyrics, generatePhotoCaption, mutateAsset, undoAssetDelete} from './api';
+import {clearRecognizedLyrics, generatePhotoCaption, mutateAsset, savePhotoCaption, undoAssetDelete} from './api';
 import type {AssetItem} from './types';
 
 type SectionKey = 'materials' | 'make' | 'results';
@@ -178,7 +178,7 @@ export const Workbench = ({
     if (jobLock === 'owned' && !job.busy) probeCurrentJob();
   }, [job.busy, jobLock, probeCurrentJob]);
   const [assetBusy, setAssetBusy] = useState(false);
-  const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean; confirmLabel?: string} | null>(null);
+  const [dialog, setDialog] = useState<{title: string; message: string; confirm?: () => Promise<void>; destructive?: boolean; confirmLabel?: string; onDismiss?: () => void} | null>(null);
 
   const handleStart = async (request: JobRequest): Promise<boolean> => {
     if (jobBusy) return false;
@@ -248,6 +248,36 @@ export const Workbench = ({
     if (!result.ok) return result.message;
     onProjectRefresh();
     return null;
+  };
+  const handleSaveCaption = async (item: AssetItem, text: string): Promise<string | null> => {
+    if (assetBusy || jobBusy) return '请等当前操作结束后再试。';
+    setAssetBusy(true);
+    const result = await savePhotoCaption(project.path, item.id, text);
+    setAssetBusy(false);
+    if (!result.ok) return result.message;
+    onProjectRefresh();
+    return null;
+  };
+  const confirmRewrite = (item: AssetItem) => {
+    if (!item.captionEdited) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      let settled = false;
+      const finish = (accepted: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(accepted);
+      };
+      setDialog({
+        title: '重写这句旁白？',
+        message: '这句是你改过的，重写会换成新的。',
+        confirmLabel: '重写',
+        confirm: async () => {
+          finish(true);
+          setDialog(null);
+        },
+        onDismiss: () => finish(false),
+      });
+    });
   };
   const performDeleteAll = async (items: AssetItem[]): Promise<boolean> => {
     if (assetBusy || jobBusy) return false;
@@ -443,6 +473,8 @@ export const Workbench = ({
               assetBusy={assetBusy || jobBusy}
               onAsset={handleAsset}
               onCaption={handleCaption}
+              onSaveCaption={handleSaveCaption}
+              onConfirmRewrite={confirmRewrite}
             />
           )}
           {section === 'make' && (
@@ -462,7 +494,7 @@ export const Workbench = ({
           )}
         </main>
       </div>
-      {dialog && <Dialog key={`${dialog.title}:${dialog.message}`} title={dialog.title} message={dialog.message} destructive={dialog.destructive} confirmLabel={dialog.confirm ? (dialog.confirmLabel ?? '删除') : '知道了'} onConfirm={dialog.confirm} onClose={() => setDialog(null)} />}
+      {dialog && <Dialog key={`${dialog.title}:${dialog.message}`} title={dialog.title} message={dialog.message} destructive={dialog.destructive} confirmLabel={dialog.confirm ? (dialog.confirmLabel ?? '删除') : '知道了'} onConfirm={dialog.confirm} onClose={() => { dialog.onDismiss?.(); setDialog(null); }} />}
     </div>
   );
 };

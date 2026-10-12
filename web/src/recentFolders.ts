@@ -57,15 +57,25 @@ export const loadRecentFolders = (): RecentFolder[] => {
   }
 };
 
+const saveRecentFolders = (folders: RecentFolder[]) => {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(folders));
+  } catch {
+    // 最近使用只是快捷入口，存储不可用不应阻止打开素材夹。
+  }
+};
+
 export const rememberFolder = (folder: RecentFolder): RecentFolder[] => {
   const next = uniqueRecentFolders([folder, ...loadRecentFolders()])
     .slice(0, MAX_RECENT_FOLDERS);
-  if (typeof localStorage !== 'undefined') {
-    try {
-      localStorage.setItem(RECENT_FOLDERS_KEY, JSON.stringify(next));
-    } catch {
-      // 最近使用只是快捷入口，存储不可用不应阻止打开素材夹。
-    }
-  }
+  saveRecentFolders(next);
+  return next;
+};
+
+export const forgetFolder = (path: string): RecentFolder[] => {
+  const key = recentFolderPathKey(path);
+  const next = loadRecentFolders().filter((folder) => recentFolderPathKey(folder.path) !== key);
+  saveRecentFolders(next);
   return next;
 };

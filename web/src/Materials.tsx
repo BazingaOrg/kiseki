@@ -504,6 +504,8 @@ interface MaterialsProps {
   locked: boolean;
   onAsset: (item: AssetItem, action: 'rename' | 'delete', stem?: string) => void;
   onCaption?: (item: AssetItem, hint: string) => Promise<string | null>;
+  onSaveCaption?: (item: AssetItem, text: string) => Promise<string | null>;
+  onConfirmRewrite?: (item: AssetItem) => Promise<boolean>;
 }
 
 export const Materials = ({
@@ -521,6 +523,8 @@ export const Materials = ({
   locked,
   onAsset,
   onCaption,
+  onSaveCaption,
+  onConfirmRewrite,
 }: MaterialsProps) => {
   const photos = project.photos;
   const audios = project.audios ?? (project.audio ? [project.audio] : []);
@@ -587,6 +591,8 @@ export const Materials = ({
             captionBlockedReason={capabilities.photoCaption.blockers[0]?.reason ?? null}
             onDelete={(item) => onAsset(item, 'delete')}
             onCaption={onCaption}
+            onSaveCaption={onSaveCaption}
+            onConfirmRewrite={onConfirmRewrite}
           />
         ) : (
           <p className="material-empty">把照片放进这个文件夹就行，jpg / png / webp 都可以 ：）</p>

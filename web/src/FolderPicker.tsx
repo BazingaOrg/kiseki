@@ -1,8 +1,8 @@
 import {useEffect, useRef, useState, type KeyboardEvent} from 'react';
-import {ChevronRight, Clock3, Folder} from 'lucide-react';
+import {ChevronRight, Clock3, Folder, X} from 'lucide-react';
 
 import {createLatestGate} from './latest';
-import {loadRecentFolders, rememberFolder, type RecentFolder} from './recentFolders';
+import {forgetFolder, loadRecentFolders, rememberFolder, type RecentFolder} from './recentFolders';
 import type {DirsResponse, ProjectResponse, RuntimeResponse} from './types';
 
 const pathSeparator = (p: string): string => (p.includes('\\') && !p.includes('/') ? '\\' : '/');
@@ -167,10 +167,24 @@ export const FolderPicker = ({runtime, onProjectSelected, onInteractionStart}: F
           <h2 id="recent-folders-title">最近使用</h2>
           <div className="recent-folder-list">
             {visibleRecentFolders.map((folder) => (
-              <button className="recent-folder" key={folder.path} onClick={() => handleSelectFolder(folder.path)} title={folder.path}>
-                <Clock3 size={14} strokeWidth={1.5} />
-                <span>{folder.name}</span>
-              </button>
+              <div className="recent-folder" key={folder.path}>
+                <button type="button" className="recent-folder-open" onClick={() => handleSelectFolder(folder.path)} title={folder.path}>
+                  <Clock3 size={14} strokeWidth={1.5} />
+                  <span>{folder.name}</span>
+                </button>
+                <button
+                  type="button"
+                  className="recent-folder-remove"
+                  aria-label={`从最近使用中移除「${folder.name}」`}
+                  title="只从最近使用中去掉，不删除文件夹"
+                  onClick={() => {
+                    onInteractionStart();
+                    setRecentFolders(forgetFolder(folder.path));
+                  }}
+                >
+                  <X size={13} strokeWidth={1.5} />
+                </button>
+              </div>
             ))}
           </div>
         </section>

@@ -301,21 +301,84 @@
 .recent-folder {
   min-width: 0;
   display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
+  align-items: stretch;
   border: 1px solid var(--color-divider);
   border-radius: var(--radius-control);
   background: none;
   color: var(--color-secondary-text);
-  padding: 0.42rem 0.65rem;
   font-size: 0.82rem;
+}
+
+.recent-folder-open,
+.recent-folder-remove {
+  border: 0;
+  background: none;
+  color: inherit;
+  font-size: inherit;
+}
+
+.recent-folder-open {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.42rem 0.65rem;
   white-space: nowrap;
 }
 
-.recent-folder span {
+.recent-folder-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  padding: 0;
+}
+
+.recent-folder-open span {
   max-width: 10rem;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .recent-folder {
+    position: relative;
+  }
+
+  .recent-folder-open {
+    padding-right: 1.75rem;
+  }
+
+  .recent-folder-remove {
+    position: absolute;
+    inset-block: 0;
+    right: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.16s ease-out;
+  }
+
+  .recent-folder:hover .recent-folder-remove,
+  .recent-folder:focus-within .recent-folder-remove {
+    opacity: 1;
+    pointer-events: auto;
+  }
+
+  .recent-folder:hover,
+  .recent-folder:focus-within {
+    color: var(--color-text);
+  }
+
+  .recent-folder-open:hover,
+  .recent-folder-remove:hover {
+    background: var(--color-surface);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: reduce) {
+  .recent-folder-remove {
+    transition: none;
+  }
 }
 
 .folder-columns {
@@ -858,7 +921,7 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 }
 /* ── 项目内弹窗 ───────────────────────────────────────── */
 
-.dialog-backdrop { position: fixed; inset: 0; z-index: 20; display: grid; place-items: center; padding: 1.25rem; background: rgba(26, 24, 21, 0.42); animation: dialog-fade-in 160ms ease-out; }
+.dialog-backdrop { position: fixed; inset: 0; z-index: 10050; display: grid; place-items: center; padding: 1.25rem; background: rgba(26, 24, 21, 0.42); animation: dialog-fade-in 160ms ease-out; }
 .dialog { width: min(100%, 25rem); padding: 1.25rem; border: 1px solid var(--color-divider); border-radius: var(--radius-panel); background: var(--color-background); box-shadow: 0 18px 48px rgba(24, 22, 18, 0.2); animation: dialog-in 180ms cubic-bezier(0.23, 1, 0.32, 1); }
 .dialog h2 { margin: 0; font-size: 1rem; font-weight: 500; }
 .dialog p { margin: 0.65rem 0 0; color: var(--color-secondary-text); font-size: 0.85rem; line-height: 1.65; overflow-wrap: anywhere; }
@@ -2824,14 +2887,26 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 }
 .photo-item-caption {
   display: block;
+  width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--color-secondary-text);
+  font: inherit;
   font-size: 0.72rem;
   line-height: 1.45;
+  text-align: inherit;
+  cursor: text;
 }
+.photo-caption-count {
+  color: var(--color-secondary-text);
+  font-size: 0.72rem;
+}
+.photo-caption-count-over { color: var(--color-destructive); }
 .photo-item-caption-editor {
   display: grid;
   gap: 0.35rem;
@@ -2994,6 +3069,12 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
   transform: scale(0.96);
 }
 
+.kiseki-lightbox .yarl__navigation_prev:active,
+.kiseki-lightbox .yarl__navigation_next:active {
+  transform: translateY(-50%);
+  background: rgba(255, 253, 248, 0.16);
+}
+
 .kiseki-lightbox .yarl__button:focus-visible,
 .kiseki-lightbox-tool:focus-visible {
   outline: 2px solid rgba(255, 253, 248, 0.94);
@@ -3019,6 +3100,7 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 
 .kiseki-lightbox .yarl__navigation_prev,
 .kiseki-lightbox .yarl__navigation_next {
+  z-index: 4;
   width: 38px;
   height: 38px;
   padding: 0;
@@ -3043,6 +3125,16 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
   max-width: min(68vw, 1120px) !important;
   max-height: 68vh !important;
   object-fit: contain;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .kiseki-lightbox-tool.kiseki-lightbox-delete:hover:not(:disabled) {
+    color: var(--color-destructive);
+  }
+}
+
+.kiseki-lightbox-tool.kiseki-lightbox-delete:focus-visible {
+  color: var(--color-destructive);
 }
 
 .kiseki-lightbox .yarl__counter {
@@ -3154,10 +3246,16 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
   .kiseki-lightbox .yarl__slide_image,
-  .kiseki-lightbox .yarl__button,
+  .kiseki-lightbox .yarl__button:not(.yarl__navigation_prev):not(.yarl__navigation_next),
   .kiseki-lightbox-tool {
     transition: opacity 120ms ease !important;
     transform: none !important;
+  }
+
+  .kiseki-lightbox .yarl__navigation_prev,
+  .kiseki-lightbox .yarl__navigation_next {
+    transition: none !important;
+    transform: translateY(-50%) !important;
   }
 }
 

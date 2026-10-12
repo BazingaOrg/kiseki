@@ -97,6 +97,9 @@ export const mutateAsset = (folder: string, assetId: string, action: 'rename' | 
 export const generatePhotoCaption = (folder: string, assetId: string, hint?: string) =>
   postAsset<{caption: string}>('/api/captions/generate', {folder, assetId, ...(hint ? {hint} : {})});
 
+export const savePhotoCaption = (folder: string, assetId: string, text: string) =>
+  postAsset<{caption: string; captionEdited: boolean}>('/api/captions/text', {folder, assetId, text});
+
 export const saveCaptionKey = (apiKey: string) =>
   postAsset<{configured: boolean}>('/api/settings/caption-key', {apiKey});
 

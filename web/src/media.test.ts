@@ -21,19 +21,30 @@ test('photo grid loads the lightbox on demand and only preloads one neighbor', a
   assert.match(lightbox, /lightboxSlide/);
   assert.doesNotMatch(lightbox, /mediaUrl/);
   assert.match(lightbox, /className="kiseki-lightbox-footer"/);
+  assert.match(lightbox, /className="kiseki-lightbox-tool kiseki-lightbox-delete"/);
+  assert.match(lightbox, /<Trash2 aria-hidden="true" \/>/);
+  assert.match(lightbox, /buttons: deleteButton \? \['zoom', deleteButton, 'close'\]/);
   assert.match(css, /\.kiseki-lightbox-footer\s*\{[^}]*position: absolute;/s);
+  assert.match(lightbox, /onPointerDown=\{\(event\) => \{/);
+  assert.match(lightbox, /controllerRef\.current\?\.prev\(\)/);
+  assert.match(css, /\.kiseki-lightbox \.yarl__navigation_next:active\s*\{[^}]*transform: translateY\(-50%\);/s);
 });
 
 test('photo caption blockers are visible and describe the disabled action', async () => {
   const grid = await readFile(new URL('./PhotoGrid.tsx', import.meta.url), 'utf8');
   assert.match(grid, /aria-describedby=\{!captionEnabled \? captionDescriptionId : undefined\}/);
   assert.match(grid, /<p className="hint photo-caption-blocked" id=\{captionDescriptionId\}>/);
+  assert.match(grid, /aria-label=\{`修改 \$\{name\} 的旁白`\}/);
+  assert.match(grid, /最多 30 个字/);
+  assert.match(grid, /onSaveCaption/);
 });
 
 test('photo controls expose one chronological toggle and no photo rename path', async () => {
   const grid = await readFile(new URL('./PhotoGrid.tsx', import.meta.url), 'utf8');
   const sort = await readFile(new URL('./photo-sort.ts', import.meta.url), 'utf8');
   const css = await readFile(new URL('./App.css', import.meta.url), 'utf8');
+  assert.doesNotMatch(grid, /setLimit\(PHOTO_CHUNK_SIZE\)/);
+  assert.match(grid, /\[membershipKey, paths\.length, limit\]/);
   assert.match(grid, /拍摄时间 · \{PHOTO_SORT_LABELS\[sort\]\}/);
   assert.match(grid, /点击切换为\$\{PHOTO_SORT_LABELS\[togglePhotoSort\(sort\)\]\}/);
   assert.match(grid, /Columns3 className="photo-layout-icon"/);

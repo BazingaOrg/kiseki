@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {loadRecentFolders, rememberFolder} from './recentFolders.ts';
+import {forgetFolder, loadRecentFolders, rememberFolder} from './recentFolders.ts';
 
 const installStorage = (initial: Record<string, string> = {}) => {
   const values = new Map(Object.entries(initial));
@@ -52,6 +52,25 @@ test('stored duplicate paths render only once', () => {
   try {
     assert.deepEqual(loadRecentFolders(), [
       {name: 'latest', path: '/photos/trip'},
+      {name: 'other', path: '/photos/other'},
+    ]);
+  } finally {
+    cleanup();
+  }
+});
+
+test('forgetting a recent folder drops every spelling of that path', () => {
+  const cleanup = installStorage();
+  try {
+    rememberFolder({name: 'other', path: '/photos/other'});
+    rememberFolder({name: 'trip', path: 'C:\\Photos\\Trip'});
+    assert.deepEqual(forgetFolder('c:/Photos/./Trip/'), [
+      {name: 'other', path: '/photos/other'},
+    ]);
+    assert.deepEqual(loadRecentFolders(), [
+      {name: 'other', path: '/photos/other'},
+    ]);
+    assert.deepEqual(forgetFolder('/does/not/exist'), [
       {name: 'other', path: '/photos/other'},
     ]);
   } finally {

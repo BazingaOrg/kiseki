@@ -60,6 +60,7 @@ export interface AssetItem {
   mtimeMs?: number;
   caption?: string;
   captionHint?: string;
+  captionEdited?: boolean;
 }
 
 export interface AssetCollection {
