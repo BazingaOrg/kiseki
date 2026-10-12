@@ -19,16 +19,16 @@
 
 可选 `meta.sign` 是布尔值；`meta.filter` 为 `null` 或对象 `{ "id": string, "intensity"?: 0..1 }`，其中 `id` 不能空。
 
-可选 `meta.trim` 必须有 `mode`（`"auto"`、`"full"` 或 `"seconds"`）、`applied`（布尔）、`full_duration` 与 `trimmed_duration`（正有限数），且后者不大于前者。可选 `meta.chapters` 必须有 `enabled`（布尔）、`day_count` 与 `card_count`（非负整数）。可选 `meta.branding` 的 `outro_text`、`signature` 为字符串，`intro` 为布尔。
+可选 `meta.trim` 必须有 `mode`（`"auto"`、`"full"` 或 `"seconds"`）、`applied`（布尔）、`full_duration` 与 `trimmed_duration`（正有限数），且后者不大于前者。可选 `meta.chapters` 必须有 `enabled`（布尔）、`day_count` 与 `card_count`（非负整数）。可选 `meta.branding` 的 `outro_text`、`signature` 为字符串，`intro` 为布尔。`meta.audio_credit` 只在渲染时注入，是片尾谢幕语下面的「歌名 · 作者」，不写回磁盘 timeline。
 
-可选 `meta.opening_recap` 表示签名片头后的倒序照片预览：`start < settle_start < end <= meta.duration`，三者均为非负有限秒数；`order` 固定为 `"reverse"`；`layout` 为 `"single"` 或 `"grid"`；`batch_size` 为正整数，且 `single` 布局必须为 `1`。正文第一张照片从 `end` 开始，`settle_start..end` 由预览层停在第一张，保证进入正文时连续；渲染器在低帧率下至少保留一个停稳帧。
+可选 `meta.opening_recap` 表示签名片头后的倒序快放：`start < settle_start < end <= meta.duration`，三者均为非负有限秒数；`order` 固定为 `"reverse"`；`layout` 为 `"single"` 或 `"grid"`；`batch_size` 为正整数，且 `single` 布局必须为 `1`。快放从最后一张到第一张，一次一张。正文第一张照片从 `end` 开始，`settle_start..end` 停在第一张，保证进入正文时连续；渲染器在低帧率下至少保留一个停稳帧。
 
 ## photos
 
 每个 `photos[i]` 是对象，且 `start`、`end` 都是非负有限数，`end > start` 且不超过 `$.meta.duration`。
 
 - 省略 `kind` 仍按旧版照片处理。
-- `kind: "photo"` 必须有非空 `src`；可选 `transition` 是 `{ "type": "album" | "crossfade" | "cut" | "none", "duration": 非负有限数 }`，其中 `cut` 与 `none` 的 duration 必须为 0。可选 `motion` 的 type 是 `"kenburns"` 或 `"none"`，`from`、`to` 为正有限数。可选 `filter` 服从 `meta.filter` 的形状。磁盘 timeline 中即使出现 `caption` 也不作为旁白输入；旁白是 `--photo-caption` 控制的运行时注入字段，不是手工编辑的核心字段。
+- `kind: "photo"` 必须有非空 `src`；可选 `transition` 是 `{ "type": "album" | "crossfade" | "cut" | "none", "duration": 非负有限数 }`，其中 `cut` 与 `none` 的 duration 必须为 0。可选 `motion` 的 type 是 `"kenburns"` 或 `"none"`，`from`、`to` 为正有限数。可选 `filter` 服从 `meta.filter` 的形状。可选 `day_mark` 是字符串，整屏日期卡放不下时写在当天第一张照片上。磁盘 timeline 中即使出现 `caption` 也不作为旁白输入；旁白是 `--photo-caption` 控制的运行时注入字段，不是手工编辑的核心字段。
 - `kind: "chapter"` 必须有字符串 `text`。
 - 任何未知字符串 `kind` 保留并跳过其余字段校验，以兼容未来事件；这不表示旧渲染器一定理解它。
 

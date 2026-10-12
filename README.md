@@ -52,9 +52,9 @@ DEEPSEEK_API_KEY=... node cli/kiseki.mjs ./osaka-trip --photo-caption
 DEEPSEEK_API_KEY=... node cli/kiseki.mjs still ./photo.jpg --photo-caption
 ```
 
-制作页上，签名在片尾文字前面。片尾白场默认是 `Thanks for watching :)`，留空则不显示。输入名字会生成片头手写签名，这次成片会用它。勾选「签名落款」时，照片上的落款也用这份签名。导出静态图时，同一个名字会画成签名落款。这些都不改素材夹里的 `kiseki.toml`。
+制作页上，签名在片尾文字前面。片尾白场默认是 `Thanks for watching :)`，留空则不显示这句。有音乐时，下面另起一行写歌名和作者。输入名字会生成片头手写签名，这次成片会用它。勾选「签名落款」时，照片上的落款也用这份签名。导出静态图时，同一个名字会画成签名落款。这些都不改素材夹里的 `kiseki.toml`。
 
-图片旁白的密钥在工作台的环境面板里填写，保存后立刻生效，不用改文件，也不用重启。密钥写入仓库根目录的 `.env`（已被忽略，不进入 git），页面之后只显示「已配置」。已在终端里 export 的 `DEEPSEEK_API_KEY` 仍优先生效。开启后会把缩小后的 JPEG 预览发给 DeepSeek，文案缓存在 `output/metadata/ai-captions.json`，全部生成后再开始渲染；原图不会上传。关闭该选项时路径与现有本地分析/渲染一致。
+图片旁白的密钥在工作台的环境面板里填写，保存后立刻生效，不用改文件，也不用重启。密钥写入仓库根目录的 `.env`（已被忽略，不进入 git），页面之后只显示「已配置」。已在终端里 export 的 `DEEPSEEK_API_KEY` 仍优先生效。开启后会把缩小后的 JPEG 预览发给 DeepSeek，文案缓存在 `output/metadata/ai-captions.json`，全部生成后再开始渲染；原图不会上传。关闭该选项时路径与现有本地分析/渲染一致。素材页点已经写好的那句就能改字，最多 30 个字，下次渲染沿用；只有「重写」才会换成新的一句。
 
 `web` 启动本地工作台，前端由 `./scripts/setup.sh` 构建。网页可查看和制作素材，也可改名或删除资产；写入受启动时的素材根目录、服务 token、冲突与任务检查保护，删除先移入回收区并仅提供进程内撤销。详见[项目状态](docs/kiseki-status.md)。
 
