@@ -310,7 +310,7 @@ def _opening_recap_spec(beats: dict, n_photos: int, cfg: dict, planning_duration
     bpm = float(beats.get("bpm", 120.0))
     beat_duration = 60.0 / bpm if math.isfinite(bpm) and bpm > 0 else 0.5
     settle_duration = min(0.6, max(0.45, beat_duration / 2))
-    desired_rewind = (n_photos - 1) * OPENING_RECAP_TARGET_SLOT_FRAMES / fps
+    desired_rewind = n_photos * OPENING_RECAP_TARGET_SLOT_FRAMES / fps
     target_duration = min(
         OPENING_RECAP_MAX_DURATION,
         max(OPENING_RECAP_MIN_DURATION, desired_rewind + settle_duration),

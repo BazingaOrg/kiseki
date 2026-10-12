@@ -35,7 +35,7 @@ export const openingRecapFrameState = ({
     return {visible: false, settled: false, photoIndices: [], slotProgress: 0};
   }
 
-  const reversed = Array.from({length: Math.max(0, photoCount - 1)}, (_, index) => photoCount - 1 - index);
+  const reversed = Array.from({length: photoCount}, (_, index) => photoCount - 1 - index);
   const batchSize = 1;
   const slotCount = Math.max(1, Math.ceil(reversed.length / batchSize));
   const lastRewind = reversed.length === 0
