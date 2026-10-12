@@ -43,6 +43,19 @@ export const useMediaPlayer = <T extends HTMLMediaElement>(src: string | null, p
   }, []);
 
   useEffect(() => {
+    const media = mediaRef.current;
+    if (!state.playing || !media) return undefined;
+    let frame = 0;
+    const tick = () => {
+      const currentTime = media.currentTime;
+      setState((previous) => Math.abs(currentTime - previous.currentTime) < 0.016 ? previous : {...previous, currentTime});
+      frame = requestAnimationFrame(tick);
+    };
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [state.playing, src]);
+
+  useEffect(() => {
     clearWaiting();
     const media = mediaRef.current;
     if (!src && media) {

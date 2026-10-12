@@ -37,6 +37,9 @@ test('photo caption blockers are visible and describe the disabled action', asyn
   assert.match(grid, /aria-label=\{`修改 \$\{name\} 的旁白`\}/);
   assert.match(grid, /最多 30 个字/);
   assert.match(grid, /onSaveCaption/);
+  assert.match(grid, /onCaption && !editing && !drafting/);
+  const css = await readFile(new URL('./App.css', import.meta.url), 'utf8');
+  assert.match(css, /\.photo-item-caption-editor \.photo-item-actions\s*\{[^}]*align-items:\s*center;/s);
 });
 
 test('photo controls expose one chronological toggle and no photo rename path', async () => {

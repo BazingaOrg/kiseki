@@ -2911,6 +2911,9 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
   display: grid;
   gap: 0.35rem;
 }
+.photo-item-caption-editor .photo-item-actions {
+  align-items: center;
+}
 .photo-caption-tag {
   margin: 0;
   max-width: 36rem;

@@ -202,7 +202,7 @@ const PhotoItem = ({
         ) : null}
         <span className="photo-item-name-wrap" data-tooltip={name} aria-label={name}><span className="photo-item-name">{name}</span></span>
         {asset && (onDelete || onCaption) && <span className="asset-actions photo-item-actions">
-            {onCaption && !editing && (
+            {onCaption && !editing && !drafting && (
               <button
                 type="button"
                 className="link-button"
