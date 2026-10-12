@@ -9,7 +9,7 @@ import {
 } from 'remotion';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
-import {Outro} from './Outro';
+import {Outro, outroOpacityAt} from './Outro';
 import {Photo, hasDisplayableExif} from './Photo';
 import {ChapterCard} from './ChapterCard';
 import {OpeningRecap} from './OpeningRecap';
@@ -19,7 +19,7 @@ import {resolveSubtitleMode, subtitleSignatureInsets, subtitleVisibilityEnd} fro
 import {isCaptionLayout, resolveVideoPhotoScale} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, OUTRO, STILL, SUBTITLE, defaultVideoPalette, getPalette, getVisualScale} from './theme';
 import {photoCaptionPresentation} from './compositionTiming';
-import {coverUntil, fadeLead, resolvePhotoTransition} from './transition';
+import {coverUntil, fadeLead, fitPhotoTransition, resolvePhotoTransition} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 import {templateById, resolveTemplatePresentation} from './templates';
 
@@ -82,17 +82,20 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     if (!isPhotoClip(clip)) continue;
     // 模板转场是呈现层默认,取代 timeline 里的逐 clip 转场;chapter 卡保持自身节奏
     const openingRecapFirst = Boolean(meta.opening_recap && clip === photoClips[0]);
+    const visibleStart = openingRecapFirst ? meta.opening_recap!.settle_start : clip.start;
     const effective = {
       ...clip,
-      start: openingRecapFirst ? meta.opening_recap!.settle_start : clip.start,
-      transition: resolvePhotoTransition({
+      start: visibleStart,
+      transition: fitPhotoTransition(resolvePhotoTransition({
         clipTransition: clip.transition,
         templateTransition: template.transition,
         openingRecapFirst,
-      }),
+      }), clip.end - visibleStart),
     };
     const nextClip = visualClips[index + 1];
-    const nextTransition = isPhotoClip(nextClip) ? template.transition ?? nextClip.transition : undefined;
+    const nextTransition = isPhotoClip(nextClip)
+      ? fitPhotoTransition(template.transition ?? nextClip.transition, nextClip.end - nextClip.start)
+      : undefined;
     if (
       t >= effective.start - fadeLead(effective.transition) - 1 / fps &&
       t <= coverUntil(nextTransition, clip.end) + 1 / fps
@@ -137,10 +140,8 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     durationInFrames,
   });
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
-  const outroOpacity =
-    outroText === ''
-      ? 0
-      : interpolate(whiteFade, [...OUTRO.fadeRange], [0, 1], clamp);
+  const audioCredit = meta.audio_credit ?? '';
+  const outroOpacity = outroOpacityAt(whiteFade, outroText, audioCredit);
   const bottomSignatureVisible = Boolean(
     meta.sign &&
       photoSignature &&
@@ -225,7 +226,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} />
       ) : null}
       {/* 谢幕语:白场过半后浮现,持续到最后一帧;空串隐藏 */}
-      <Outro text={outroText} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
+      <Outro text={outroText} credit={audioCredit} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
       {/* 片头写签名:盖在一切之上,淡出后露出已在播放的第一页。
           按帧比较,避免浮点求和导致收尾帧(opacity 归零帧)被提前跳过 */}
       {showIntro && frame <= Math.round(introDuration * fps) ? (

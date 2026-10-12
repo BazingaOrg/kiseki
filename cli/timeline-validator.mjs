@@ -134,6 +134,7 @@ export const validateTimeline = (timeline) => {
     if ('transition' in clip) validateTransition(clip.transition, `${path}.transition`);
     if ('motion' in clip) validateMotion(clip.motion, `${path}.motion`);
     if ('filter' in clip) validateFilter(clip.filter, `${path}.filter`);
+    if ('day_mark' in clip) string(clip.day_mark, `${path}.day_mark`);
   });
 
   array(root.subtitles, '$.subtitles').forEach((value, index) => {

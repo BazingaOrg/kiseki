@@ -151,6 +151,7 @@ export const OUTRO = {
   fontSize: 32,
   fontWeight: 500,
   letterSpacing: '0em',
+  creditFontSize: 18,
   fadeRange: [0.5, 0.85] as const, // 随白场进度淡入的区间
   riseDistance: 0,
 } as const;

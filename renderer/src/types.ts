@@ -36,6 +36,8 @@ export type PhotoClip = {
     fontSize: number;
     letterSpacing: string;
   } | null;
+  /** 整屏日期卡放不下时，写在当天第一张照片上 */
+  day_mark?: string;
 };
 
 export type ChapterClip = {kind: 'chapter'; text: string; start: number; end: number};
@@ -101,6 +103,8 @@ export type TimelineMeta = {
   templateId?: string;
   lyrics_mode?: 'original' | 'bilingual' | 'none';
   chapters?: {enabled: boolean; day_count: number; card_count: number};
+  /** 渲染时注入的歌名和作者，不写回 timeline.json */
+  audio_credit?: string;
 };
 
 export type Timeline = {

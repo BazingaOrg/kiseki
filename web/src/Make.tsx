@@ -316,7 +316,7 @@ const OptionsForm = ({kind, photos, options, onChange, captionCapability, hasTra
             maxLength={80}
             onChange={(event) => set('outroText', event.target.value)}
           />
-          <p className="make-field-hint">出现在片尾白场。留空则不显示。</p>
+          <p className="make-field-hint">出现在片尾白场。留空则不显示这句。有音乐时，下面另起一行写歌名和作者。</p>
         </div>
       )}
       <div className="make-checkboxes">

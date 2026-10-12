@@ -9,10 +9,11 @@
 import React from 'react';
 import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
+import {DayStamp} from './DayStamp';
 import {childOpacityForParent, filmstripLayerPresentation, photoCaptionLayerPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
-import {Outro} from './Outro';
+import {Outro, outroOpacityAt} from './Outro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
 import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
@@ -22,6 +23,7 @@ import {resolveFontFamily} from './fontFamily';
 import {CAPTION_SUBJECT_GAP, FILMSTRIP_MAIN_PHOTO_FACTOR, FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION, isCaptionLayout} from './photoCaptionLayout.mjs';
 import {ANIMATION, INTRO, OUTRO, getPalette, getVisualScale} from './theme';
 import {resolveTemplatePresentation} from './templates';
+import {fitFadeDuration} from './transition';
 import type {PhotoClip, Timeline, VisualClip} from './types';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
@@ -67,15 +69,16 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const visibleMainPhotos = visualClips.flatMap((clip, index) => {
     if (!isPhotoClip(clip)) return [];
     const nextClip = visualClips[index + 1];
+    const transitionDuration = fitFadeDuration(MAIN_CROSSFADE_DURATION, clip.end - clip.start);
     const presentationStart = meta.opening_recap && clip === photoClips[0]
-      ? clip.start - MAIN_CROSSFADE_DURATION / 2
+      ? clip.start - transitionDuration / 2
       : clip.start;
     const presentation = filmstripLayerPresentation({
       time: t,
       start: presentationStart,
       end: clip.end,
       nextPhotoStart: isPhotoClip(nextClip) ? nextClip.start : null,
-      transitionDuration: MAIN_CROSSFADE_DURATION,
+      transitionDuration,
     });
     return presentation.visible ? [{clip, opacity: presentation.opacity}] : [];
   });
@@ -114,7 +117,8 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
   const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
-  const outroOpacity = outroText === '' ? 0 : interpolate(whiteFade, [...OUTRO.fadeRange], [0, 1], clamp);
+  const audioCredit = meta.audio_credit ?? '';
+  const outroOpacity = outroOpacityAt(whiteFade, outroText, audioCredit);
   const captionState = photoCaptionPresentation({
     clips: visualClips,
     frame,
@@ -147,17 +151,20 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
                 flow
               />
             ) : null}
-            <Img
-              src={toStatic(clip.src)}
-              style={{
-                display: 'block',
-                maxWidth: mainSafeWidth,
-                maxHeight: mainSafeHeight,
-                objectFit: 'contain',
-                borderRadius: Math.round(3 * scale),
-                boxShadow: '0 14px 36px rgba(10, 12, 16, 0.22)',
-              }}
-            />
+            <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
+              <Img
+                src={toStatic(clip.src)}
+                style={{
+                  display: 'block',
+                  maxWidth: mainSafeWidth,
+                  maxHeight: mainSafeHeight,
+                  objectFit: 'contain',
+                  borderRadius: Math.round(3 * scale),
+                  boxShadow: '0 14px 36px rgba(10, 12, 16, 0.22)',
+                }}
+              />
+              <DayStamp text={clip.day_mark} scale={scale} fontFamily={template.fontFamily} />
+            </div>
           </div>
         </AbsoluteFill>
         );
@@ -222,7 +229,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         photoScale={mainScale / 0.92}
       />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
-      <Outro text={outroText} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
+      <Outro text={outroText} credit={audioCredit} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
       {showIntro && frame <= Math.round(introDuration * fps) ? (
         <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />
       ) : null}

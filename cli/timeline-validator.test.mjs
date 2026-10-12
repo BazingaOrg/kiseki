@@ -40,10 +40,14 @@ test('validates optional renderer fields in their real shapes', () => {
   timeline.meta.filter = null;
   timeline.beats = {bpm: 120, downbeats: [0, 2]};
   timeline.photos[0].motion = {type: 'none', from: 1, to: 1};
+  timeline.photos[0].day_mark = '7月14日 · 第2天';
   timeline.photos.push({kind: 'chapter', text: '第一天', start: 20, end: 21});
   assert.equal(validateTimeline(timeline), timeline);
   timeline.meta.chapters.card_count = -1;
   assert.throws(() => validateTimeline(timeline), /\$\.meta\.chapters\.card_count/);
+  timeline.meta.chapters.card_count = 1;
+  timeline.photos[0].day_mark = 2;
+  assert.throws(() => validateTimeline(timeline), /\$\.photos\[0\]\.day_mark/);
 });
 
 test('opening recap validates ordered bounded timing and batch shape', () => {

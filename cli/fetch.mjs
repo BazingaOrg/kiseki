@@ -280,6 +280,39 @@ export const installDownloadedAudio = (options) => installFetchedFile(options);
 export const installDownloadedLyrics = ({lyrics, ...options}) =>
   installFetchedFile({...options, contents: lyrics});
 
+const creditText = (value) => String(value ?? '').replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+
+/** 片尾第二行：优先 tag，没有 tag 时从「歌名 - 作者.后缀」拆。都没有则空串。 */
+export const audioCreditLine = ({title, artist, filename} = {}) => {
+  let song = creditText(title);
+  let name = creditText(artist);
+  if (!song && !name && filename) {
+    const base = path.basename(String(filename), path.extname(String(filename)));
+    const splitAt = base.indexOf(' - ');
+    if (splitAt > 0) {
+      song = creditText(base.slice(0, splitAt));
+      name = creditText(base.slice(splitAt + 3));
+    }
+  }
+  if (song && name) return `${song} · ${name}`;
+  return song || name || '';
+};
+
+/** 从素材夹里的音频读片尾歌名行。无音乐、文件不存在或读不到名字时返回空串。 */
+export const resolveAudioCredit = ({audio, publicDir, probe = probeAudio, exists = fs.existsSync} = {}) => {
+  const rel = String(audio ?? '').replace(/^\.\//, '').trim();
+  if (!rel || !publicDir || path.isAbsolute(rel) || rel.split(/[\\/]/).includes('..')) return '';
+  const file = path.join(publicDir, rel);
+  let probed = {};
+  try {
+    if (!exists(file)) return '';
+    probed = probe(file) ?? {};
+  } catch {
+    probed = {};
+  }
+  return audioCreditLine({title: probed.title, artist: probed.artist, filename: rel});
+};
+
 /** 读音频 tag 与时长;ffprobe 失败不致命,返回空对象走文件名兜底. */
 export const probeAudio = (file, spawn = spawnSync, runtime = sourceRuntimeLayout) => {
   const r = spawn(

@@ -373,6 +373,8 @@ def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], 
         boundary = clips[index]["start"]
         before = clips[index - 1]
         after = clips[index]
+        month, day_num = (int(part) for part in days[index].split("-")[1:])
+        ordinal = day_number[days[index]]
         prior = [beat for beat in beats if before["start"] + min_gap <= beat < boundary and 1 <= boundary - beat <= 3]
         later = [beat for beat in beats if boundary < beat <= after["end"] - min_gap and 1 <= beat - boundary <= 3]
         if prior:
@@ -384,13 +386,13 @@ def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], 
             after["start"] = round(cut, 3)
             start, end = boundary, cut
         else:
-            term.detail(f"日期章节跳过: {days[index]} 两侧照片时长不足")
+            after["day_mark"] = f"{month}月{day_num}日 · 第{ordinal}天"
+            term.detail(f"{month}月{day_num}日的照片还在，日期写在照片上")
             continue
-        month, day = (int(part) for part in days[index].split("-")[1:])
-        ordinal = day_number[days[index]]
-        cards.append({"kind": "chapter", "text": f"{month}月{day}日 · 第{ordinal}天 {CHAPTER_SYMBOLS[(ordinal - 1) % len(CHAPTER_SYMBOLS)]}", "start": round(start, 3), "end": round(end, 3)})
+        cards.append({"kind": "chapter", "text": f"{month}月{day_num}日 · 第{ordinal}天 {CHAPTER_SYMBOLS[(ordinal - 1) % len(CHAPTER_SYMBOLS)]}", "start": round(start, 3), "end": round(end, 3)})
     merged = sorted([*clips, *cards], key=lambda clip: (clip["start"], clip.get("kind") == "chapter"))
-    return merged, {"enabled": bool(cards), "day_count": len(day_number), "card_count": len(cards)}
+    marked = any(clip.get("day_mark") for clip in clips)
+    return merged, {"enabled": bool(cards) or marked, "day_count": len(day_number), "card_count": len(cards)}
 
 
 def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,

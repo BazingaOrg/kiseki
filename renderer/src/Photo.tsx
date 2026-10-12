@@ -1,5 +1,6 @@
 import React from 'react';
 import {AbsoluteFill, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {DayStamp} from './DayStamp';
 import {ExifPanel} from './ExifPanel';
 import {FramedPhoto} from './FramedPhoto';
 import {PhotoCaption} from './PhotoCaption';
@@ -134,14 +135,17 @@ export const Photo: React.FC<{
   // 缩放带着相框与阴影一起走,克制的 6% 推近下观感自然,也省去图内裁切复杂度。
   const Framed = ({maxWidth, maxHeight}: {maxWidth: number; maxHeight: number}) => {
     const framed = (
-      <FramedPhoto
-        src={toStatic(clip.src)}
-        maxWidth={maxWidth}
-        maxHeight={maxHeight}
-        renderScale={renderScale}
-        palette={palette}
-        filter={filter}
-      />
+      <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
+        <FramedPhoto
+          src={toStatic(clip.src)}
+          maxWidth={maxWidth}
+          maxHeight={maxHeight}
+          renderScale={renderScale}
+          palette={palette}
+          filter={filter}
+        />
+        <DayStamp text={clip.day_mark} scale={renderScale} fontFamily={fontFamily} />
+      </div>
     );
     let node = framed;
     if (motion) {

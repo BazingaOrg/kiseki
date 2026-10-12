@@ -67,6 +67,26 @@ test('outro text and a signature are applied in memory and a short video grows e
   );
 });
 
+test('song credit is injected for the outro and stays off the outro text', async () => {
+  const result = await applyRenderVariants(timeline(), {}, {
+    resolvePhotoPath: (src) => src,
+    publicDir: '/album',
+    audioExists: () => true,
+    probeAudio: () => ({title: '晴天', artist: '周杰伦'}),
+  });
+  assert.equal(result.meta.audio_credit, '晴天 · 周杰伦');
+  assert.equal(result.meta.branding, undefined);
+  const silent = timeline();
+  silent.meta.audio = '';
+  const quiet = await applyRenderVariants(silent, {}, {
+    resolvePhotoPath: (src) => src,
+    publicDir: '/album',
+    audioExists: () => true,
+    probeAudio: () => ({title: '晴天', artist: '周杰伦'}),
+  });
+  assert.equal(quiet.meta.audio_credit, undefined);
+});
+
 test('sign sets meta.sign to true', async () => {
   const result = await applyRenderVariants(timeline(), {sign: true}, {resolvePhotoPath: (src) => src});
   assert.equal(result.meta.sign, true);
@@ -158,7 +178,8 @@ test('Diary clears a photo fade-out before a chapter and layers chapters over su
   const diary = fs.readFileSync(new URL('../renderer/src/Diary.tsx', import.meta.url), 'utf8');
   assert.match(diary, /const visualClips = photos\.filter\(\(clip\) => isPhotoClip\(clip\) \|\| isChapterClip\(clip\)\);/);
   assert.match(diary, /const isPhotoClip = \(clip: VisualClip \| undefined\)/);
-  assert.match(diary, /const dOut = isPhotoClip\(nextClip\) \? getFadeDuration\(template\.transition \?\? nextClip\.transition\) : 0;/);
+  assert.match(diary, /fitPhotoTransition\(template\.transition \?\? nextClip\.transition, nextClip\.end - nextClip\.start\)/);
+  assert.match(diary, /t <= coverUntil\(nextTransition, clip\.end\)/);
   assert.match(diary, /typeof clip\.src === 'string'/);
   assert.ok(diary.indexOf('<Subtitle') < diary.indexOf('<ChapterCard'));
 });

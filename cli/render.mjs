@@ -7,6 +7,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
 import {applyBrandingOverrides} from './branding.mjs';
+import {resolveAudioCredit} from './fetch.mjs';
 import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {FIXES} from './dependencies.mjs';
@@ -118,7 +119,7 @@ const normalizeLoudness = (file, runtime = sourceRuntimeLayout) => {
  * template → meta.templateId(呈现层由渲染器注册表解析,见 renderer/src/templates.ts).
  * @param {object} timeline
  * @param {{exif?: boolean, sign?: boolean, photoCaption?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null, template?: string | null}} flags
- * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null}} deps
+ * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null, publicDir?: string | null, probeAudio?: Function, audioExists?: (file: string) => boolean}} deps
  */
 const stripRuntimeCaptions = (timeline) => {
   timeline.photos = (timeline.photos ?? []).map((photo) => {
@@ -131,7 +132,7 @@ const stripRuntimeCaptions = (timeline) => {
 export const applyRenderVariants = async (
   timeline,
   {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null, lyricsMode = 'bilingual', outroText, signature} = {},
-  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null} = {},
+  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null, probeAudio, audioExists} = {},
 ) => {
   if (!['original', 'bilingual', 'none'].includes(lyricsMode)) throw new Error('--lyrics-mode 必须是 original、bilingual 或 none');
   timeline.meta = {...timeline.meta, lyrics_mode: lyricsMode};
@@ -153,6 +154,13 @@ export const applyRenderVariants = async (
   if (outroText !== undefined || signature) {
     applyBrandingOverrides(timeline, {outroText, signature});
   }
+  const audioCredit = resolveAudioCredit({
+    audio: timeline.meta?.audio,
+    publicDir,
+    ...(probeAudio ? {probe: probeAudio} : {}),
+    ...(audioExists ? {exists: audioExists} : {}),
+  });
+  if (audioCredit) timeline.meta = {...timeline.meta, audio_credit: audioCredit};
   // 逐张滤镜:CLI --filter > kiseki.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
   if (filterConfig) {
     timeline.photos = (timeline.photos ?? []).map((photo) => {

@@ -81,7 +81,7 @@ def test_invalid_dates_and_short_or_sparse_boundaries_leave_photos_unchanged(tmp
     assert "EXIF 时间不完整" in capsys.readouterr().out
 
 
-def test_chapter_helper_uses_front_then_back_and_never_mutates_when_impossible(tmp_path):
+def test_chapter_helper_uses_front_then_back_and_stamps_the_photo_when_a_card_does_not_fit(tmp_path, capsys):
     photos(tmp_path, ["07:13", "07:14"])
     paths = [tmp_path / "0.jpg", tmp_path / "1.jpg"]
     clips = [{"kind": "photo", "start": 0.0, "end": 8.0}, {"kind": "photo", "start": 8.0, "end": 16.0}]
@@ -98,4 +98,8 @@ def test_chapter_helper_uses_front_then_back_and_never_mutates_when_impossible(t
     assert len([clip for clip in back if clip.get("kind") == "photo"]) == len(clips)
 
     impossible, meta = plan._insert_chapters([dict(clip) for clip in clips], paths, [1.0, 20.0], 2.0)
-    assert impossible == clips and meta["card_count"] == 0
+    assert meta == {"enabled": True, "day_count": 2, "card_count": 0}
+    assert [(clip["start"], clip["end"]) for clip in impossible] == [(0.0, 8.0), (8.0, 16.0)]
+    assert impossible[1]["day_mark"] == "7月14日 · 第2天"
+    assert "day_mark" not in impossible[0]
+    assert "7月14日的照片还在，日期写在照片上" in capsys.readouterr().out

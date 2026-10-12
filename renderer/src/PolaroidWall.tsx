@@ -9,10 +9,11 @@
 import React from 'react';
 import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
+import {DayStamp} from './DayStamp';
 import {childOpacityForParent, photoCaptionLayerPresentation, polaroidCardPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
-import {Outro} from './Outro';
+import {Outro, outroOpacityAt} from './Outro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
 import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
@@ -90,7 +91,8 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         durationInFrames / fps >= introDuration + ANIMATION.whiteFadeDuration + INTRO.minPhotoVisible);
   const signatureSrc = meta.branding?.signature?.replace(/^\.\//, '');
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
-  const outroOpacity = outroText === '' ? 0 : interpolate(whiteFade, [...OUTRO.fadeRange], [0, 1], clamp);
+  const audioCredit = meta.audio_credit ?? '';
+  const outroOpacity = outroOpacityAt(whiteFade, outroText, audioCredit);
   const captionState = photoCaptionPresentation({
     clips: visualClips,
     frame,
@@ -149,16 +151,19 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
                 boxShadow: '0 14px 36px rgba(10, 12, 16, 0.26)',
               }}
             >
-              <Img
-                src={toStatic(clip.src)}
-                style={{
-                  display: 'block',
-                  maxWidth: safeWidth * photoFactor,
-                  maxHeight: safeHeight * photoFactor,
-                  objectFit: 'contain',
-                  background: '#000',
-                }}
-              />
+              <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
+                <Img
+                  src={toStatic(clip.src)}
+                  style={{
+                    display: 'block',
+                    maxWidth: safeWidth * photoFactor,
+                    maxHeight: safeHeight * photoFactor,
+                    objectFit: 'contain',
+                    background: '#000',
+                  }}
+                />
+                <DayStamp text={clip.day_mark} scale={scale} fontFamily={template.fontFamily} />
+              </div>
             </div>
           </div>
         </AbsoluteFill>
@@ -189,7 +194,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         photoScale={meta.photo_scale * photoFactor / 0.9}
       />
       {whiteFade > 0 ? <AbsoluteFill style={{backgroundColor: meta.background, opacity: whiteFade}} /> : null}
-      <Outro text={outroText} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
+      <Outro text={outroText} credit={audioCredit} scale={scale} opacity={outroOpacity} palette={palette} fontFamily={template.fontFamily} />
       {showIntro && frame <= Math.round(introDuration * fps) ? (
         <Intro backgroundColor={meta.background} scale={scale} signatureSrc={signatureSrc} palette={palette} />
       ) : null}

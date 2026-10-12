@@ -26,6 +26,24 @@ export const coverUntil = (nextTransition: TransitionSpec | null | undefined, en
   return end + duration - fadeLead(nextTransition);
 };
 
+/** 淡化结束后至少留下的完全可见时间。短于这段的停留改为硬切。 */
+export const MIN_PHOTO_SETTLED = 0.12;
+
+/** 淡化不超过停留减去停稳时间，避免短照片一直半透明。 */
+export const fitFadeDuration = (duration: number, hold: number): number => {
+  if (!(duration > 0) || !(hold > MIN_PHOTO_SETTLED)) return 0;
+  return Math.min(duration, hold - MIN_PHOTO_SETTLED);
+};
+
+export const fitPhotoTransition = (transition: TransitionSpec | null | undefined, hold: number): TransitionSpec => {
+  if (!transition || (transition.type !== 'album' && transition.type !== 'crossfade')) {
+    return transition ?? {type: 'none', duration: 0};
+  }
+  const duration = fitFadeDuration(transition.duration, hold);
+  if (duration <= 0) return {type: 'cut', duration: 0};
+  return {...transition, duration};
+};
+
 export const resolvePhotoTransition = ({
   clipTransition,
   templateTransition,

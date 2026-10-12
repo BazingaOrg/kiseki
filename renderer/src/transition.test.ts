@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {coverUntil, fadeRange, resolvePhotoTransition} from './transition.ts';
+import {coverUntil, fadeRange, fitFadeDuration, fitPhotoTransition, resolvePhotoTransition} from './transition.ts';
 
 const clipTransition = {type: 'album' as const, duration: 0.4};
 const templateTransition = {type: 'crossfade' as const, duration: 0.6};
@@ -17,6 +17,16 @@ test('album fade starts at the switch and crossfade stays centered on it', () =>
   assert.ok(Math.abs(coverUntil({type: 'album', duration: 0.25}, 8) - 8.25) < 1e-9);
   assert.ok(Math.abs(coverUntil({type: 'crossfade', duration: 0.6}, 8) - 8.3) < 1e-9);
   assert.equal(coverUntil({type: 'cut', duration: 0}, 8), 8);
+});
+
+test('a fade longer than the photo hold shrinks so the photo can sit still', () => {
+  assert.equal(fitFadeDuration(0.25, 2), 0.25);
+  assert.equal(fitFadeDuration(0.6, 2), 0.6);
+  assert.ok(Math.abs(fitFadeDuration(0.6, 0.5) - 0.38) < 1e-9);
+  assert.equal(fitFadeDuration(0.25, 0.1), 0);
+  assert.deepEqual(fitPhotoTransition({type: 'crossfade', duration: 0.6}, 0.5), {type: 'crossfade', duration: 0.38});
+  assert.deepEqual(fitPhotoTransition({type: 'album', duration: 0.25}, 0.1), {type: 'cut', duration: 0});
+  assert.deepEqual(fitPhotoTransition({type: 'cut', duration: 0}, 0.2), {type: 'cut', duration: 0});
 });
 
 test('opening recap first photo stays fully opaque under the recap dissolve', () => {

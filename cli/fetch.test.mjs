@@ -10,6 +10,7 @@ import {term} from './term.mjs';
 import {createTaskLeaseManager} from './task-lease.mjs';
 
 import {
+  audioCreditLine,
   buildAudioFilename,
   buildAmllSearchParams,
   buildLyricsQuery,
@@ -30,6 +31,7 @@ import {
   parseCurlResponse,
   planOffers,
   probeAudio,
+  resolveAudioCredit,
   runFetch,
   sanitizeFilePart,
   searchLyricsRecords,
@@ -563,6 +565,29 @@ test('explicit fetch defaults to searching lyrics when audio exists without an .
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});
   }
+});
+
+test('audio credit prefers tags and falls back to a title-artist filename', () => {
+  assert.equal(audioCreditLine({title: '晴天', artist: '周杰伦'}), '晴天 · 周杰伦');
+  assert.equal(audioCreditLine({title: '晴天', artist: ''}), '晴天');
+  assert.equal(audioCreditLine({filename: '晴天 - 周杰伦.m4a'}), '晴天 · 周杰伦');
+  assert.equal(audioCreditLine({title: '晴天', artist: '', filename: '别的 - 人.mp3'}), '晴天');
+  assert.equal(audioCreditLine({filename: 'song.mp3'}), '');
+  assert.equal(audioCreditLine({title: ' 晴天\n', artist: ' 周杰伦 '}), '晴天 · 周杰伦');
+  assert.equal(resolveAudioCredit({audio: '', publicDir: '/album', exists: () => true, probe: () => ({title: '晴天', artist: '周杰伦'})}), '');
+  assert.equal(resolveAudioCredit({audio: './晴天 - 周杰伦.m4a', publicDir: '/album', exists: () => false, probe: () => ({})}), '');
+  assert.equal(resolveAudioCredit({
+    audio: './song.mp3',
+    publicDir: '/album',
+    exists: () => true,
+    probe: () => ({title: null, artist: null}),
+  }), '');
+  assert.equal(resolveAudioCredit({
+    audio: './晴天 - 周杰伦.m4a',
+    publicDir: '/album',
+    exists: () => true,
+    probe: () => ({}),
+  }), '晴天 · 周杰伦');
 });
 
 test('probeAudio lowercases tag keys and swallows ffprobe failures', () => {
