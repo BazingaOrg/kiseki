@@ -200,9 +200,13 @@ export const applyRenderVariants = async (
   timeline._captionSources = captionSources;
   if (exif) {
     const exifBySrc = new Map();
-    for (const photo of (timeline.photos ?? []).filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string')) {
-      if (exifBySrc.has(photo.src)) continue;
-      exifBySrc.set(photo.src, await extractExif(resolvePhotoPath(photo.src)));
+    const sources = [...new Set((timeline.photos ?? [])
+      .filter((clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string')
+      .map((photo) => photo.src))];
+    for (let offset = 0; offset < sources.length; offset += 8) {
+      const batch = sources.slice(offset, offset + 8);
+      const entries = await Promise.all(batch.map(async (src) => [src, await extractExif(resolvePhotoPath(src))]));
+      for (const [src, formatted] of entries) exifBySrc.set(src, formatted);
     }
     timeline.photos = (timeline.photos ?? []).map((photo) => {
       if ((photo.kind !== undefined && photo.kind !== 'photo') || typeof photo.src !== 'string') return photo;

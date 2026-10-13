@@ -196,9 +196,9 @@ def _lyric_adjust(time: float, lines: list[tuple[float, float]]) -> float:
     return adjust
 
 
-def _value(score: float, time: float, gap: float, ideal: float, target: float, lines) -> float:
+def _value(score: float, time: float, gap: float, ideal: float, target: float, lyric_adjust: float) -> float:
     pull = 0.35 * abs(time - ideal) / target
-    return score + _lyric_adjust(time, lines) - 1.2 * _gap_cost(gap, target) - pull
+    return score + lyric_adjust - 1.2 * _gap_cost(gap, target) - pull
 
 
 def _search(times, scores, need, start, duration, first_lower, cap, min_gap, target, ideals, lines):
@@ -206,13 +206,14 @@ def _search(times, scores, need, start, duration, first_lower, cap, min_gap, tar
     if not cands:
         return None
     count = len(cands)
+    lyric_adjustments = [_lyric_adjust(time, lines) for time, _score in cands]
     dp = [[_NEG] * count for _ in range(need)]
     prev = [[-1] * count for _ in range(need)]
     for index, (time, score) in enumerate(cands):
         latest = _latest(index_in_plan=0, need=need, duration=duration, min_gap=min_gap, cap=cap)
         if time > latest + 1e-9:
             continue
-        dp[0][index] = _value(score, time, time - start, ideals[0], target, lines)
+        dp[0][index] = _value(score, time, time - start, ideals[0], target, lyric_adjustments[index])
     for placed in range(1, need):
         for index in range(count):
             time, score = cands[index]
@@ -227,7 +228,7 @@ def _search(times, scores, need, start, duration, first_lower, cap, min_gap, tar
                 gap = time - cands[earlier][0]
                 if gap + 1e-9 < min_gap:
                     continue
-                value = dp[placed - 1][earlier] + _value(score, time, gap, ideals[placed], target, lines)
+                value = dp[placed - 1][earlier] + _value(score, time, gap, ideals[placed], target, lyric_adjustments[index])
                 if value > best:
                     best = value
                     best_from = earlier

@@ -134,6 +134,24 @@ test('exif extracts once per unique src and attaches to every matching clip', as
   assert.deepEqual(result.photos[2].exif, {camera: 'Test Camera'});
 });
 
+test('exif extraction uses bounded parallel batches for a larger album', async () => {
+  let active = 0;
+  let maximum = 0;
+  const photos = Array.from({length: 17}, (_, index) => ({src: `${index}.jpg`, start: index}));
+  const result = await applyRenderVariants({...timeline(), photos}, {exif: true}, {
+    resolvePhotoPath: (src) => src,
+    extractExif: async (src) => {
+      active += 1;
+      maximum = Math.max(maximum, active);
+      await new Promise((resolve) => setTimeout(resolve, 1));
+      active -= 1;
+      return {camera: src};
+    },
+  });
+  assert.equal(maximum, 8);
+  assert.deepEqual(result.photos.map((photo) => photo.exif.camera), photos.map((photo) => photo.src));
+});
+
 test('exif shortage is reported once with the count of unique photos missing EXIF', async () => {
   let shortageCount = null;
   const extractExif = async () => null;
