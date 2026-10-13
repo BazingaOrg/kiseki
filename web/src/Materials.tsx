@@ -508,6 +508,128 @@ interface MaterialsProps {
   onConfirmRewrite?: (item: AssetItem) => Promise<boolean>;
 }
 
+const MusicPanel = ({
+  project,
+  capabilities,
+  onRemedy,
+  job,
+  activeKind,
+  onStart,
+  onReset,
+  onRefresh,
+  onReplaceRecognizedLyrics,
+  onClearRecognizedLyrics,
+  assetBusy,
+  locked,
+  onAsset,
+}: MaterialsProps) => {
+  const audios = project.audios ?? (project.audio ? [project.audio] : []);
+  const lyricsFiles = project.lyricsFiles ?? (project.lyricsFile ? [project.lyricsFile] : []);
+  const audioAssets = project.assets?.audios ?? fallbackAssetCollection('audio', audios);
+  const lyricsAssets = project.assets?.lyrics ?? fallbackAssetCollection('lyrics', lyricsFiles);
+  const lyricLines = project.lyrics?.length ?? 0;
+  const running = job.status === 'running';
+  const lyricsMode = useLyricsMode(project.path);
+  const playableAudio = audioAssets.state === 'ready' ? audios[0] ?? null : null;
+  const {mediaProps: audioProps, state, toggle, seekTo, setVolume, toggleMute} = useAudioPlayer<HTMLAudioElement>(playableAudio ? mediaUrl(playableAudio) : null);
+
+  return (
+    <>
+      <audio {...audioProps} aria-hidden="true" />
+      <div className="material-song">
+        <div className="material-song-audio">
+          <h3 className="material-song-label">音乐</h3>
+          {audioAssets.state !== 'empty' && (
+            <AssetCollection
+              collection={audioAssets}
+              empty=""
+              ambiguous={(count) => `检测到 ${count} 份音频；渲染和歌词识别不会猜测第一份，请保留唯一文件后继续。`}
+              busy={assetBusy}
+              onRename={(item, stem) => onAsset(item, 'rename', stem)}
+              onDelete={(item) => onAsset(item, 'delete')}
+            />
+          )}
+          {playableAudio && (
+            <div className="audio-bar">
+              <button
+                className="audio-toggle"
+                type="button"
+                onClick={toggle}
+                aria-label={state.playing ? '暂停' : '播放'}
+                title={state.playing ? '暂停' : '播放'}
+              >
+                {state.playing ? <Pause aria-hidden="true" size={18} /> : <Play aria-hidden="true" size={18} />}
+              </button>
+              <MediaTimeline currentTime={state.currentTime} duration={state.duration} buffered={state.buffered} onSeek={seekTo} />
+              <button className="audio-utility" type="button" onClick={toggleMute} aria-label={state.muted || state.volume === 0 ? '取消静音' : '静音'} title={state.muted || state.volume === 0 ? '取消静音' : '静音'}>
+                {state.muted || state.volume === 0 ? <VolumeX aria-hidden="true" size={17} /> : <Volume2 aria-hidden="true" size={17} />}
+              </button>
+              <input className="media-volume audio-volume" type="range" min={0} max={1} step={0.05} value={state.muted ? 0 : state.volume} onChange={(event) => setVolume(Number(event.target.value))} aria-label="音量" aria-valuetext={`${Math.round((state.muted ? 0 : state.volume) * 100)}%`} />
+              {state.status === 'buffering' && <span className="media-buffering audio-buffering" role="status">正在缓冲</span>}
+              {state.error && <span className="media-error audio-error" role="alert">{state.error}</span>}
+            </div>
+          )}
+          {audioAssets.state === 'empty' &&
+            (capabilities.fetchAudio.enabled ? (
+              <AudioFetch
+                project={project}
+                job={job}
+                isActive={activeKind === 'fetch-audio'}
+                busy={locked || (running && activeKind !== 'fetch-audio')}
+                onStart={onStart}
+                onReset={onReset}
+              />
+            ) : (
+              <Blocked capability={capabilities.fetchAudio} onRemedy={onRemedy} currentSection="materials" />
+            ))}
+        </div>
+
+        <div className="material-song-lyrics">
+          <h3 className="material-song-label">
+            {lyricLines > 0
+              ? `歌词 · ${project.lyricsSource === 'lrc' ? '来自 .lrc' : '本地识别'}`
+              : '歌词'}
+          </h3>
+          {lyricsAssets.state !== 'empty' && (
+            <AssetCollection
+              collection={lyricsAssets}
+              empty=""
+              ambiguous={(count) => `检测到 ${count} 份歌词；当前只读展示全部文件，渲染前请保留唯一的一份。`}
+              busy={assetBusy}
+              onRename={(item, stem) => onAsset(item, 'rename', stem)}
+              onDelete={(item) => onAsset(item, 'delete')}
+            />
+          )}
+          {activeKind === 'lyrics' && job.status !== 'idle' ? (
+            <JobPanel verb="识别" status={job.status} events={job.events} error={job.error} onCancel={job.cancel} onReset={onReset} resetLabel="收起" />
+          ) : lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
+            <Lyrics lyrics={project.lyrics!} currentTime={state.currentTime} onSeek={seekTo} mode={lyricsMode} />
+          ) : (
+            <LyricsFetch
+              project={project}
+              capabilities={capabilities}
+              onRemedy={onRemedy}
+              job={job}
+              isActive={activeKind === 'lyrics'}
+              busy={locked || (running && activeKind !== 'lyrics')}
+              locked={locked}
+              onStart={onStart}
+              onReset={onReset}
+              onRefresh={onRefresh}
+            />
+          )}
+          {project.lyricsSource === 'recognized' && project.recognizedLyricsManageable === true && (
+            <div className="asset-actions">
+              <button className="link-button" disabled={locked || assetBusy || running} onClick={onReplaceRecognizedLyrics}>重新识别</button>
+              <button className="link-button" disabled={locked || assetBusy || running} onClick={onClearRecognizedLyrics}>清除识别结果</button>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+};
+
 export const Materials = ({
   project,
   capabilities,
@@ -537,10 +659,7 @@ export const Materials = ({
   const songNeedsAttention = audioAssets.state !== 'ready' || lyricsAssets.state === 'ambiguous' || lyricLines === 0;
   const initialTab = songBusy || songNeedsAttention ? 'music' : 'photos';
   const [tab, setTab] = useState<'photos' | 'music'>(initialTab);
-  const lyricsMode = useLyricsMode(project.path);
   const tabsBehavior = useTabs({values: ['photos', 'music'] as const, value: tab, onValueChange: setTab, idPrefix: 'materials'});
-  const playableAudio = audioAssets.state === 'ready' ? audios[0] ?? null : null;
-  const {mediaProps: audioProps, state, toggle, seekTo, setVolume, toggleMute} = useAudioPlayer<HTMLAudioElement>(playableAudio ? mediaUrl(playableAudio) : null);
   const songMeta = songBusy
     ? '进行中'
     : audioAssets.state === 'ambiguous' || lyricsAssets.state === 'ambiguous'
@@ -579,8 +698,6 @@ export const Materials = ({
         ))}
       </div>
 
-      <audio {...audioProps} aria-hidden="true" />
-
       <div {...tabsBehavior.getPanelProps('photos')}>
         {photos.length > 0 ? (
           <PhotoGrid
@@ -600,96 +717,21 @@ export const Materials = ({
       </div>
 
       <div {...tabsBehavior.getPanelProps('music')}>
-        <div className="material-song">
-          <div className="material-song-audio">
-            <h3 className="material-song-label">音乐</h3>
-            {audioAssets.state !== 'empty' && (
-              <AssetCollection
-                collection={audioAssets}
-                empty=""
-                ambiguous={(count) => `检测到 ${count} 份音频；渲染和歌词识别不会猜测第一份，请保留唯一文件后继续。`}
-                busy={assetBusy}
-                onRename={(item, stem) => onAsset(item, 'rename', stem)}
-                onDelete={(item) => onAsset(item, 'delete')}
-              />
-            )}
-            {playableAudio && (
-              <div className="audio-bar">
-                <button
-                  className="audio-toggle"
-                  type="button"
-                  onClick={toggle}
-                  aria-label={state.playing ? '暂停' : '播放'}
-                  title={state.playing ? '暂停' : '播放'}
-                >
-                  {state.playing ? <Pause aria-hidden="true" size={18} /> : <Play aria-hidden="true" size={18} />}
-                </button>
-                <MediaTimeline currentTime={state.currentTime} duration={state.duration} buffered={state.buffered} onSeek={seekTo} />
-                <button className="audio-utility" type="button" onClick={toggleMute} aria-label={state.muted || state.volume === 0 ? '取消静音' : '静音'} title={state.muted || state.volume === 0 ? '取消静音' : '静音'}>
-                  {state.muted || state.volume === 0 ? <VolumeX aria-hidden="true" size={17} /> : <Volume2 aria-hidden="true" size={17} />}
-                </button>
-                <input className="media-volume audio-volume" type="range" min={0} max={1} step={0.05} value={state.muted ? 0 : state.volume} onChange={(event) => setVolume(Number(event.target.value))} aria-label="音量" aria-valuetext={`${Math.round((state.muted ? 0 : state.volume) * 100)}%`} />
-                {state.status === 'buffering' && <span className="media-buffering audio-buffering" role="status">正在缓冲</span>}
-                {state.error && <span className="media-error audio-error" role="alert">{state.error}</span>}
-              </div>
-            )}
-            {audioAssets.state === 'empty' &&
-              (capabilities.fetchAudio.enabled ? (
-                <AudioFetch
-                  project={project}
-                  job={job}
-                  isActive={activeKind === 'fetch-audio'}
-                  busy={locked || (running && activeKind !== 'fetch-audio')}
-                  onStart={onStart}
-                  onReset={onReset}
-                />
-              ) : (
-                <Blocked capability={capabilities.fetchAudio} onRemedy={onRemedy} currentSection="materials" />
-              ))}
-          </div>
-
-          <div className="material-song-lyrics">
-            <h3 className="material-song-label">
-              {lyricLines > 0
-                ? `歌词 · ${project.lyricsSource === 'lrc' ? '来自 .lrc' : '本地识别'}`
-                : '歌词'}
-            </h3>
-            {lyricsAssets.state !== 'empty' && (
-              <AssetCollection
-                collection={lyricsAssets}
-                empty=""
-                ambiguous={(count) => `检测到 ${count} 份歌词；当前只读展示全部文件，渲染前请保留唯一的一份。`}
-                busy={assetBusy}
-                onRename={(item, stem) => onAsset(item, 'rename', stem)}
-                onDelete={(item) => onAsset(item, 'delete')}
-              />
-            )}
-            {activeKind === 'lyrics' && job.status !== 'idle' ? (
-              <JobPanel verb="识别" status={job.status} events={job.events} error={job.error} onCancel={job.cancel} onReset={onReset} resetLabel="收起" />
-            ) : lyricsAssets.state === 'ambiguous' ? null : lyricLines > 0 ? (
-              <Lyrics lyrics={project.lyrics!} currentTime={state.currentTime} onSeek={seekTo} mode={lyricsMode} />
-            ) : (
-              <LyricsFetch
-                project={project}
-                capabilities={capabilities}
-                onRemedy={onRemedy}
-                job={job}
-                isActive={activeKind === 'lyrics'}
-                busy={locked || (running && activeKind !== 'lyrics')}
-                locked={locked}
-                onStart={onStart}
-                onReset={onReset}
-                onRefresh={onRefresh}
-              />
-            )}
-            {project.lyricsSource === 'recognized' && project.recognizedLyricsManageable === true && (
-              <div className="asset-actions">
-                <button className="link-button" disabled={locked || assetBusy || running} onClick={onReplaceRecognizedLyrics}>重新识别</button>
-                <button className="link-button" disabled={locked || assetBusy || running} onClick={onClearRecognizedLyrics}>清除识别结果</button>
-              </div>
-            )}
-          </div>
-        </div>
+        <MusicPanel
+          project={project}
+          capabilities={capabilities}
+          onRemedy={onRemedy}
+          job={job}
+          activeKind={activeKind}
+          onStart={onStart}
+          onReset={onReset}
+          onRefresh={onRefresh}
+          onReplaceRecognizedLyrics={onReplaceRecognizedLyrics}
+          onClearRecognizedLyrics={onClearRecognizedLyrics}
+          assetBusy={assetBusy}
+          locked={locked}
+          onAsset={onAsset}
+        />
       </div>
 
       {project.unsupportedVideos.length > 0 && (

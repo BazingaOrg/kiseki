@@ -34,10 +34,21 @@ test('music and lyrics share one materials panel with a single audio player', as
   assert.match(materials, /className="material-song-audio"/);
   assert.match(materials, /className="material-song-lyrics"/);
   assert.match(materials, /<audio \{\.\.\.audioProps\} aria-hidden="true" \/>/);
-  assert.ok(materials.indexOf('<audio') < materials.indexOf("getPanelProps('photos')"));
+  assert.match(materials, /<div \{\.\.\.tabsBehavior\.getPanelProps\('music'\)\}>\s*<MusicPanel/);
   assert.match(materials, /<Lyrics lyrics=\{project\.lyrics!\} currentTime=\{state\.currentTime\} onSeek=\{seekTo\} mode=\{lyricsMode\} \/>/);
   assert.match(materials, /const playableAudio = audioAssets\.state === 'ready' \? audios\[0\] \?\? null : null/);
   assert.ok(materials.indexOf('className="material-song-audio"') < materials.indexOf('className="material-song-lyrics"'));
+});
+
+test('audio progress state stays inside the mounted music panel and cannot rerender the photo grid', async () => {
+  const materials = await source('Materials.tsx');
+  const musicPanel = materials.slice(materials.indexOf('const MusicPanel ='), materials.indexOf('export const Materials ='));
+  const parent = materials.slice(materials.indexOf('export const Materials ='));
+  assert.match(musicPanel, /useAudioPlayer<HTMLAudioElement>/);
+  assert.match(musicPanel, /<audio \{\.\.\.audioProps\} aria-hidden="true" \/>/);
+  assert.match(parent, /<PhotoGrid/);
+  assert.match(parent, /<MusicPanel/);
+  assert.doesNotMatch(parent, /useAudioPlayer|state\.currentTime|<audio /);
 });
 
 test('a single video uses compact metadata while multiple videos keep the playlist', async () => {
