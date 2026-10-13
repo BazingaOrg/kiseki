@@ -31,6 +31,20 @@ def test_cross_day_inserts_stable_card_without_losing_photos(tmp_path):
     assert all(a["end"] <= b["start"] for a, b in zip(sorted(timeline["photos"], key=lambda c: c["start"]), sorted(timeline["photos"], key=lambda c: c["start"])[1:]))
 
 
+def test_chapter_plan_reuses_photo_dates_from_ordering(tmp_path, monkeypatch):
+    photos(tmp_path, ["07:13", "07:14", "07:14"])
+    original = plan.exif_datetime
+    calls = []
+
+    def read_date(photo):
+        calls.append(photo)
+        return original(photo)
+
+    monkeypatch.setattr(plan, "exif_datetime", read_date)
+    plan.build_timeline(tmp_path, beats(), [], dict(plan.DEFAULTS), None)
+    assert len(calls) == 3
+
+
 def test_single_day_missing_exif_and_disabled_do_not_insert(tmp_path):
     photos(tmp_path, ["07:14", "07:14"])
     assert not plan.build_timeline(tmp_path, beats(), [], dict(plan.DEFAULTS), None)["meta"]["chapters"]["enabled"]
@@ -70,6 +84,20 @@ def test_three_days_label_the_second_and_third_days(tmp_path):
     timeline = plan.build_timeline(tmp_path, beats(), [], dict(plan.DEFAULTS), None)
     cards = [clip for clip in timeline["photos"] if clip.get("kind") == "chapter"]
     assert [card["text"] for card in cards] == ["7月14日 · 第2天 ♪", "7月15日 · 第3天 ✦"]
+
+
+def test_opening_recap_leads_into_the_first_day_card(tmp_path):
+    photos(tmp_path, ["07:13"] * 4 + ["07:14"] * 4)
+    song = {**beats(), "duration": 60, "beats": list(range(61)), "downbeats": list(range(0, 61, 2))}
+    timeline = plan.build_timeline(tmp_path, song, [], dict(plan.DEFAULTS), None)
+    recap = timeline["meta"]["opening_recap"]
+    cards = [clip for clip in timeline["photos"] if clip.get("kind") == "chapter"]
+    real = [clip for clip in timeline["photos"] if clip.get("kind") == "photo"]
+    assert [card["text"] for card in cards] == ["7月13日 · 第1天 :)", "7月14日 · 第2天 ♪"]
+    assert cards[0]["start"] == recap["end"]
+    assert cards[0]["end"] == real[0]["start"]
+    assert len(real) == 8
+    assert timeline["meta"]["chapters"] == {"enabled": True, "day_count": 2, "card_count": 2}
 
 
 def test_invalid_dates_and_short_or_sparse_boundaries_leave_photos_unchanged(tmp_path, capsys):
@@ -113,6 +141,38 @@ def test_chapter_helper_uses_front_then_back_and_a_short_card_when_a_beat_card_d
         [],
         2.0,
     )
-    assert tight_meta["card_count"] == 0
-    assert all(clip.get("kind") != "chapter" and "day_mark" not in clip for clip in tight)
-    assert "7月14日前后太挤，没有日期卡" in capsys.readouterr().out
+    assert tight_meta["card_count"] == 1
+    assert [(clip["start"], clip["end"]) for clip in tight] == [(0.0, 0.2), (0.2, 0.8), (0.8, 1.0)]
+
+    with pytest.raises(SystemExit):
+        plan._insert_chapters(
+            [{"kind": "photo", "start": 0.0, "end": 0.25}, {"kind": "photo", "start": 0.25, "end": 0.5}],
+            paths,
+            [],
+            0.25,
+        )
+    assert "无法保留日期卡和照片" in capsys.readouterr().err
+
+    with pytest.raises(SystemExit):
+        plan._insert_chapters(
+            [{"kind": "photo", "start": 0.0, "end": 0.5}, {"kind": "photo", "start": 0.5, "end": 8.0}],
+            paths,
+            [2.0],
+            2.0,
+            include_first_day=True,
+        )
+    assert "无法保留日期卡和照片" in capsys.readouterr().err
+
+
+def test_dense_consecutive_days_each_get_a_card(tmp_path):
+    photos(tmp_path, ["07:13", "07:14", "07:15", "07:16"])
+    paths = [tmp_path / f"{index}.jpg" for index in range(4)]
+    clips = [{"kind": "photo", "start": index * 0.8, "end": (index + 1) * 0.8} for index in range(4)]
+    timeline, meta = plan._insert_chapters(clips, paths, [], 0.8, include_first_day=True)
+    cards = [clip for clip in timeline if clip.get("kind") == "chapter"]
+    real = [clip for clip in timeline if clip.get("kind") == "photo"]
+    assert meta == {"enabled": True, "day_count": 4, "card_count": 4}
+    assert [clip["text"].split()[0] for clip in cards] == ["7月13日", "7月14日", "7月15日", "7月16日"]
+    assert len(real) == 4
+    assert all(clip["end"] - clip["start"] >= 0.2 - 1e-9 for clip in real)
+    assert all(a["end"] <= b["start"] for a, b in zip(timeline, timeline[1:]))

@@ -273,7 +273,7 @@ def _is_valid_image(path: Path) -> bool:
         return False
 
 
-def ordered_photos(folder: Path) -> list[Path]:
+def ordered_photos(folder: Path, stamps_out: dict[Path, str | None] | None = None) -> list[Path]:
     photos = sorted(
         p
         for p in folder.iterdir()
@@ -283,6 +283,8 @@ def ordered_photos(folder: Path) -> list[Path]:
         term.error(f"{folder} 中没有图片(支持 {'/'.join(sorted(IMAGE_EXTS))})")
         raise SystemExit(1)
     stamps = {p: exif_datetime(p) for p in photos}
+    if stamps_out is not None:
+        stamps_out.update(stamps)
     if all(stamps.values()):
         term.detail(f"photo order: EXIF 拍摄时间({len(photos)} 张)")
         return sorted(photos, key=lambda p: (stamps[p], p.name))
@@ -345,11 +347,11 @@ def _opening_recap_spec(beats: dict, n_photos: int, cfg: dict, planning_duration
     }
 
 
-def _photo_days(photos: list[Path]) -> list[str] | None:
+def _photo_days(photos: list[Path], stamps: dict[Path, str | None] | None = None) -> list[str] | None:
     """Return sortable YYYY-MM-DD days only when every DateTimeOriginal is usable."""
     days = []
     for photo in photos:
-        stamp = exif_datetime(photo)
+        stamp = stamps.get(photo) if stamps is not None else exif_datetime(photo)
         if not stamp:
             return None
         try:
@@ -361,7 +363,7 @@ def _photo_days(photos: list[Path]) -> list[str] | None:
 
 SMALL_CHAPTER_TARGET = 1.0
 SMALL_CHAPTER_MIN = 0.6
-CHAPTER_PHOTO_FLOOR = 0.45
+CHAPTER_PHOTO_FLOOR = 0.2
 
 
 def _fit_small_chapter(before: dict, after: dict, boundary: float) -> tuple[float, float] | None:
@@ -385,14 +387,30 @@ def _fit_small_chapter(before: dict, after: dict, boundary: float) -> tuple[floa
     return start, end
 
 
-def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], min_gap: float) -> tuple[list[dict], dict]:
-    days = _photo_days(photos)
+def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], min_gap: float, include_first_day: bool = False, stamps: dict[Path, str | None] | None = None) -> tuple[list[dict], dict]:
+    days = _photo_days(photos, stamps)
     if days is None or len(set(days)) < 2:
         if days is None:
             term.detail("日期章节未启用: EXIF 时间不完整或无效")
         return clips, {"enabled": False, "day_count": len(set(days or [])), "card_count": 0}
     day_number = {day: index + 1 for index, day in enumerate(dict.fromkeys(days))}
     cards: list[dict] = []
+    if include_first_day:
+        first = clips[0]
+        start = first["start"]
+        month, day_num = (int(part) for part in days[0].split("-")[1:])
+        later = [beat for beat in beats if start + 1 <= beat <= start + 3 and beat <= first["end"] - min_gap]
+        if later:
+            end = round(min(later, key=lambda beat: abs(beat - (start + 2))), 3)
+        else:
+            room = first["end"] - start - CHAPTER_PHOTO_FLOOR
+            end = round(start + min(SMALL_CHAPTER_TARGET, room), 3) if room + 1e-9 >= SMALL_CHAPTER_MIN else start
+        if end - start + 1e-9 >= SMALL_CHAPTER_MIN:
+            first["start"] = end
+            cards.append({"kind": "chapter", "text": f"{month}月{day_num}日 · 第1天 {CHAPTER_SYMBOLS[0]}", "start": start, "end": end})
+        else:
+            term.error(f"{month}月{day_num}日第一张照片太短，无法保留日期卡和照片；请增加音频时长或减少照片")
+            raise SystemExit(1)
     for index in range(1, len(clips)):
         if days[index] == days[index - 1]:
             continue
@@ -414,8 +432,8 @@ def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], 
         else:
             small = _fit_small_chapter(before, after, boundary)
             if small is None:
-                term.detail(f"{month}月{day_num}日前后太挤，没有日期卡")
-                continue
+                term.error(f"{month}月{day_num}日前后太挤，无法保留日期卡和照片；请增加音频时长或减少照片")
+                raise SystemExit(1)
             start, end = small
         cards.append({"kind": "chapter", "text": f"{month}月{day_num}日 · 第{ordinal}天 {CHAPTER_SYMBOLS[(ordinal - 1) % len(CHAPTER_SYMBOLS)]}", "start": round(start, 3), "end": round(end, 3)})
     merged = sorted([*clips, *cards], key=lambda clip: (clip["start"], clip.get("kind") == "chapter"))
@@ -424,7 +442,8 @@ def _insert_chapters(clips: list[dict], photos: list[Path], beats: list[float], 
 
 def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
                    input_hash: str | None) -> dict:
-    photos = ordered_photos(folder)
+    photo_stamps: dict[Path, str | None] = {}
+    photos = ordered_photos(folder, photo_stamps)
     full_duration = float(beats["duration"])
     duration = full_duration
     n = len(photos)
@@ -521,6 +540,14 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
     switches = [cut.time for cut in photo_cuts]
     if len(switches) < n - 1:
         dropped = n - 1 - len(switches)
+        if cfg["chapters"]:
+            days = _photo_days(photos, photo_stamps)
+            if days is not None:
+                retained = set(days[: len(switches) + 1])
+                missing_days = [day for day in dict.fromkeys(days) if day not in retained]
+                if missing_days:
+                    term.error(f"音频太短，无法展示日期 {', '.join(missing_days)}；请增加音频时长或减少照片")
+                    raise SystemExit(1)
         term.warn(f"时长塞不下全部照片,丢弃末尾 {dropped} 张")
         photos = photos[: len(switches) + 1]
         n = len(photos)
@@ -553,7 +580,7 @@ def build_timeline(folder: Path, beats: dict, lyrics: list[dict], cfg: dict,
 
     chapter_meta = {"enabled": False, "day_count": 0, "card_count": 0}
     if cfg["chapters"]:
-        clips, chapter_meta = _insert_chapters(clips, photos, [float(beat) for beat in candidates], min_gap)
+        clips, chapter_meta = _insert_chapters(clips, photos, [float(beat) for beat in candidates], min_gap, include_first_day=bool(opening_recap), stamps=photo_stamps)
 
     explicit_branding = cfg.get("_explicit_branding", set())
     branding: dict = {}

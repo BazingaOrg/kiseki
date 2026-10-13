@@ -50,6 +50,7 @@ import {loadProjectConfig} from './config.mjs';
 import {SignatureError, renderSignatureSvg} from './signature-svg.mjs';
 import {loadLocalEnv} from './load-env.mjs';
 import {buildSilentTimeline} from './silent-timeline.mjs';
+import {readPhotoExif} from './exif.mjs';
 import {preparePackagedRuntime} from './desktop-runtime.mjs';
 
 export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
@@ -154,11 +155,23 @@ export const runCommandFromArgv = async (
   if (!audio) {
     term.detail('没有音频，按每张照片 4 秒排成无声视频');
     const projectConfig = loadProjectConfig(folder);
-    fs.writeFileSync(timelinePath, `${JSON.stringify(buildSilentTimeline({
+    const shotTimes = [];
+    if (projectConfig.values.chapters) {
+      for (let index = 0; index < photos.length; index += 8) {
+        const batch = photos.slice(index, index + 8);
+        shotTimes.push(...await Promise.all(batch.map(async (name) => (await readPhotoExif(path.join(folder, name))).shotTime)));
+      }
+    }
+    const timeline = buildSilentTimeline({
       photos,
       config: projectConfig.values,
       explicitKeys: projectConfig.explicitKeys,
-    }), null, 2)}\n`);
+      shotTimes,
+    });
+    if (projectConfig.values.chapters && timeline.meta.chapters.day_count === 0) {
+      term.warn('日期章节未启用：部分照片缺少有效的 EXIF DateTimeOriginal');
+    }
+    fs.writeFileSync(timelinePath, `${JSON.stringify(timeline, null, 2)}\n`);
     tl = readValidatedTimeline(timelinePath);
   } else {
   const inputFiles = () => {

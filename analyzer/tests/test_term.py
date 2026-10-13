@@ -110,7 +110,7 @@ def test_deprecated_motion_config_is_rejected(tmp_path, monkeypatch):
 
 def test_new_timeline_always_uses_static_motion(monkeypatch, tmp_path):
     photos = [tmp_path / "one.jpg", tmp_path / "two.jpg"]
-    monkeypatch.setattr(plan, "ordered_photos", lambda _folder: photos)
+    monkeypatch.setattr(plan, "ordered_photos", lambda _folder, _stamps_out=None: photos)
     beats = {
         "audio": "song.mp3",
         "duration": 5.0,

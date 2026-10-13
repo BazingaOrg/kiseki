@@ -117,6 +117,17 @@ def test_song_shorter_than_every_beat_still_drops_the_tail(tmp_path: Path, capsy
     assert "时长塞不下全部照片,丢弃末尾 4 张" in capsys.readouterr().err
 
 
+def test_song_too_short_to_show_every_shooting_day_fails_instead_of_dropping_a_day(tmp_path: Path, capsys):
+    for index in range(10):
+        image = Image.new("RGB", (4, 4))
+        exif = Image.Exif()
+        exif[plan.DATETIME_ORIGINAL] = f"2026:07:{13 if index < 6 else 14} 12:00:00"
+        image.save(tmp_path / f"{index:03d}.jpg", exif=exif)
+    with pytest.raises(SystemExit):
+        plan.build_timeline(tmp_path, make_beats(3), [], {**plan.DEFAULTS, "intro": False}, None)
+    assert "无法展示日期 2026-07-14" in capsys.readouterr().err
+
+
 def test_dynamic_pacing_does_not_drop_photos_when_uniform_fits(tmp_path: Path, capsys):
     make_photos(tmp_path, 12)
     beats = make_beats(29.301, downbeats=[])
