@@ -105,10 +105,10 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     }
   }
 
-  const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
-    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
+  const eligibleSubtitles = subtitles.filter((line) => line.confidence >= SUBTITLE.confidenceThreshold);
+  const visibleSubtitles = subtitleMode === 'none' ? [] : eligibleSubtitles.flatMap((line, index) => {
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: eligibleSubtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
-      line.confidence >= SUBTITLE.confidenceThreshold &&
       t >= line.start - SUBTITLE.fadeInDuration - 1 / fps &&
       t <= visibilityEnd + 1 / fps
       ? [{line, visibilityEnd}]
@@ -139,6 +139,7 @@ export const Diary: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     introEnd: introDuration,
     recapEnd: meta.opening_recap?.end ?? 0,
     durationInFrames,
+    entryDelaySeconds: 0.08,
   });
   const outroText = meta.branding?.outro_text ?? OUTRO.text;
   const audioCredit = meta.audio_credit ?? '';

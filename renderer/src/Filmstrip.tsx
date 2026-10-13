@@ -16,7 +16,7 @@ import {Intro, introDuration} from './Intro';
 import {Outro, outroOpacityAt} from './Outro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
-import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
+import {resolveSubtitleMode, subtitleBlockHeight, subtitleVisibilityEnd} from './subtitleLayout';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
 import {resolveFontFamily} from './fontFamily';
@@ -56,11 +56,15 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   if (hasCaption) ensureFonts('serif');
   const subtitleMode = resolveSubtitleMode(meta.lyrics_mode, subtitles);
   const bilingual = subtitleMode === 'bilingual';
+  const eligibleSubtitles = subtitles.filter((line) => line.confidence >= SUBTITLE.confidenceThreshold);
+  const stripHeight = height * STRIP_HEIGHT_RATIO;
   const baseMainScale = meta.photo_scale * (hasCaption ? FILMSTRIP_MAIN_PHOTO_FACTOR_CAPTION : FILMSTRIP_MAIN_PHOTO_FACTOR);
-  const mainScale = bilingual ? Math.min(baseMainScale, 0.64) : baseMainScale;
+  const captionFontSize = (template.captions?.fontSize ?? SUBTITLE.fontSize) * scale;
+  const lyricBand = stripHeight + subtitleBlockHeight({fontSize: captionFontSize, bilingual, scale}) + ((template.captions?.riseDistance ?? SUBTITLE.riseDistance) + SUBTITLE.exitRise + 12) * scale;
+  const lyricScale = subtitleMode !== 'none' && eligibleSubtitles.length > 0 ? Math.max(0, 1 - 2 * lyricBand / meta.height) : baseMainScale;
+  const mainScale = Math.min(baseMainScale, bilingual ? 0.64 : baseMainScale, lyricScale);
   const mainSafeWidth = meta.width * mainScale;
   const mainSafeHeight = meta.height * mainScale;
-  const stripHeight = height * STRIP_HEIGHT_RATIO;
   const subtitleBandBottom = stripHeight;
   const subtitleBandTop = (1 - mainScale) / 2 * meta.height;
   const bandCenterFromBottom = (subtitleBandBottom + subtitleBandTop) / 2;
@@ -93,10 +97,9 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         .filter((clip): clip is PhotoClip => clip !== undefined)
     : [];
 
-  const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
-    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: 0.25, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
+  const visibleSubtitles = subtitleMode === 'none' ? [] : eligibleSubtitles.flatMap((line, index) => {
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: eligibleSubtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
-      line.confidence >= 0.6 &&
       t >= line.start - SUBTITLE.fadeInDuration - 1 / fps &&
       t <= visibilityEnd + 1 / fps
       ? [{line, visibilityEnd}]
@@ -127,6 +130,7 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     introEnd: introDuration,
     recapEnd: meta.opening_recap?.end ?? 0,
     durationInFrames,
+    entryDelaySeconds: 0.12,
   });
   return (
     <AbsoluteFill style={{backgroundColor: meta.background}}>

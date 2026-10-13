@@ -5,7 +5,7 @@ import {SUBTITLE, type FontFamily, type Palette} from './theme';
 import {fullwidthLength, resolveFontFamily} from './fontFamily';
 import type {SubtitleLine} from './types';
 import type {TemplateCaptionsStyle} from './templates';
-import {assertSubtitleSafeHeight, fitSubtitleFontSize, subtitleBlockBottom, subtitleBlockHeight, subtitlePhotoGap, subtitleTranslationGap, translationFontSize} from './subtitleLayout';
+import {assertSubtitleSafeHeight, fitSubtitleFontSize, subtitleBlockBottom, subtitleBlockHeight, subtitleFadeOutStart, subtitlePhotoGap, subtitleTranslationGap, translationFontSize} from './subtitleLayout';
 
 const clamp = {extrapolateLeft: 'clamp', extrapolateRight: 'clamp'} as const;
 const easeOut = {...clamp, easing: Easing.out(Easing.cubic)} as const;
@@ -78,15 +78,12 @@ export const Subtitle: React.FC<{
   const inStart = line.start - style.fadeInDuration;
   const inEnd = line.start;
   const outEnd = Math.min(line.end + style.fadeOutDuration, visibilityEnd ?? Infinity);
+  const outStart = subtitleFadeOutStart(line.end, outEnd, style.fadeOutDuration);
   const fadeIn = interpolate(t, [inStart, inEnd], [0, 1], clamp);
-  const fadeOut = outEnd <= line.end ? (t < outEnd ? 1 : 0) : interpolate(t, [line.end, outEnd], [1, 0], clamp);
+  const fadeOut = interpolate(t, [outStart, outEnd], [1, 0], clamp);
   const opacity = Math.min(fadeIn, fadeOut);
 
   // 摄影展题签式动效:只保留克制的淡化与短距离位移。
-  const riseIn = interpolate(t, [inStart, inEnd], [style.riseDistance * scale, 0], easeOut);
-  const riseOut = outEnd <= line.end ? 0 : interpolate(t, [line.end, outEnd], [0, -style.exitRise * scale], easeOut);
-  const rise = riseIn + riseOut;
-
   const letterSpacing =
     fullwidthLength(line.text) > style.compactThreshold
       ? style.letterSpacingCompact
@@ -95,37 +92,49 @@ export const Subtitle: React.FC<{
   const baseSize = style.fontSize * scale;
   const maxWidth = Math.min(width * 0.86, Math.max(1, width - sideInset * 2));
   const originalFontFamily = resolveFontFamily(line.text, line.lang, fontFamily);
+  const measuredOriginalWidth = React.useMemo(
+    () => bilingual && fontsReady ? measureTextWidth({text: subtitleText, fontFamily: originalFontFamily, fontSize: baseSize, fontWeight: style.fontWeight, letterSpacing}) : undefined,
+    [bilingual, fontsReady, subtitleText, originalFontFamily, baseSize, style.fontWeight, letterSpacing],
+  );
   const originalFontSize = fitSubtitleFontSize({
     text: subtitleText,
     fontSize: baseSize,
     letterSpacing,
     maxWidth,
-    measuredWidth: bilingual && fontsReady ? measureTextWidth({text: subtitleText, fontFamily: originalFontFamily, fontSize: baseSize, fontWeight: style.fontWeight, letterSpacing}) : undefined,
+    measuredWidth: measuredOriginalWidth,
     enforceMinimum: bilingual && fontsReady,
   });
   const translationText = line.translation?.text.trim() ?? '';
   const baseTranslationFontSize = translationFontSize(baseSize);
   const translationFamily = resolveFontFamily(translationText, 'zh', fontFamily);
+  const measuredTranslationWidth = React.useMemo(
+    () => bilingual && fontsReady ? measureTextWidth({text: translationText, fontFamily: translationFamily, fontSize: baseTranslationFontSize, fontWeight: style.fontWeight, letterSpacing}) : undefined,
+    [bilingual, fontsReady, translationText, translationFamily, baseTranslationFontSize, style.fontWeight, letterSpacing],
+  );
   const translatedFontSize = bilingual
     ? fitSubtitleFontSize({
       text: translationText,
       fontSize: baseTranslationFontSize,
       letterSpacing,
       maxWidth,
-      measuredWidth: fontsReady ? measureTextWidth({text: translationText, fontFamily: translationFamily, fontSize: baseTranslationFontSize, fontWeight: style.fontWeight, letterSpacing}) : undefined,
+      measuredWidth: measuredTranslationWidth,
       enforceMinimum: fontsReady,
     })
     : 0;
   const blockHeight = subtitleBlockHeight({fontSize: bilingual ? baseSize : originalFontSize, bilingual, scale});
-  const riseDown = Math.abs(style.riseDistance * scale);
-  const riseUp = Math.abs(style.exitRise * scale);
-  assertSubtitleSafeHeight({blockHeight, bandBottomFromBottom, bandTopFromBottom, riseDown, riseUp, bilingual});
   const bottom = subtitleBlockBottom({
     bandBottomFromBottom,
     bandTopFromBottom,
     blockHeight,
     photoGap: subtitlePhotoGap(scale),
   });
+  const motionPad = 6 * scale;
+  const riseDown = Math.min(Math.abs(style.riseDistance * scale), Math.max(0, bottom - bandBottomFromBottom - motionPad));
+  const riseUp = Math.min(Math.abs(style.exitRise * scale), Math.max(0, bandTopFromBottom - bottom - blockHeight - motionPad));
+  const riseIn = interpolate(t, [inStart, inEnd], [riseDown, 0], easeOut);
+  const riseOut = interpolate(t, [outStart, outEnd], [0, -riseUp], easeOut);
+  const rise = riseIn + riseOut;
+  assertSubtitleSafeHeight({blockHeight, bandBottomFromBottom, bandTopFromBottom, riseDown, riseUp, bilingual});
 
   return (
     <div

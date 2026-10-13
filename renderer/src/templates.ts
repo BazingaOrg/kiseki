@@ -66,7 +66,7 @@ export const TEMPLATES: Template[] = [
       fontWeight: 500,
       letterSpacing: '0.12em',
       letterSpacingCompact: '0.06em',
-      riseDistance: 6,
+      riseDistance: 32,
     },
   },
   {
@@ -81,7 +81,7 @@ export const TEMPLATES: Template[] = [
       fontWeight: 700,
       letterSpacing: '0.04em',
       letterSpacingCompact: '0.03em',
-      riseDistance: 4,
+      riseDistance: 44,
     },
     chapterCard: {
       fontSize: 34,
@@ -99,7 +99,7 @@ export const TEMPLATES: Template[] = [
       fontWeight: 500,
       letterSpacing: '0.14em',
       letterSpacingCompact: '0.08em',
-      riseDistance: 6,
+      riseDistance: 32,
     },
   },
   {
@@ -114,7 +114,7 @@ export const TEMPLATES: Template[] = [
       fontWeight: 300,
       letterSpacing: '0.2em',
       letterSpacingCompact: '0.12em',
-      riseDistance: 12,
+      riseDistance: 36,
     },
     chapterCard: {
       fontSize: 56,

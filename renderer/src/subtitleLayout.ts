@@ -51,17 +51,20 @@ export const subtitleVisibilityEnd = ({
   nextLine,
   fadeOutDuration,
   nextFadeInDuration = 0,
-  bilingual,
+  bilingual = false,
 }: {
   line: SubtitleLine;
   nextLine: SubtitleLine | undefined;
   fadeOutDuration: number;
   nextFadeInDuration?: number;
-  bilingual: boolean;
+  bilingual?: boolean;
 }): number => {
   const naturalEnd = line.end + fadeOutDuration;
-  return bilingual && nextLine ? Math.min(naturalEnd, nextLine.start - nextFadeInDuration) : naturalEnd;
+  return nextLine ? Math.min(naturalEnd, nextLine.start - nextFadeInDuration * (bilingual ? 1 : 0.5)) : naturalEnd;
 };
+
+export const subtitleFadeOutStart = (lineEnd: number, visibilityEnd: number, fadeOutDuration: number): number =>
+  Math.min(lineEnd, visibilityEnd - fadeOutDuration);
 
 export const fitSubtitleFontSize = ({
   text,

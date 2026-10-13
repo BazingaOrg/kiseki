@@ -111,10 +111,10 @@ export const SUBTITLE = {
   letterSpacingCompact: '0em', // 单行超过约 18 个全角字符时回退
   compactThreshold: 18, // 全角字符等效数
   confidenceThreshold: 0.6, // Whisper 段置信度低于此值不渲染
-  fadeInDuration: 0.35,
-  fadeOutDuration: 0.25,
-  riseDistance: 0,
-  exitRise: 0,
+  fadeInDuration: 0.2,
+  fadeOutDuration: 0.2,
+  riseDistance: 32,
+  exitRise: 32,
 } as const;
 
 export const INFO_BAR = {

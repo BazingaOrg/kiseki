@@ -129,6 +129,7 @@ export const OpeningRecap: React.FC<{
       <AbsoluteFill style={{backgroundColor: meta.background, justifyContent: 'center', alignItems: 'center', opacity: recapOpacity}}>
         <div style={entry === 0 ? undefined : {filter: `blur(${entry * 0.8 * scale}px) brightness(${1 + entry * 0.04})`}}>
           <PolaroidCard
+            key={clip.src}
             clip={clip}
             maxWidth={safeWidth * 0.9}
             maxHeight={safeHeight * 0.9}

@@ -33,6 +33,7 @@ export const photoCaptionPresentation = ({
   recapEnd,
   durationInFrames,
   whiteFadeDuration = 2.5,
+  entryDelaySeconds = 0,
 }: {
   clips: Array<{kind?: string; src?: string; caption?: string | null; captionLayout?: unknown; start: number; end: number}>;
   frame: number;
@@ -42,29 +43,37 @@ export const photoCaptionPresentation = ({
   recapEnd: number;
   durationInFrames: number;
   whiteFadeDuration?: number;
+  entryDelaySeconds?: number;
 }): {visible: boolean; opacity: number; clip: {kind?: string; src?: string; caption?: string | null; captionLayout?: unknown; start: number; end: number} | null} => {
   const whiteFadeStartFrame = Math.max(0, durationInFrames - Math.round(whiteFadeDuration * fps));
-  const fadeFrames = Math.round(0.2 * fps);
+  const maxFadeFrames = Math.round(0.2 * fps);
   const bodyStart = Math.max(showIntro ? introEnd : 0, recapEnd);
   const photos = clips.filter((clip) => clip.kind !== 'chapter' && typeof clip.src === 'string');
   let winner: {index: number; startFrame: number; endFrame: number} | null = null;
   for (let index = 0; index < photos.length; index += 1) {
     const clip = photos[index];
     const next = photos[index + 1];
-    const startFrame = Math.ceil(Math.max(clip.start, bodyStart) * fps);
+    const photoStartFrame = Math.ceil(Math.max(clip.start, bodyStart) * fps);
     const endCandidates = [Math.ceil(clip.end * fps), whiteFadeStartFrame];
     if (next) endCandidates.push(Math.ceil(next.start * fps));
     const endFrame = Math.min(...endCandidates);
+    const photoFrames = endFrame - photoStartFrame;
+    const delayFrames = photoFrames >= Math.round(1.2 * fps)
+      ? Math.min(Math.round(entryDelaySeconds * fps), Math.floor(photoFrames / 8))
+      : 0;
+    const startFrame = photoStartFrame + delayFrames;
     if (frame >= startFrame && frame < endFrame) {
       winner = {index, startFrame, endFrame};
     }
   }
   if (!winner) return {visible: false, opacity: 0, clip: null};
+  const holdFrames = winner.endFrame - winner.startFrame;
+  const fadeFrames = Math.min(maxFadeFrames, Math.max(1, Math.floor(holdFrames / 6)));
   const fadeIn = Math.min(1, Math.max(0, (frame - winner.startFrame) / Math.max(1, fadeFrames)));
   const fadeOut = Math.min(1, Math.max(0, (winner.endFrame - frame) / Math.max(1, fadeFrames)));
   return {
     visible: true,
-    opacity: Math.min(fadeIn, fadeOut, 1),
+    opacity: holdFrames <= 2 ? 1 : Math.min(fadeIn, fadeOut, 1),
     clip: photos[winner.index],
   };
 };
@@ -105,10 +114,10 @@ export const polaroidCardPresentation = ({
   const exitEnd = nextPhotoStart === null ? end : nextPhotoStart + 0.3;
   const fadeIn = progressBetween(time, start, start + 0.2);
   const fadeOut = 1 - progressBetween(time, exitStart, exitEnd);
-  const settle = progressBetween(time, start, start + 0.4);
+  const settle = progressBetween(time, start, start + 0.28);
   return {
     visible: time >= start && time <= exitEnd,
     opacity: Math.min(fadeIn, fadeOut),
-    rotation: rotation + 10 * (1 - settle),
+    rotation: rotation + 4 * (1 - settle),
   };
 };

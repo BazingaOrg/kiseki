@@ -27,6 +27,14 @@ test('last polaroid card keeps the existing fade-out behavior', () => {
   assert.equal(card.rotation, 1);
 });
 
+test('polaroid card enters with a restrained rotation and settles before its caption', () => {
+  const first = polaroidCardPresentation({time: 1, start: 1, end: 4, nextPhotoStart: null, rotation: -2});
+  const settled = polaroidCardPresentation({time: 1.28, start: 1, end: 4, nextPhotoStart: null, rotation: -2});
+  assert.equal(first.rotation, 2);
+  assert.equal(settled.rotation, -2);
+  assert.equal(settled.opacity, 1);
+});
+
 test('opening recap preroll leaves filmstrip and polaroid fully settled at handoff', () => {
   const bodyStart = 4.017;
   const filmstrip = filmstripLayerPresentation({
@@ -70,6 +78,24 @@ test('photo captions follow every body photo, including short clips', () => {
     clips, frame: Math.ceil(8 * fps), fps, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames,
   });
   assert.equal(switchFrame.visible, false);
+});
+
+test('a 0.2-second photo caption reaches full opacity before it exits', () => {
+  const clips = [{kind: 'photo', src: 'short.jpg', caption: '短暂', start: 0, end: 0.2}];
+  const state = photoCaptionPresentation({
+    clips, frame: 4, fps: 60, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames: 600, entryDelaySeconds: 0.12,
+  });
+  assert.equal(state.clip?.src, 'short.jpg');
+  assert.equal(state.opacity, 1);
+});
+
+test('a long photo appears before its caption and the caption settles after the photo', () => {
+  const clips = [{kind: 'photo', src: 'long.jpg', caption: '稍后出现', start: 1, end: 4}];
+  const base = {clips, fps: 60, showIntro: false, introEnd: 0, recapEnd: 0, durationInFrames: 600, entryDelaySeconds: 0.1};
+  assert.equal(photoCaptionPresentation({...base, frame: 63}).visible, false);
+  assert.equal(photoCaptionPresentation({...base, frame: 66}).opacity, 0);
+  assert.ok(photoCaptionPresentation({...base, frame: 72}).opacity > 0);
+  assert.equal(photoCaptionPresentation({...base, frame: 90}).opacity, 1);
 });
 
 test('date chapter cards do not swallow captions of the surrounding photos', () => {

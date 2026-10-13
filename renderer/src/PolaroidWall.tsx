@@ -16,7 +16,7 @@ import {Intro, introDuration} from './Intro';
 import {Outro, outroOpacityAt} from './Outro';
 import {OpeningRecap} from './OpeningRecap';
 import {Subtitle} from './Subtitle';
-import {resolveSubtitleMode, subtitleVisibilityEnd} from './subtitleLayout';
+import {resolveSubtitleMode, subtitleBlockHeight, subtitleVisibilityEnd} from './subtitleLayout';
 import {hashString} from './motion';
 import {PhotoCaption} from './PhotoCaption';
 import {photoCaptionPresentation} from './compositionTiming';
@@ -36,9 +36,6 @@ const isChapterClip = (clip: VisualClip | undefined): clip is Extract<VisualClip
 
 const toStatic = (src: string) => staticFile(src.replace(/^\.\//, ''));
 
-const SUBTITLE_CONFIDENCE = 0.6;
-const SUBTITLE_FADE_OUT = 0.25;
-
 export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const frame = useCurrentFrame();
   const {fps, width, height, durationInFrames} = useVideoConfig();
@@ -52,12 +49,17 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   if (hasCaption) ensureFonts('serif');
   const subtitleMode = resolveSubtitleMode(meta.lyrics_mode, subtitles);
   const bilingual = subtitleMode === 'bilingual';
+  const eligibleSubtitles = subtitles.filter((line) => line.confidence >= SUBTITLE.confidenceThreshold);
   const basePhotoFactor = hasCaption ? POLAROID_PHOTO_FACTOR_CAPTION : POLAROID_PHOTO_FACTOR;
-  const photoFactor = bilingual ? Math.min(basePhotoFactor, 0.8) : basePhotoFactor;
   const safeWidth = meta.width * meta.photo_scale;
   const safeHeight = meta.height * meta.photo_scale;
   const cardPadding = Math.round(safeWidth * 0.03) * 2;
   const maxRotation = 4 * Math.PI / 180;
+  const captionFontSize = (template.captions?.fontSize ?? SUBTITLE.fontSize) * scale;
+  const lyricBand = subtitleBlockHeight({fontSize: captionFontSize, bilingual, scale}) + ((template.captions?.riseDistance ?? SUBTITLE.riseDistance) + SUBTITLE.exitRise + 12) * scale;
+  const factorLimit = (meta.height - 2 * lyricBand - cardPadding * (Math.cos(maxRotation) + Math.sin(maxRotation))) / (safeHeight * Math.cos(maxRotation) + safeWidth * Math.sin(maxRotation));
+  const lyricFactor = subtitleMode !== 'none' && eligibleSubtitles.length > 0 ? Math.max(0, factorLimit) : basePhotoFactor;
+  const photoFactor = Math.min(basePhotoFactor, bilingual ? 0.8 : basePhotoFactor, lyricFactor);
   const maxCardHeight =
     (safeHeight * photoFactor + cardPadding) * Math.cos(maxRotation) +
     (safeWidth * photoFactor + cardPadding) * Math.sin(maxRotation);
@@ -66,10 +68,9 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
 
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const chapterClips = visualClips.filter(isChapterClip);
-  const visibleSubtitles = subtitleMode === 'none' ? [] : subtitles.flatMap((line, index) => {
-    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: subtitles[index + 1], fadeOutDuration: SUBTITLE_FADE_OUT, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
+  const visibleSubtitles = subtitleMode === 'none' ? [] : eligibleSubtitles.flatMap((line, index) => {
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: eligibleSubtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
     return t >= (meta.opening_recap?.end ?? 0) &&
-      line.confidence >= SUBTITLE_CONFIDENCE &&
       t >= line.start - SUBTITLE.fadeInDuration - 1 / fps &&
       t <= visibilityEnd + 1 / fps
       ? [{line, visibilityEnd}]
@@ -101,6 +102,7 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
     introEnd: introDuration,
     recapEnd: meta.opening_recap?.end ?? 0,
     durationInFrames,
+    entryDelaySeconds: 0.12,
   });
 
   const cards = visualClips.flatMap((clip, index) => {
