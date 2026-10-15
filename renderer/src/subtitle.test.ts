@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {resolveFontFamily} from './fontFamily.ts';
-import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, resolveSubtitleMode, subtitleBlockBottom, subtitleBlockHeight, subtitleFadeOutStart, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout.ts';
+import {assertSubtitleSafeHeight, fitDiaryPhotoScale, fitSubtitleFontSize, hasTranslation, resolveBilingualMode, resolveSubtitleMode, subtitleBlockBottom, subtitleBlockHeight, subtitleFadeOutStart, subtitleLineEnd, subtitleSignatureInsets, subtitleVisibilityEnd} from './subtitleLayout.ts';
 
 test('resolveFontFamily routes by script within the serif family by default', () => {
   assert.match(resolveFontFamily('hello', 'en'), /Noto Serif/);
@@ -128,13 +128,20 @@ test('a full-height photo keeps the lyric block below its edge', () => {
   assert.ok(bottom >= 122);
 });
 
-test('adjacent lyrics in either mode have separate exit and entrance windows', () => {
+test('adjacent lyrics hand off at the next cue without disappearing early', () => {
   const first = {text: 'first', lang: 'en' as const, translation: {text: '第一句', lang: 'zh' as const}, start: 0, end: 1, confidence: 1};
   const second = {text: 'second', lang: 'en' as const, start: 1, end: 2, confidence: 1};
-  const exitEnd = subtitleVisibilityEnd({line: first, nextLine: second, fadeOutDuration: 0.2, nextFadeInDuration: 0.2});
-  assert.equal(exitEnd, 0.9);
-  assert.ok(Math.abs(subtitleFadeOutStart(first.end, exitEnd, 0.2) - 0.7) < 1e-9);
-  assert.equal(exitEnd, second.start - 0.1);
-  assert.equal(subtitleVisibilityEnd({line: first, nextLine: second, fadeOutDuration: 0.2, nextFadeInDuration: 0.2, bilingual: true}), 0.8);
-  assert.equal(subtitleVisibilityEnd({line: first, nextLine: undefined, fadeOutDuration: 0.2}), 1.2);
+  const exitEnd = subtitleVisibilityEnd({line: first, nextLine: second, fadeOutDuration: 0.2});
+  assert.equal(exitEnd, 1);
+  assert.equal(subtitleFadeOutStart(first.start, first.end, exitEnd, 0.08), 0.92);
+  const naturalEnd = subtitleVisibilityEnd({line: first, nextLine: undefined, fadeOutDuration: 0.2});
+  assert.equal(naturalEnd, 1.2);
+  assert.equal(subtitleFadeOutStart(first.start, first.end, naturalEnd, 0.08), 1);
+  assert.equal(subtitleFadeOutStart(1, 1.05, 1.05, 0.08), 1);
+});
+
+test('a missing instrumental boundary cannot hold one lyric on screen for 39 seconds', () => {
+  const longLine = {text: 'one line', lang: 'en' as const, start: 185.36, end: 224.31, confidence: 1};
+  assert.equal(subtitleLineEnd(longLine), 193.36);
+  assert.equal(subtitleVisibilityEnd({line: longLine, nextLine: undefined, fadeOutDuration: 0.2}), 193.56);
 });

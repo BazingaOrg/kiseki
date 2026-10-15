@@ -69,9 +69,8 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
   const visualClips = photos.filter((clip) => isPhotoClip(clip) || isChapterClip(clip));
   const chapterClips = visualClips.filter(isChapterClip);
   const visibleSubtitles = subtitleMode === 'none' ? [] : eligibleSubtitles.flatMap((line, index) => {
-    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: eligibleSubtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration, nextFadeInDuration: SUBTITLE.fadeInDuration, bilingual});
-    return t >= (meta.opening_recap?.end ?? 0) &&
-      t >= line.start - SUBTITLE.fadeInDuration - 1 / fps &&
+    const visibilityEnd = subtitleVisibilityEnd({line, nextLine: eligibleSubtitles[index + 1], fadeOutDuration: SUBTITLE.fadeOutDuration});
+    return t >= line.start &&
       t <= visibilityEnd + 1 / fps
       ? [{line, visibilityEnd}]
       : [];
@@ -168,6 +167,9 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         </AbsoluteFill>
         );
       })}
+      {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => (
+        <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />
+      ))}
       {visibleSubtitles.map(({line: l, visibilityEnd}) => (
         <Subtitle
           key={`${l.start}-${l.text}`}
@@ -181,9 +183,6 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
           bilingual={bilingual}
           visibilityEnd={visibilityEnd}
         />
-      ))}
-      {chapterClips.filter((clip) => t >= clip.start && t <= clip.end).map((clip) => (
-        <ChapterCard key={`${clip.start}-${clip.text}`} clip={clip} background={meta.background} palette={palette} style={template.chapterCard} fontFamily={template.fontFamily} />
       ))}
       <OpeningRecap
         meta={meta}

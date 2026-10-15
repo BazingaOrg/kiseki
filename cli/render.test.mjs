@@ -192,14 +192,14 @@ test('legacy and explicit photo clips receive EXIF, while chapter and unknown cl
   assert.equal(shortageCount, null);
 });
 
-test('Diary clears a photo fade-out before a chapter and layers chapters over subtitles', () => {
+test('Diary clears a photo fade-out before a chapter and keeps lyrics above it', () => {
   const diary = fs.readFileSync(new URL('../renderer/src/Diary.tsx', import.meta.url), 'utf8');
   assert.match(diary, /const visualClips = photos\.filter\(\(clip\) => isPhotoClip\(clip\) \|\| isChapterClip\(clip\)\);/);
   assert.match(diary, /const isPhotoClip = \(clip: VisualClip \| undefined\)/);
   assert.match(diary, /fitPhotoTransition\(template\.transition \?\? nextClip\.transition, nextClip\.end - nextClip\.start\)/);
   assert.match(diary, /t <= coverUntil\(nextTransition, clip\.end\)/);
   assert.match(diary, /typeof clip\.src === 'string'/);
-  assert.ok(diary.indexOf('<Subtitle') < diary.indexOf('<ChapterCard'));
+  assert.ok(diary.indexOf('<ChapterCard') < diary.indexOf('<Subtitle'));
 });
 
 test('normal and draft render settings preserve fps while changing transfer and encode quality', () => {

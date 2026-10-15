@@ -17,6 +17,18 @@ test('stable offsets are recommended for correction', () => {
   assert.ok(Math.abs(result.recommendedOffset - 6.95) < 0.01);
 });
 
+test('a small stable offset is corrected while near-zero jitter stays matched', () => {
+  const offset = lrc.map((entry) => ({start: entry.time + 0.6, text: entry.text}));
+  const jitter = [0.05, -0.1, 0.15, 0.05].map((delta, index) => ({start: lrc[index].time + delta, text: lrc[index].text}));
+  assert.equal(validateLyricsAlignment(offset, lrc).status, 'offset');
+  assert.equal(validateLyricsAlignment(jitter, lrc).status, 'matched');
+});
+
+test('unstable offsets are not automatically applied', () => {
+  const recognized = [0, 2, 0, 2].map((delta, index) => ({start: lrc[index].time + delta, text: lrc[index].text}));
+  assert.equal(validateLyricsAlignment(recognized, lrc).status, 'inconclusive');
+});
+
 test('growing offsets are treated as a different version', () => {
   const recognized = lrc.map((entry, index) => ({start: entry.time + 6 + index * 3, text: entry.text}));
   assert.equal(validateLyricsAlignment(recognized, lrc).status, 'mismatch');

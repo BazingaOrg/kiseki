@@ -35,7 +35,7 @@ export interface LyricLine {
   };
   /** 只有本地识别的歌词才有;低于渲染阈值的行成片里不会显示字幕 */
   confidence?: number | null;
-  /** 这一句到点该收了(来自 .lrc 里只有时间戳的空行)。null 表示一直显示到下一句 */
+  /** 来自 .lrc 空时间戳的结束边界；Web 展示最长 8 秒 */
   until?: number | null;
 }
 

@@ -113,6 +113,7 @@ export const SUBTITLE = {
   confidenceThreshold: 0.6, // Whisper 段置信度低于此值不渲染
   fadeInDuration: 0.2,
   fadeOutDuration: 0.2,
+  handoffFadeDuration: 0.08,
   riseDistance: 32,
   exitRise: 32,
 } as const;

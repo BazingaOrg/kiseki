@@ -5,6 +5,7 @@ import type {SubtitleLine} from './types.ts';
 const TRANSLATION_FONT_RATIO = 0.8;
 const BILINGUAL_GAP = 6;
 const MIN_FONT_SCALE = 0.72;
+export const MAX_SUBTITLE_HOLD = 8;
 
 export const hasTranslation = (line: SubtitleLine): boolean => Boolean(line.translation?.text.trim());
 
@@ -50,21 +51,19 @@ export const subtitleVisibilityEnd = ({
   line,
   nextLine,
   fadeOutDuration,
-  nextFadeInDuration = 0,
-  bilingual = false,
 }: {
   line: SubtitleLine;
   nextLine: SubtitleLine | undefined;
   fadeOutDuration: number;
-  nextFadeInDuration?: number;
-  bilingual?: boolean;
 }): number => {
-  const naturalEnd = line.end + fadeOutDuration;
-  return nextLine ? Math.min(naturalEnd, nextLine.start - nextFadeInDuration * (bilingual ? 1 : 0.5)) : naturalEnd;
+  const naturalEnd = subtitleLineEnd(line) + fadeOutDuration;
+  return nextLine ? Math.min(naturalEnd, nextLine.start) : naturalEnd;
 };
 
-export const subtitleFadeOutStart = (lineEnd: number, visibilityEnd: number, fadeOutDuration: number): number =>
-  Math.min(lineEnd, visibilityEnd - fadeOutDuration);
+export const subtitleLineEnd = (line: SubtitleLine): number => Math.min(line.end, line.start + MAX_SUBTITLE_HOLD);
+
+export const subtitleFadeOutStart = (lineStart: number, lineEnd: number, visibilityEnd: number, handoffFadeDuration: number): number =>
+  visibilityEnd <= lineEnd ? Math.max(lineStart, visibilityEnd - handoffFadeDuration) : lineEnd;
 
 export const fitSubtitleFontSize = ({
   text,

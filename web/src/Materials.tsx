@@ -383,7 +383,7 @@ const LyricsSearch = ({project, locked, onDone}: {project: ProjectResponse; lock
           {validation?.status === 'matched' && <p className="lyrics-validation lyrics-validation-ok">已用本地人声校验 {validation.anchorCount} 个锚点，时间轴基本吻合。</p>}
           {validation?.status === 'offset' && <p className="lyrics-validation lyrics-validation-warn">检测到稳定偏移 {validation.recommendedOffset! >= 0 ? '+' : ''}{validation.recommendedOffset!.toFixed(1)}s，保存时会自动校准。</p>}
           {validation?.status === 'mismatch' && <p className="lyrics-validation lyrics-validation-error">锚点偏移不断变化，这很可能是另一个演唱或编曲版本，不建议保存。</p>}
-          {validation?.status === 'inconclusive' && <p className="lyrics-validation lyrics-validation-warn">可匹配的人声锚点不足，无法可靠判断这份时间轴。</p>}
+          {validation?.status === 'inconclusive' && <p className="lyrics-validation lyrics-validation-warn">{validation.anchorCount < 4 ? '可匹配的人声锚点不足，无法可靠判断这份时间轴。' : '歌词与人声的偏移不稳定，无法可靠地自动校准。'}</p>}
           <div className="audio-confirm-actions">
             <button className="link-button" onClick={() => { previewGeneration.current += 1; selectedKeyRef.current = null; setSelected(null); }}>取消</button>
             {preview && validation && !['matched', 'offset'].includes(validation.status) && <button className="link-button" disabled={locked || installing !== null} onClick={() => { void install(selected); setSelected(null); }}>仍然保存</button>}

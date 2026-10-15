@@ -64,6 +64,7 @@ export const validateLyricsAlignment = (recognizedSegments, lrcEntries) => {
   const offsets = anchors.map(({offset}) => offset);
   const recommendedOffset = median(offsets);
   const deviations = offsets.map((offset) => Math.abs(offset - recommendedOffset));
+  const medianDeviation = median(deviations);
   const sortedOffsets = [...offsets].sort((a, b) => a - b);
   // Whisper 偶尔会把一句错配到相邻副歌；锚点足够多时裁掉两端各 10%，避免一个
   // 离群点把本来稳定的时间轴误判成不同版本。持续漂移仍会保留在核心区间里。
@@ -78,8 +79,9 @@ export const validateLyricsAlignment = (recognizedSegments, lrcEntries) => {
   // 版本不一致的关键证据是偏移随歌曲进度持续漂移，而不是个别句子的 Whisper
   // 边界抖动。普通识别误差可能让 spread 较大，但不会让前后段中位数相差数秒。
   if (Math.abs(drift) > 5 && spread > 6) return {status: 'mismatch', anchors, recommendedOffset, spread, drift};
+  if (medianDeviation > 0.75) return {status: 'inconclusive', anchors, recommendedOffset, spread, drift};
   return {
-    status: Math.abs(recommendedOffset) <= 1.5 ? 'matched' : 'offset',
+    status: Math.abs(recommendedOffset) <= 0.35 ? 'matched' : 'offset',
     anchors,
     recommendedOffset,
     spread,
