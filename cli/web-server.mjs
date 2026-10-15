@@ -290,7 +290,10 @@ export const createGalleryServer = (root, {spawnImpl, runImpl, doctorGet, thumbD
             throw error;
           }
         })
-        .catch(() => sendJson(res, {status: 500, body: {error: '创建任务失败'}}))
+        .catch((error) => {
+          console.error('创建任务失败:', error);
+          sendJson(res, {status: 500, body: {error: '创建任务失败'}});
+        })
         .finally(releaseWrite);
       return;
     }
