@@ -25,6 +25,7 @@ import {captionPageFromBrowser, fitTopCaption} from './ai/photo-caption-fit.mjs'
 import {resolveVideoPhotoScale} from '../renderer/src/photoCaptionLayout.mjs';
 import {assertUnchangedSources} from './ai/photo-caption-service.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from './image-identity.mjs';
+import {scanSingleFrameDiscontinuities} from './render-frame-integrity.mjs';
 
 export const detectParallelism = (osModule = os) =>
   typeof osModule.availableParallelism === 'function'
@@ -56,6 +57,11 @@ export const resolveRenderSettings = (
     crf: draft ? 23 : 16,
     jpegQuality: draft ? 80 : 90,
   };
+};
+
+export const resolveCaptureSettings = ({draft = false, envConcurrency = process.env.KISEKI_CONCURRENCY, parallelism = detectParallelism()} = {}) => {
+  const requested = resolveRenderSettings({draft, envConcurrency, parallelism});
+  return !draft && !envConcurrency ? {...requested, concurrency: 1} : requested;
 };
 
 export const readTimeline = (timelinePath, readFileSync = fs.readFileSync) =>
@@ -319,7 +325,7 @@ const main = async () => {
   const timeline = readTimeline(timelinePath);
   const {renderMedia, selectComposition, openBrowser} = loadRemotionRenderer();
   const progress = createPercentProgress();
-  const renderSettings = resolveRenderSettings({draft: flags.draft});
+  const renderSettings = resolveCaptureSettings({draft: flags.draft});
   let cleanup = () => {};
   let browser = null;
 
@@ -387,7 +393,7 @@ const main = async () => {
     if (flags.photoCaption && captionSources.length > 0) {
       assertUnchangedSources(publicDir, captionSources, loadCaptionCache(captionsPathFor(publicDir)));
     }
-    await renderMedia({
+    const renderOptions = {
       serveUrl: bundled.serveUrl,
       composition: {...composition, props: inputProps},
       inputProps,
@@ -415,7 +421,17 @@ const main = async () => {
           progress.update('Encoding video', encodedFrames / totalFrames);
         }
       },
-    });
+    };
+    await renderMedia(renderOptions);
+    let scan = await scanSingleFrameDiscontinuities(partialOutputPath, sourceRuntimeLayout.ffmpeg);
+    if (scan.frameCount !== totalFrames || scan.found.length > 0) {
+      term.warn(`检测到成片异常（${scan.frameCount}/${totalFrames} 帧，${scan.found.length} 处单帧闪动），正在用单并发重渲`);
+      await renderMedia({...renderOptions, concurrency: 1});
+      scan = await scanSingleFrameDiscontinuities(partialOutputPath, sourceRuntimeLayout.ffmpeg);
+      if (scan.frameCount !== totalFrames || scan.found.length > 0) {
+        throw new Error(`重渲后仍有异常帧: ${scan.found.join(', ') || `帧数 ${scan.frameCount}/${totalFrames}`}`);
+      }
+    }
     progress.update('Encoding video', 1);
     if (!flags.draft) {
       term.start('检查成片响度');

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import test from 'node:test';
 
-import {applyRenderVariants, detectParallelism, formatRenderDiagnostics, resolveRenderSettings} from './render.mjs';
+import {applyRenderVariants, detectParallelism, formatRenderDiagnostics, resolveCaptureSettings, resolveRenderSettings} from './render.mjs';
 
 const timeline = () => ({
   meta: {duration: 10, audio: './song.mp3'},
@@ -216,6 +216,12 @@ test('normal and draft render settings preserve fps while changing transfer and 
     crf: 23,
     jpegQuality: 80,
   });
+});
+
+test('formal renders use reduced capture concurrency unless it is explicitly set', () => {
+  assert.equal(resolveCaptureSettings({parallelism: 10, envConcurrency: ''}).concurrency, 1);
+  assert.equal(resolveCaptureSettings({draft: true, parallelism: 10, envConcurrency: ''}).concurrency, 5);
+  assert.equal(resolveCaptureSettings({parallelism: 10, envConcurrency: '3'}).concurrency, 3);
 });
 
 test('render diagnostics use the final composition and effective concurrency', () => {

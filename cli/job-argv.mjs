@@ -144,11 +144,11 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
  * (`resolveRenderSettings`)读的就是它,加个 flag 等于让同一件事有两个入口.
  * 值从白名单枚举映射为常量，前端不能注入任意字符串。
  *
- * `balanced` 不设并发值,直接用 CLI 的默认(一半核心)——少一个可能跑偏的来源.
+ * `balanced` 不设并发值,直接用 CLI 的默认——少一个可能跑偏的来源.
  * 速度档位本身另行透传给渲染前诊断,不参与并发计算.
  */
 const SPEED_ENV = {
-  saver: '25%',
+  saver: '1',
   balanced: null,
   full: '90%',
 };

@@ -1197,9 +1197,9 @@ test('killAll 无法确认进程树退出时保留 fetch-audio task lease', asyn
 // --- 渲染速度档位 ----------------------------------------------------------
 
 test('speed 档位映射成 KISEKI_CONCURRENCY,并透传诊断标签', () => {
-  // balanced 不设并发值是刻意的:直接用 CLI 的默认(一半核心),少一个会跑偏的来源
+  // balanced 不设并发值是刻意的:直接用 CLI 的默认,少一个会跑偏的来源
   const of = (speed) => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {speed}}).env.KISEKI_CONCURRENCY;
-  assert.equal(of('saver'), '25%');
+  assert.equal(of('saver'), '1');
   assert.equal(of('full'), '90%');
   assert.equal(of('balanced'), undefined);
   assert.equal(buildJobSpec({kind: 'render', folder: '/tmp/x', options: {}}).env.KISEKI_CONCURRENCY, undefined);
@@ -1224,7 +1224,7 @@ test('speed 不会漏进 argv —— 它只影响环境变量', () => {
 });
 
 test('buildJobEnv: 速度档位透传,saver/full 额外覆盖并发', () => {
-  assert.deepEqual(buildJobEnv({speed: 'saver'}), {KISEKI_RENDER_SPEED: 'saver', KISEKI_CONCURRENCY: '25%'});
+  assert.deepEqual(buildJobEnv({speed: 'saver'}), {KISEKI_RENDER_SPEED: 'saver', KISEKI_CONCURRENCY: '1'});
   assert.deepEqual(buildJobEnv({speed: 'full'}), {KISEKI_RENDER_SPEED: 'full', KISEKI_CONCURRENCY: '90%'});
   assert.deepEqual(buildJobEnv({speed: 'balanced'}), {KISEKI_RENDER_SPEED: 'balanced'});
   assert.deepEqual(buildJobEnv({}), {KISEKI_RENDER_SPEED: 'balanced'});
