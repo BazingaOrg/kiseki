@@ -232,6 +232,8 @@ test('attaches cached captions when the cache is usable', () => {
   }));
   const {status, body} = getProject(root, root);
   assert.equal(status, 200);
+  assert.equal(body.captionRevision, 1);
+  assert.equal(body.captionItemCount, 1);
   const photo = body.assets.photos.items.find((item) => item.name === 'a.jpg');
   assert.ok(photo);
   assert.equal(photo.caption, '窗边那点光先到了');
@@ -258,6 +260,8 @@ test('omits stale captions and hints whose source identity no longer matches', (
   }));
   const {body} = getProject(root, root);
   const photo = body.assets.photos.items.find((item) => item.name === 'a.jpg');
+  assert.equal(body.captionRevision, 1);
+  assert.equal(body.captionItemCount, 1);
   assert.equal(photo.caption, undefined);
   assert.equal(photo.captionHint, undefined);
 });
@@ -282,8 +286,30 @@ test('does not read captions through a symlinked cache parent', () => {
   fs.symlinkSync(outside, path.join(root, 'output'));
   const {body} = getProject(root, root);
   const photo = body.assets.photos.items.find((item) => item.name === 'a.jpg');
+  assert.equal(body.captionRevision, 0);
+  assert.equal(body.captionItemCount, 0);
   assert.equal(photo.caption, undefined);
   assert.equal(photo.captionHint, undefined);
+});
+
+test('reports an incompatible caption cache so it can be cleared', () => {
+  const root = makeTempRoot();
+  fs.mkdirSync(path.join(root, 'output', 'metadata'), {recursive: true});
+  fs.writeFileSync(path.join(root, 'output', 'metadata', 'ai-captions.json'), JSON.stringify({version: 0, items: {'old.jpg': {text: '旧旁白'}}}));
+  const {body} = getProject(root, root);
+  assert.equal(body.captionCacheInvalid, true);
+  assert.equal(body.captionItemCount, 1);
+  assert.match(body.captionCacheFingerprint, /^[a-f0-9]{64}$/);
+});
+
+test('reports a bad cache revision as invalid so it can be cleared', () => {
+  const root = makeTempRoot();
+  fs.mkdirSync(path.join(root, 'output', 'metadata'), {recursive: true});
+  fs.writeFileSync(path.join(root, 'output', 'metadata', 'ai-captions.json'), JSON.stringify({version: CACHE_VERSION, model: CAPTION_MODEL, prompt_hash: promptHash, prompt_version: PROMPT_VERSION, revision: 'bad', items: {}}));
+  const {body} = getProject(root, root);
+  assert.equal(body.captionCacheInvalid, true);
+  assert.equal(body.captionRevision, 0);
+  assert.match(body.captionCacheFingerprint, /^[a-f0-9]{64}$/);
 });
 
 test('开头就是空行时不炸,也不凭空造出一行', () => {

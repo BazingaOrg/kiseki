@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import {spawnSync} from 'node:child_process';
+import {envWithoutSecrets} from './secret-env.mjs';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -76,7 +77,7 @@ export const formatRenderDiagnostics = ({draft, composition, renderSettings, spe
 const TARGET_LUFS = -14;
 const TARGET_TP = -1.5;
 const ffmpegQuiet = (args, runtime = sourceRuntimeLayout) =>
-  spawnSync(runtime.ffmpeg, ['-hide_banner', '-nostats', ...args], {encoding: 'utf8'});
+  spawnSync(runtime.ffmpeg, ['-hide_banner', '-nostats', ...args], {encoding: 'utf8', env: envWithoutSecrets()});
 
 const normalizeLoudness = (file, runtime = sourceRuntimeLayout) => {
   const probe = ffmpegQuiet(['-i', file, '-map', 'a:0', '-af', `loudnorm=I=${TARGET_LUFS}:TP=${TARGET_TP}:LRA=11:print_format=json`, '-f', 'null', '-'], runtime);
@@ -188,11 +189,11 @@ export const applyRenderVariants = async (
       const key = normalizePhotoKey(publicDir, photo.src);
       if (!key) return photo;
       const absPath = path.join(publicDir, key);
-      captionSources.push({absPath, key});
       const stat = readSourceStat(absPath);
       if (!stat) throw Object.assign(new Error('照片已变化，请重新制作'), {code: 'source-changed', failureStage: 'photo-caption'});
       const item = cacheHit(cache, key, sourceIdentityRecord(key, stat, PREVIEW_WIDTH));
       if (!item?.text) return photo;
+      captionSources.push({absPath, key});
       return {
         ...photo,
         caption: item.text,

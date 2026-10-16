@@ -4,11 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import {CACHE_VERSION, loadCaptionCache} from '../ai/photo-caption-cache.mjs';
+import {CACHE_VERSION, loadCaptionCache, readCaptionCacheState} from '../ai/photo-caption-cache.mjs';
 import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from '../ai/photo-caption-prompt.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
 import {createTaskLeaseManager} from '../task-lease.mjs';
-import {CaptionRequestError, generatePhotoCaption, savePhotoCaption} from './captions.mjs';
+import {CaptionRequestError, clearPhotoCaptions, generatePhotoCaption, savePhotoCaption} from './captions.mjs';
 
 const fixture = () => fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-captions-api-')));
 const stubLeaseManager = () => ({acquire: () => ({}), release: () => true});
@@ -56,6 +56,64 @@ test('saving a caption keeps the wording and marks it as edited', async () => {
       }),
       (error) => error instanceof CaptionRequestError && error.status === 400 && error.message === '最多 30 个字',
     );
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('clearing captions removes edited entries but preserves photos and finished videos', async () => {
+  const dir = fixture();
+  try {
+    const photo = path.join(dir, 'photo.jpg');
+    const video = path.join(dir, 'output', 'finished.mp4');
+    const cachePath = path.join(dir, 'output', 'metadata', 'ai-captions.json');
+    fs.writeFileSync(photo, 'image');
+    fs.mkdirSync(path.dirname(cachePath), {recursive: true});
+    fs.writeFileSync(video, 'finished');
+    fs.writeFileSync(cachePath, JSON.stringify({
+      version: CACHE_VERSION,
+      model: CAPTION_MODEL,
+      prompt_hash: promptHash,
+      prompt_version: PROMPT_VERSION,
+      revision: 1,
+      items: {'photo.jpg': {text: '手动改过', edited: true}},
+    }));
+    const expectedFingerprint = readCaptionCacheState(cachePath).fingerprint;
+    const result = await clearPhotoCaptions({folder: dir, expectedRevision: 1, expectedFingerprint, isJobRunning: () => false, leaseManager: stubLeaseManager()});
+    assert.deepEqual(result, {cleared: 1});
+    assert.deepEqual(loadCaptionCache(cachePath).items, {});
+    assert.equal(fs.readFileSync(photo, 'utf8'), 'image');
+    assert.equal(fs.readFileSync(video, 'utf8'), 'finished');
+    await assert.rejects(
+      () => clearPhotoCaptions({folder: dir, expectedRevision: 1, expectedFingerprint, isJobRunning: () => false, leaseManager: stubLeaseManager()}),
+      (error) => error instanceof CaptionRequestError && error.status === 409,
+    );
+    await assert.rejects(
+      () => clearPhotoCaptions({folder: dir, expectedRevision: 2, expectedFingerprint, isJobRunning: () => true, leaseManager: stubLeaseManager()}),
+      (error) => error instanceof CaptionRequestError && error.status === 409,
+    );
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
+test('clear replaces an incompatible cache only when its fingerprint still matches', async () => {
+  const dir = fixture();
+  try {
+    const cachePath = path.join(dir, 'output', 'metadata', 'ai-captions.json');
+    fs.mkdirSync(path.dirname(cachePath), {recursive: true});
+    fs.writeFileSync(cachePath, JSON.stringify({version: 0, items: {'old.jpg': {text: '旧旁白'}}}));
+    const first = readCaptionCacheState(cachePath);
+    assert.equal(first.invalid, true);
+    assert.equal(first.itemCount, 1);
+    fs.writeFileSync(cachePath, JSON.stringify({version: 0, items: {'new.jpg': {text: '更新'}}}));
+    await assert.rejects(
+      () => clearPhotoCaptions({folder: dir, expectedRevision: 0, expectedFingerprint: first.fingerprint, leaseManager: stubLeaseManager()}),
+      (error) => error instanceof CaptionRequestError && error.status === 409,
+    );
+    const current = readCaptionCacheState(cachePath);
+    assert.deepEqual(await clearPhotoCaptions({folder: dir, expectedRevision: 0, expectedFingerprint: current.fingerprint, leaseManager: stubLeaseManager()}), {cleared: 1});
+    assert.deepEqual(loadCaptionCache(cachePath).items, {});
   } finally {
     fs.rmSync(dir, {recursive: true, force: true});
   }

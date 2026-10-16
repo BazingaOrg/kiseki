@@ -1,5 +1,6 @@
 /** 执行 Web 任务，并把不同进度源归一为 SSE 事件。 */
 import {spawn as spawnActual, spawnSync} from 'node:child_process';
+import {envWithoutSecrets} from '../secret-env.mjs';
 import fs from 'node:fs';
 import readline from 'node:readline';
 
@@ -67,7 +68,7 @@ export const listDescendants = (rootPid, readTable = defaultReadProcessTable) =>
 
 const defaultReadProcessTable = () => {
   try {
-    const result = spawnSync('ps', ['-Ao', 'pid=,ppid=,lstart='], {encoding: 'utf8', timeout: 2000});
+    const result = spawnSync('ps', ['-Ao', 'pid=,ppid=,lstart='], {env: envWithoutSecrets(), encoding: 'utf8', timeout: 2000});
     return result.error || result.signal ? null : result.stdout ?? '';
   } catch {
     return null;
@@ -77,7 +78,7 @@ const defaultReadProcessTable = () => {
 const defaultTaskkill = (pid, force) => new Promise((resolve, reject) => {
   const args = force ? ['/PID', String(pid), '/F', '/T'] : ['/PID', String(pid), '/T'];
   const child = spawnActual('taskkill', args, {
-    stdio: 'ignore', windowsHide: true,
+    env: envWithoutSecrets(), stdio: 'ignore', windowsHide: true,
   });
   child.once('error', reject);
   child.once('close', (code) => code === 0 ? resolve() : reject(new Error(`退出码 ${code}`)));
@@ -116,7 +117,7 @@ export const createJobManager =({
    * 记录一条事件并即时推给所有 SSE 订阅者.progress 是可变快照,历史只留最新
    * 一条;其余事件是可审阅的任务语义,必须完整保留并按原顺序重放.
    */
-  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'lyricsMode', 'scale', 'output', 'outroText', 'signatureName'];
+  const PUBLIC_OPTION_KEYS = ['exif', 'sign', 'photoCaption', 'photoCaptionMode', 'dark', 'format', 'filter', 'filterIntensity', 'draft', 'trim', 'speed', 'template', 'lyricsMode', 'scale', 'output', 'outroText', 'signatureName'];
   const publicOptions = (options = {}) => {
     const out = {};
     for (const key of PUBLIC_OPTION_KEYS) {

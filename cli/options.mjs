@@ -20,14 +20,15 @@ const parseFilterId = (raw) => {
   return id;
 };
 
-const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --signature-name <name>  --photo-caption  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
+const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --signature-name <name>  --photo-caption|--use-photo-captions  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
 export const STILL_USAGE = `用法: kiseki still <photo|folder> ${STILL_OPTIONS}`;
 
 export const USAGE =
   '用法:\n' +
   '  kiseki                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>] [--lyrics-mode original|bilingual|none] [--outro-text <text>] [--signature-name <name>]  渲染相册视频(默认命令)\n' +
+  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption|--use-photo-captions] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>] [--lyrics-mode original|bilingual|none] [--outro-text <text>] [--signature-name <name>]  渲染相册视频(默认命令)\n' +
   '  kiseki still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
+  '  kiseki captions <folder>                 主动补齐素材照片的图片旁白\n' +
   '  kiseki doctor                             检查依赖是否就绪\n' +
   '  kiseki lyrics <folder> [--replace]        预览歌词识别(不渲染)\n' +
   '  kiseki fetch <folder>                     在线获取音频/歌词到素材夹(交互)\n' +
@@ -36,7 +37,7 @@ export const USAGE =
   '  kiseki help                               显示本说明(同 -h / --help)\n' +
   `still 选项: ${STILL_OPTIONS}\n` +
   '目录约定:文件夹内放照片(jpg/png/webp)+ 唯一的音频文件(mp3 等)\n' +
-  '若文件夹名恰好叫 doctor / lyrics / still / fetch / web / help,用路径前缀转义,如 kiseki ./still';
+  '若文件夹名恰好叫 doctor / lyrics / captions / still / fetch / web / help,用路径前缀转义,如 kiseki ./still';
 
 const parseRenderArgs = (argv) => {
   const args = {command: 'render', folder: null, output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
@@ -53,7 +54,12 @@ const parseRenderArgs = (argv) => {
     } else if (argv[i] === '--sign') {
       args.sign = true;
     } else if (argv[i] === '--photo-caption') {
+      if (args.photoCaptionMode === 'existing') throw new CliError('--photo-caption 与 --use-photo-captions 不能同时使用');
       args.photoCaption = true;
+    } else if (argv[i] === '--use-photo-captions') {
+      if (args.photoCaption && args.photoCaptionMode !== 'existing') throw new CliError('--photo-caption 与 --use-photo-captions 不能同时使用');
+      args.photoCaption = true;
+      args.photoCaptionMode = 'existing';
     } else if (argv[i] === '--dark') {
       args.dark = true;
     } else if (argv[i] === '--portrait') {
@@ -153,6 +159,11 @@ const parseLyricsArgs = (rest) => {
   return args;
 };
 
+const parseCaptionsArgs = (rest) => {
+  if (rest.length !== 1 || rest[0].startsWith('-')) throw new CliError('用法: kiseki captions <folder>');
+  return {command: 'captions', folder: rest[0]};
+};
+
 const parseFetchArgs = (rest) => {
   const args = {command: 'fetch', folder: null};
   for (const token of rest) {
@@ -214,7 +225,12 @@ const parseStillArgs = (rest) => {
       }
       args.signatureName = rest[++i];
     } else if (token === '--photo-caption') {
+      if (args.photoCaptionMode === 'existing') throw new CliError('--photo-caption 与 --use-photo-captions 不能同时使用');
       args.photoCaption = true;
+    } else if (token === '--use-photo-captions') {
+      if (args.photoCaption && args.photoCaptionMode !== 'existing') throw new CliError('--photo-caption 与 --use-photo-captions 不能同时使用');
+      args.photoCaption = true;
+      args.photoCaptionMode = 'existing';
     } else if (token === '--dark') {
       args.dark = true;
     } else if (token === '--portrait') {
@@ -262,7 +278,7 @@ const parseStillArgs = (rest) => {
 };
 
 /**
- * A leading token exactly equal to `doctor`, `lyrics`, `still`, `fetch` or `help` is always the verb.
+ * A leading token exactly equal to `doctor`, `lyrics`, `captions`, `still`, `fetch` or `help` is always the verb.
  * Any path-qualified token (`./lyrics`, `/abs/path`, ...) is not a bare verb
  * string, so it never matches here and falls through to the render command —
  * that's the escape hatch for a folder that happens to be named after a verb.
@@ -271,6 +287,7 @@ export const parseArgs = (argv) => {
   const [first, ...rest] = argv;
   if (first === 'doctor') return parseDoctorArgs(rest);
   if (first === 'lyrics') return parseLyricsArgs(rest);
+  if (first === 'captions') return parseCaptionsArgs(rest);
   if (first === 'fetch') return parseFetchArgs(rest);
   if (first === 'still') return parseStillArgs(rest);
   if (first === 'web') return parseWebArgs(rest);

@@ -203,7 +203,7 @@ export const deriveCapabilities = (
     photoCaption: make([
       doctor === 'loading' ? {reason: '正在检查图片旁白环境…', remedy: null} : null,
       doctor === 'unavailable' ? {reason: '暂时无法检查，请重试', remedy: DOCTOR} : null,
-      runtime?.photoCaptionConfigured ? null : {reason: '还没有填写 DeepSeek API Key。点「填写 DeepSeek API Key」即可给照片写旁白，也可以关闭图片旁白继续制作。', remedy: null},
+      runtime?.photoCaptionConfigured ? null : {reason: '还没有填写 DeepSeek API Key。点「填写 DeepSeek API Key」后可生成新的图片旁白；已有旁白仍可用于制作。', remedy: null},
       depBlocker(doctor, 'ffmpeg', '生成低清预览'),
     ]),
   };

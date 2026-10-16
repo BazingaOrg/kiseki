@@ -73,6 +73,10 @@ export interface AssetCollection {
 }
 
 export interface ProjectResponse {
+  captionRevision?: number;
+  captionItemCount?: number;
+  captionCacheFingerprint?: string | null;
+  captionCacheInvalid?: boolean;
   path: string;
   name: string;
   /** 当前后端授权根目录。能否切换由 RuntimeResponse.projectSelection 决定。 */

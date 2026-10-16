@@ -1,4 +1,6 @@
 import path from 'node:path';
+import fs from 'node:fs';
+import crypto from 'node:crypto';
 
 import {writeJsonAtomic, readJsonFile} from '../atomic-json.mjs';
 import {identityRecordKey} from '../image-identity.mjs';
@@ -24,6 +26,8 @@ export const isUsableCache = (value) =>
     value.version === CACHE_VERSION &&
     value.model === CAPTION_MODEL &&
     value.prompt_hash === promptHash &&
+    Number.isSafeInteger(value.revision) &&
+    value.revision >= 0 &&
     value.items &&
     typeof value.items === 'object' &&
     !Array.isArray(value.items),
@@ -32,6 +36,24 @@ export const isUsableCache = (value) =>
 export const loadCaptionCache = (filePath) => {
   const parsed = readJsonFile(filePath);
   return isUsableCache(parsed) ? parsed : emptyCache();
+};
+
+export const readCaptionCacheState = (filePath) => {
+  let content;
+  try { content = fs.readFileSync(filePath); } catch (error) {
+    if (error?.code === 'ENOENT') return {fingerprint: null, cache: emptyCache(), itemCount: 0, invalid: false};
+    throw error;
+  }
+  let parsed;
+  try { parsed = JSON.parse(content.toString('utf8')); } catch { parsed = null; }
+  const valid = isUsableCache(parsed);
+  const items = parsed?.items && typeof parsed.items === 'object' && !Array.isArray(parsed.items) ? parsed.items : {};
+  return {
+    fingerprint: crypto.createHash('sha256').update(content).digest('hex'),
+    cache: valid ? parsed : emptyCache(),
+    itemCount: Object.keys(items).length,
+    invalid: !valid,
+  };
 };
 
 export const cacheHit = (cache, key, identityRecord) => {

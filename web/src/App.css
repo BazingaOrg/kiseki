@@ -838,6 +838,47 @@ html[data-theme-transition] .dialog {
   font-size: 0.85rem;
 }
 
+.photo-caption-manager {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-control);
+  background: var(--color-surface);
+}
+
+.photo-caption-manager-copy h3,
+.photo-caption-manager-copy p {
+  margin: 0;
+}
+
+.photo-caption-manager-copy h3 {
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.photo-caption-manager-copy p {
+  margin-top: 0.2rem;
+  color: var(--color-secondary-text);
+  font-size: 0.78rem;
+}
+
+.photo-caption-manager-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.7rem;
+}
+
+.photo-caption-manager .job-panel {
+  flex-basis: 100%;
+  margin-top: 0;
+}
+
 .material-song {
   display: flex;
   flex-direction: column;

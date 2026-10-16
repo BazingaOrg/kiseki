@@ -100,6 +100,9 @@ export const generatePhotoCaption = (folder: string, assetId: string, hint?: str
 export const savePhotoCaption = (folder: string, assetId: string, text: string) =>
   postAsset<{caption: string; captionEdited: boolean}>('/api/captions/text', {folder, assetId, text});
 
+export const clearPhotoCaptions = (folder: string, expectedRevision: number, expectedFingerprint: string | null) =>
+  postAsset<{cleared: number}>('/api/captions/clear', {folder, expectedRevision, expectedFingerprint});
+
 export const saveCaptionKey = (apiKey: string) =>
   postAsset<{configured: boolean}>('/api/settings/caption-key', {apiKey});
 

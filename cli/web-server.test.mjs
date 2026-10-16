@@ -235,6 +235,24 @@ test('caption route rejects a non-directory folder before generation', async () 
   } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
 });
 
+test('bulk caption clear requires a token and only targets the selected project', async () => {
+  const root = fs.realpathSync(makeTempRoot());
+  const {server, token} = createTestGalleryServer(root, {
+    captionDeps: {leaseManager: {acquire: () => ({}), release: () => true}},
+  });
+  const port = await listen(server);
+  try {
+    assert.equal((await postJson(port, '/api/captions/clear', {folder: root})).status, 403);
+    const outside = await postJson(port, '/api/captions/clear', {folder: path.dirname(root)}, {'X-Kiseki-Token': token});
+    assert.equal(outside.status, 403);
+    const missingRevision = await postJson(port, '/api/captions/clear', {folder: root}, {'X-Kiseki-Token': token});
+    assert.equal(missingRevision.status, 400);
+    const result = await postJson(port, '/api/captions/clear', {folder: root, expectedRevision: 0, expectedFingerprint: null}, {'X-Kiseki-Token': token});
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, {cleared: 0});
+  } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
+});
+
 test('server shutdown abort signal reaches caption generation', async () => {
   const root = makeTempRoot();
   fs.writeFileSync(path.join(root, 'photo.jpg'), 'image');
@@ -325,6 +343,17 @@ test('错误 token 的 POST /api/jobs → 403', async () => {
   } finally {
     server.close();
   }
+});
+
+test('Web render job rejects legacy auto-generation options', async () => {
+  const root = makeTempRoot();
+  const {server, token} = createTestGalleryServer(root, {spawnImpl: makeFakeChild});
+  const port = await listen(server);
+  try {
+    const result = await postJson(port, '/api/jobs', {kind: 'render', folder: root, options: {photoCaption: true}}, {'X-Kiseki-Token': token});
+    assert.equal(result.status, 400);
+    assert.equal(result.body.field, 'photoCaptionMode');
+  } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
 });
 
 test('带正确 token 的合法请求 → 201 并带 id;folder 越界时(带正确 token)→ 403', async () => {

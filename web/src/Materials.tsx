@@ -1,4 +1,4 @@
-import {useRef, useState} from 'react';
+import {useEffect, useRef, useState} from 'react';
 import type {FormEvent} from 'react';
 import {Pause, Play, Search, Volume2, VolumeX} from 'lucide-react';
 
@@ -19,7 +19,7 @@ import type {useJob} from './useJob';
 import {formatTime, useAudioPlayer} from './useAudioPlayer';
 import {useTabs} from './useTabs';
 
-type MaterialJob = Extract<JobRequest, {kind: 'fetch-audio'} | {kind: 'lyrics'}>;
+type MaterialJob = Extract<JobRequest, {kind: 'fetch-audio'} | {kind: 'lyrics'} | {kind: 'captions'}>;
 
 /** 与 cli/fetch.mjs 的 DURATION_WARN_SECONDS 一致:差得比这多就可能整段字幕错位。 */
 const DURATION_WARN_SECONDS = 3;
@@ -506,6 +506,9 @@ interface MaterialsProps {
   onCaption?: (item: AssetItem, hint: string) => Promise<string | null>;
   onSaveCaption?: (item: AssetItem, text: string) => Promise<string | null>;
   onConfirmRewrite?: (item: AssetItem) => Promise<boolean>;
+  onGenerateCaptions: (missing: number) => void;
+  onClearCaptions: (stored: number, visible: number, edited: number) => void;
+  photoTabRequest: number;
 }
 
 const MusicPanel = ({
@@ -522,7 +525,7 @@ const MusicPanel = ({
   assetBusy,
   locked,
   onAsset,
-}: MaterialsProps) => {
+}: Omit<MaterialsProps, 'onGenerateCaptions' | 'onClearCaptions' | 'photoTabRequest'>) => {
   const audios = project.audios ?? (project.audio ? [project.audio] : []);
   const lyricsFiles = project.lyricsFiles ?? (project.lyricsFile ? [project.lyricsFile] : []);
   const audioAssets = project.assets?.audios ?? fallbackAssetCollection('audio', audios);
@@ -647,6 +650,9 @@ export const Materials = ({
   onCaption,
   onSaveCaption,
   onConfirmRewrite,
+  onGenerateCaptions,
+  onClearCaptions,
+  photoTabRequest,
 }: MaterialsProps) => {
   const photos = project.photos;
   const audios = project.audios ?? (project.audio ? [project.audio] : []);
@@ -657,8 +663,20 @@ export const Materials = ({
   const running = job.status === 'running';
   const songBusy = (activeKind === 'fetch-audio' || activeKind === 'lyrics') && running;
   const songNeedsAttention = audioAssets.state !== 'ready' || lyricsAssets.state === 'ambiguous' || lyricLines === 0;
-  const initialTab = songBusy || songNeedsAttention ? 'music' : 'photos';
+  const initialTab = photoTabRequest > 0 || activeKind === 'captions' ? 'photos' : songBusy || songNeedsAttention ? 'music' : 'photos';
   const [tab, setTab] = useState<'photos' | 'music'>(initialTab);
+  useEffect(() => {
+    if (photoTabRequest > 0) setTab('photos');
+  }, [photoTabRequest]);
+  useEffect(() => {
+    if (activeKind === 'captions') setTab('photos');
+  }, [activeKind]);
+  const captionAssets = project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items;
+  const captionCount = captionAssets.filter((item) => Boolean(item.caption)).length;
+  const storedCaptionCount = project.captionItemCount ?? captionCount;
+  const captionCacheInvalid = project.captionCacheInvalid === true;
+  const editedCount = captionAssets.filter((item) => item.captionEdited === true).length;
+  const missingCount = Math.max(0, photos.length - captionCount);
   const tabsBehavior = useTabs({values: ['photos', 'music'] as const, value: tab, onValueChange: setTab, idPrefix: 'materials'});
   const songMeta = songBusy
     ? '进行中'
@@ -699,18 +717,36 @@ export const Materials = ({
       </div>
 
       <div {...tabsBehavior.getPanelProps('photos')}>
-        {photos.length > 0 ? (
-          <PhotoGrid
-            project={project}
-            groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: project.assets?.photos.items ?? fallbackAssetCollection('photo', photos).items, showHeader: false}]}
-            busy={assetBusy}
-            captionEnabled={capabilities.photoCaption.enabled}
-            captionBlockedReason={capabilities.photoCaption.blockers[0]?.reason ?? null}
-            onDelete={(item) => onAsset(item, 'delete')}
-            onCaption={onCaption}
-            onSaveCaption={onSaveCaption}
-            onConfirmRewrite={onConfirmRewrite}
-          />
+        {photos.length > 0 || storedCaptionCount > 0 || captionCacheInvalid ? (
+          <>
+            <div className="photo-caption-manager">
+              <div className="photo-caption-manager-copy">
+                <h3>图片旁白</h3>
+                <p>{captionCount} / {photos.length} 张照片已有旁白{editedCount > 0 ? ` · ${editedCount} 条由你修改` : ''}{captionCacheInvalid ? ' · 旧格式或损坏的缓存待清理' : storedCaptionCount > captionCount ? ` · ${storedCaptionCount - captionCount} 条失效记录` : ''}</p>
+              </div>
+              {activeKind === 'captions' && job.status !== 'idle' ? (
+                <JobPanel verb="写旁白" status={job.status} events={job.events} error={job.error} onCancel={job.cancel} onReset={onReset} resetLabel="收起" />
+              ) : (
+                <div className="photo-caption-manager-actions">
+                  {missingCount > 0 ? (
+                    <button className="fetch-button" disabled={assetBusy || locked || !capabilities.photoCaption.enabled} onClick={() => onGenerateCaptions(missingCount)}>生成缺少的 {missingCount} 条</button>
+                  ) : <span className="hint">{photos.length > 0 ? '已全部生成' : '暂无照片'}</span>}
+                  {(storedCaptionCount > 0 || captionCacheInvalid) && <button className="link-button asset-delete" disabled={assetBusy || locked} onClick={() => onClearCaptions(storedCaptionCount, captionCount, editedCount)}>清空全部旁白</button>}
+                </div>
+              )}
+            </div>
+            {photos.length > 0 && <PhotoGrid
+              project={project}
+              groups={[{key: 'materials', title: '全部照片', hint: '', paths: photos, assets: captionAssets, showHeader: false}]}
+              busy={assetBusy}
+              captionEnabled={capabilities.photoCaption.enabled}
+              captionBlockedReason={capabilities.photoCaption.blockers[0]?.reason ?? null}
+              onDelete={(item) => onAsset(item, 'delete')}
+              onCaption={onCaption}
+              onSaveCaption={onSaveCaption}
+              onConfirmRewrite={onConfirmRewrite}
+            />}
+          </>
         ) : (
           <p className="material-empty">把照片放进这个文件夹就行，jpg / png / webp 都可以 ：）</p>
         )}

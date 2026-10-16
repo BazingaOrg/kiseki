@@ -1,8 +1,13 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import {applyRenderVariants, detectParallelism, formatRenderDiagnostics, resolveCaptureSettings, resolveRenderSettings} from './render.mjs';
+import {CACHE_VERSION} from './ai/photo-caption-cache.mjs';
+import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from './ai/photo-caption-prompt.mjs';
+import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from './image-identity.mjs';
 
 const timeline = () => ({
   meta: {duration: 10, audio: './song.mp3'},
@@ -21,6 +26,34 @@ test('no flags leaves the timeline untouched', async () => {
   assert.equal(result.meta.sign, undefined);
   assert.equal(result.meta.templateId, undefined);
   assert.equal(result.photos[0].exif, undefined);
+});
+
+test('existing-caption rendering includes only valid cached photos without requiring every photo to have one', async () => {
+  const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-render-captions-')));
+  try {
+    const first = path.join(folder, 'a.jpg');
+    fs.writeFileSync(first, 'image');
+    fs.writeFileSync(path.join(folder, 'b.jpg'), 'image');
+    const cachePath = path.join(folder, 'output', 'metadata', 'ai-captions.json');
+    fs.mkdirSync(path.dirname(cachePath), {recursive: true});
+    fs.writeFileSync(cachePath, JSON.stringify({
+      version: CACHE_VERSION,
+      model: CAPTION_MODEL,
+      prompt_hash: promptHash,
+      prompt_version: PROMPT_VERSION,
+      revision: 1,
+      items: {'a.jpg': {text: '已有旁白', source_identity: sourceIdentityRecord('a.jpg', readSourceStat(first), PREVIEW_WIDTH), preview_sha256: 'a'.repeat(64)}},
+    }));
+    const result = await applyRenderVariants({meta: {duration: 2, audio: null}, photos: [
+      {kind: 'photo', src: './a.jpg', start: 0, end: 1},
+      {kind: 'photo', src: './b.jpg', start: 1, end: 2},
+    ], subtitles: []}, {photoCaption: true}, {publicDir: folder, resolvePhotoPath: (src) => path.join(folder, src)});
+    assert.equal(result.photos[0].caption, '已有旁白');
+    assert.equal(result.photos[1].caption, undefined);
+    assert.deepEqual(result._captionSources.map(({key}) => key), ['a.jpg']);
+  } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
 });
 
 test('template flag injects templateId into meta', async () => {

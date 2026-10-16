@@ -44,6 +44,19 @@ test('loadLocalEnv fills an empty key from the file', () => {
   }
 });
 
+test('non-caption Web jobs cannot reload a key from process env or the local file', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-env-'));
+  try {
+    const envPath = path.join(dir, '.env');
+    fs.writeFileSync(envPath, 'DEEPSEEK_API_KEY=sk-from-file\n');
+    const env = {KISEKI_DISABLE_CAPTION_KEY: '1', DEEPSEEK_API_KEY: 'sk-from-shell'};
+    loadLocalEnv({envPath, env});
+    assert.equal(env.DEEPSEEK_API_KEY, undefined);
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
+  }
+});
+
 test('missing env file is a no-op', () => {
   const env = {};
   loadLocalEnv({envPath: path.join(os.tmpdir(), 'kiseki-missing.env'), env});

@@ -14,6 +14,8 @@ import {resolveJobs} from '../still.mjs';
 import {resolveRenderOutputPath} from '../output-naming.mjs';
 import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
 import {requireCaptionApiKey} from '../ai/photo-caption-service.mjs';
+import {captionsPathFor} from '../ai/photo-caption-cache.mjs';
+import {getProject} from './project.mjs';
 import {parseYtDlpProgress, YTDLP_PROGRESS_LABEL} from '../ytdlp.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createNodeCommandResolver} from '../command-resolver.mjs';
@@ -96,19 +98,31 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = 
   tempParent ??= runtime.tempRoot;
   if (kind === 'fetch-audio') return buildFetchAudioSpec({folder, options, tempParent, commandResolver});
 
-  if (options?.photoCaption === true) {
-    try {
-      requireCaptionApiKey();
-    } catch (error) {
-      throw new JobValidationError('photoCaption', error instanceof Error ? error.message : String(error));
+  if ((kind === 'render' || kind === 'still') && options?.photoCaption === true && options?.photoCaptionMode !== 'existing') {
+    throw new JobValidationError('photoCaptionMode', '请先到素材页生成图片旁白，制作时只使用已有内容');
+  }
+  let captionGenerationNeeded = false;
+  if (kind === 'captions') {
+    const project = getProject(folder, folder);
+    const allPrepared = project.status === 200 && project.body.photos.length > 0
+      && project.body.assets.photos.items.every((item) => Boolean(item.caption));
+    captionGenerationNeeded = !allPrepared;
+    if (!allPrepared) {
+      try {
+        requireCaptionApiKey();
+      } catch (error) {
+        throw new JobValidationError('photoCaption', error instanceof Error ? error.message : String(error));
+      }
     }
   }
   const {argv, env} = buildJobInvocation({kind, folder, options});
   return {
     ...commandResolver.cli(argv, {
       stdio: ['ignore', 'pipe', 'pipe', 'pipe'],
+      omitEnvKeys: captionGenerationNeeded ? [] : ['DEEPSEEK_API_KEY'],
       env: {
       KISEKI_JSON_PROGRESS: '1',
+      ...(captionGenerationNeeded ? {} : {KISEKI_DISABLE_CAPTION_KEY: '1'}),
       ...env,
       },
     }),
@@ -116,7 +130,9 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = 
     finalize: null,
     // Job leases always claim the project itself. Keep output paths explicit in
     // the spec so callers that need narrower future output claims have one API.
-    outputPaths: kind === 'render'
+    outputPaths: kind === 'captions'
+      ? [captionsPathFor(folder)]
+      : kind === 'render'
       ? [resolveRenderOutputPath({
         folder,
         output: options.output ?? null,

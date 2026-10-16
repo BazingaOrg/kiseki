@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import {requireCaptionApiKey, preparePhotoCaptions} from '../ai/photo-caption-service.mjs';
-import {cacheHit, captionsPathFor, loadCaptionCache, upsertCaptionItem, writeCaptionCache} from '../ai/photo-caption-cache.mjs';
+import {cacheHit, captionsPathFor, loadCaptionCache, readCaptionCacheState, upsertCaptionItem, writeCaptionCache} from '../ai/photo-caption-cache.mjs';
 import {PREVIEW_WIDTH, captionSourceIdentity, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
 import {normalizeCaptionHint, normalizeManualCaption} from '../ai/photo-caption-prompt.mjs';
 import {CliError} from '../options.mjs';
@@ -54,7 +54,7 @@ const assertCanonicalPath = (root, target, {file = false, allowMissing = false, 
   return resolved;
 };
 
-const assertSafeCachePath = (folder, cachePath) => assertCanonicalPath(folder, cachePath, {
+export const assertSafeCachePath = (folder, cachePath) => assertCanonicalPath(folder, cachePath, {
   file: true,
   allowMissing: true,
   message: '旁白缓存路径不安全或已变化',
@@ -119,6 +119,47 @@ export const savePhotoCaption = async ({
       captionEdited: true,
       ...(hintText ? {captionHint: hintText} : {}),
     };
+  } catch (error) {
+    operationFailed = true;
+    if (error instanceof CaptionRequestError) throw error;
+    if (error instanceof ProjectBusyError) throw new CaptionRequestError(409, '项目已有任务在执行');
+    throw error;
+  } finally {
+    releaseCaptionLease(leaseManager, lease, operationFailed);
+  }
+};
+
+export const clearPhotoCaptions = async ({
+  folder,
+  expectedRevision,
+  expectedFingerprint,
+  isJobRunning,
+  signal,
+  leaseManager = createTaskLeaseManager(),
+}) => {
+  folder = canonicalProject(folder);
+  let lease;
+  try {
+    lease = leaseManager.acquire({kind: 'caption-clear', resources: [folder]});
+  } catch (error) {
+    if (error instanceof ProjectBusyError) throw new CaptionRequestError(409, '项目已有任务在执行');
+    throw error;
+  }
+  let operationFailed = false;
+  try {
+    if (isJobRunning?.()) throw new CaptionRequestError(409, '任务运行中,不能清空旁白');
+    if (signal?.aborted) throw new CaptionRequestError(499, '清空图片旁白已取消');
+    if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0 || !(expectedFingerprint === null || /^[a-f0-9]{64}$/.test(expectedFingerprint))) throw new CaptionRequestError(400, '缺少旁白版本，请刷新后重试');
+    const cachePath = captionsPathFor(folder);
+    const exists = fs.existsSync(cachePath);
+    if (exists) assertSafeCachePath(folder, cachePath);
+    const state = readCaptionCacheState(cachePath);
+    const cache = state.cache;
+    if (state.fingerprint !== expectedFingerprint || Number(cache.revision ?? 0) !== expectedRevision) throw new CaptionRequestError(409, '旁白已有更新，请刷新后重新确认');
+    if (!exists) return {cleared: 0};
+    const cleared = state.itemCount;
+    writeCaptionCache(cachePath, {...cache, revision: Number(cache.revision ?? 0) + 1, items: {}});
+    return {cleared};
   } catch (error) {
     operationFailed = true;
     if (error instanceof CaptionRequestError) throw error;

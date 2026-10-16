@@ -19,6 +19,9 @@ import {
 import {JobValidationError as JobSpecValidationError} from './job-spec.mjs';
 import {outputArtifactPaths} from '../atomic-output.mjs';
 import {createRuntimeLayout} from '../runtime-layout.mjs';
+import {sourceIdentityRecord, readSourceStat, PREVIEW_WIDTH} from '../image-identity.mjs';
+import {CACHE_VERSION} from '../ai/photo-caption-cache.mjs';
+import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from '../ai/photo-caption-prompt.mjs';
 
 test('job-spec 与 jobs 复用同一个 JobValidationError 类身份', () => {
   assert.equal(JobSpecValidationError, JobValidationError);
@@ -809,6 +812,55 @@ test('buildJobSpec:render/still 的命令组装不回归', () => {
   assert.deepEqual(still.args.slice(-2), ['still', STILL_FIXTURE]);
 });
 
+test('caption preparation is a separate job and existing captions need no API key', () => {
+  const previous = process.env.DEEPSEEK_API_KEY;
+  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    const render = buildJobSpec({kind: 'render', folder: '/tmp/x', options: {photoCaption: true, photoCaptionMode: 'existing'}});
+    assert.ok(render.args.includes('--use-photo-captions'));
+    assert.ok(!render.args.includes('--photo-caption'));
+    const still = buildJobSpec({kind: 'still', folder: STILL_FIXTURE, options: {photoCaption: true, photoCaptionMode: 'existing'}});
+    assert.ok(still.args.includes('--use-photo-captions'));
+    assert.throws(
+      () => buildJobSpec({kind: 'render', folder: '/tmp/x', options: {photoCaption: true}}),
+      (error) => error instanceof JobValidationError && error.field === 'photoCaptionMode',
+    );
+    assert.throws(() => buildJobSpec({kind: 'captions', folder: STILL_FIXTURE}), /图片旁白尚未配置/);
+    process.env.DEEPSEEK_API_KEY = 'test-key';
+    const existing = buildJobSpec({kind: 'render', folder: '/tmp/x', options: {photoCaption: true, photoCaptionMode: 'existing'}});
+    assert.equal(existing.env.DEEPSEEK_API_KEY, undefined);
+    assert.equal(existing.env.KISEKI_DISABLE_CAPTION_KEY, '1');
+    const captions = buildJobSpec({kind: 'captions', folder: STILL_FIXTURE});
+    assert.equal(captions.env.DEEPSEEK_API_KEY, 'test-key');
+    assert.equal(captions.env.KISEKI_DISABLE_CAPTION_KEY, undefined);
+    assert.deepEqual(captions.args.slice(-2), ['captions', STILL_FIXTURE]);
+    assert.deepEqual(captions.outputPaths, [path.join(STILL_FIXTURE, 'output', 'metadata', 'ai-captions.json')]);
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+  }
+});
+
+test('a fully captioned project can run the captions job without a key', () => {
+  const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-caption-job-')));
+  const previous = process.env.DEEPSEEK_API_KEY;
+  delete process.env.DEEPSEEK_API_KEY;
+  try {
+    const photo = path.join(folder, 'only.jpg');
+    fs.writeFileSync(photo, 'image');
+    const cachePath = path.join(folder, 'output', 'metadata', 'ai-captions.json');
+    fs.mkdirSync(path.dirname(cachePath), {recursive: true});
+    fs.writeFileSync(cachePath, JSON.stringify({version: CACHE_VERSION, model: CAPTION_MODEL, prompt_hash: promptHash, prompt_version: PROMPT_VERSION, revision: 1, items: {'only.jpg': {text: '已有', source_identity: sourceIdentityRecord('only.jpg', readSourceStat(photo), PREVIEW_WIDTH), preview_sha256: 'a'.repeat(64)}}}));
+    const spec = buildJobSpec({kind: 'captions', folder});
+    assert.equal(spec.env.DEEPSEEK_API_KEY, undefined);
+    assert.equal(spec.env.KISEKI_DISABLE_CAPTION_KEY, '1');
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
 test('buildJobSpec claims the same canonical variant outputs the child CLI will write', () => {
   const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-job-output-'));
   try {
@@ -1275,9 +1327,9 @@ test('getJob keeps a public options snapshot and caption failureStage', async ()
     const {id} = manager.createJob({
       kind: 'render',
       folder: '/f',
-      options: {photoCaption: true, sign: true, dark: false},
+      options: {photoCaption: true, photoCaptionMode: 'existing', sign: true, dark: false},
     });
-    assert.deepEqual(manager.getJob(id).options, {photoCaption: true, sign: true, dark: false});
+    assert.deepEqual(manager.getJob(id).options, {photoCaption: true, photoCaptionMode: 'existing', sign: true, dark: false});
     writeNdjson(child.stdio[3], [{
       kind: 'error',
       text: '图片旁白尚未配置',

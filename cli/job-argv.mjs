@@ -32,6 +32,7 @@ const signatureNameFlags = (opts) => {
  * @returns {string[]}
  */
 export const buildJobArgv = ({kind, folder, options = {}}) => {
+  if (kind === 'captions') return ['captions', folder];
   // lyrics 只认一个文件夹和显式 replace;放在最前面,免得下面的渲染选项校验
   // 对它生效(前端就算多传了 format 之类也一律不影响 argv).
   if (kind === 'lyrics') {
@@ -40,7 +41,7 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
     return ['lyrics', folder, ...(replace ? ['--replace'] : [])];
   }
   if (kind !== 'render' && kind !== 'still') {
-    throw new JobValidationError('kind', 'kind 必须是 render、still 或 lyrics');
+    throw new JobValidationError('kind', 'kind 必须是 render、still、captions 或 lyrics');
   }
   const opts = options ?? {};
   const flags = [];
@@ -61,7 +62,10 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
 
   if (readBool('exif')) flags.push('--exif');
   if (readBool('sign') || (kind === 'still' && signatureFlags.length > 0)) flags.push('--sign');
-  if (readBool('photoCaption')) flags.push('--photo-caption');
+  if (opts.photoCaptionMode !== undefined && opts.photoCaptionMode !== 'existing') {
+    throw new JobValidationError('photoCaptionMode', 'photoCaptionMode 必须是 existing');
+  }
+  if (readBool('photoCaption')) flags.push(opts.photoCaptionMode === 'existing' ? '--use-photo-captions' : '--photo-caption');
   if (readBool('dark')) flags.push('--dark');
 
   const format = opts.format === undefined ? 'landscape' : opts.format;

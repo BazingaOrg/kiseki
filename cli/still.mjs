@@ -25,7 +25,8 @@ import {assertUnchangedSources, captionsForKeys, preparePhotoCaptions, requireCa
 import {emitCaptionFailure, withProcessAbort} from './ai/caption-runtime.mjs';
 import {normalizePhotoKey} from './ai/photo-key.mjs';
 import {captionPageFromBrowser, fitStillCaption} from './ai/photo-caption-fit.mjs';
-import {loadCaptionCache, captionsPathFor} from './ai/photo-caption-cache.mjs';
+import {cacheHit, loadCaptionCache, captionsPathFor} from './ai/photo-caption-cache.mjs';
+import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from './image-identity.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
@@ -227,7 +228,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
   let capturedKey = undefined;
 
   try {
-    if (opts.photoCaption) capturedKey = requireCaptionApiKey();
+    if (opts.photoCaption && opts.photoCaptionMode !== 'existing') capturedKey = requireCaptionApiKey();
     const namedSignature = typeof opts.signatureName === 'string' ? opts.signatureName.trim() : '';
     const sign = Boolean(opts.sign) || Boolean(namedSignature);
     const resolved = resolveJobs(opts.target, opts.output, {...opts, sign});
@@ -258,7 +259,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
       if (skippedExif > 0) term.detail(`跳过 ${skippedExif} 张 EXIF 信息不足`);
     } else {
     let captionTexts = new Map();
-    if (opts.photoCaption) {
+    if (opts.photoCaption && opts.photoCaptionMode !== 'existing') {
       const captionTask = term.task('准备图片旁白');
       progress = createPercentProgress();
       try {
@@ -284,6 +285,14 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         captionTask.fail();
         emitCaptionFailure(error);
         throw error;
+      }
+    } else if (opts.photoCaption) {
+      const cache = loadCaptionCache(captionsPathFor(resolved.canvasFolder));
+      for (const job of preparedJobs) {
+        const key = normalizePhotoKey(resolved.canvasFolder, job.absPath);
+        const stat = readSourceStat(job.absPath);
+        const item = key && stat ? cacheHit(cache, key, sourceIdentityRecord(key, stat, PREVIEW_WIDTH)) : null;
+        if (item?.text) captionTexts.set(key, item.text);
       }
     }
 
@@ -342,13 +351,13 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error', puppeteerInstance: browser});
     term.detail(formatStillDiagnostics({canvas, scale: opts.scale, jobs: preparedJobs}));
-    const captionPage = opts.photoCaption ? await captionPageFromBrowser(browser, bundled.serveUrl) : null;
+    const captionPage = captionTexts.size > 0 ? await captionPageFromBrowser(browser, bundled.serveUrl) : null;
     let skippedLayout = 0;
     for (let i = 0; i < preparedJobs.length; i++) {
       const job = preparedJobs[i];
       const key = normalizePhotoKey(resolved.canvasFolder, job.absPath);
-      const captionSources = key ? [{absPath: job.absPath, key}] : [];
-      if (opts.photoCaption && key) {
+      const captionSources = key && captionTexts.has(key) ? [{absPath: job.absPath, key}] : [];
+      if (captionSources.length > 0) {
         assertUnchangedSources(resolved.canvasFolder, captionSources, loadCaptionCache(captionsPathFor(resolved.canvasFolder)));
       }
       const inputProps = {
@@ -384,7 +393,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
       fs.mkdirSync(path.dirname(job.outPath), {recursive: true});
 
       activePartial = createPartialOutput(job.outPath, taskId);
-      if (opts.photoCaption && key) {
+      if (captionSources.length > 0) {
         assertUnchangedSources(resolved.canvasFolder, captionSources, loadCaptionCache(captionsPathFor(resolved.canvasFolder)));
       }
       await renderStill({
@@ -406,7 +415,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         },
       });
 
-      if (opts.photoCaption && key) {
+      if (captionSources.length > 0) {
         assertUnchangedSources(resolved.canvasFolder, captionSources, loadCaptionCache(captionsPathFor(resolved.canvasFolder)));
       }
       commitAtomicOutput(job.outPath, activePartial, {taskId});

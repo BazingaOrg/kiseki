@@ -55,6 +55,11 @@ test('photoCaption maps to --photo-caption after --sign', () => {
   );
 });
 
+test('Web production commands only use previously generated photo captions', () => {
+  assert.equal(equivalentCommand('render', '/f', {photoCaption: true, photoCaptionMode: 'existing'}), 'KISEKI_RENDER_SPEED=balanced kiseki /f --use-photo-captions');
+  assert.equal(equivalentCommand('still', '/f', {photoCaption: true, photoCaptionMode: 'existing'}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f --use-photo-captions');
+});
+
 test('still: 默认 scale(2 或不传)不带 --scale', () => {
   assert.equal(equivalentCommand('still', '/f', {}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f');
   assert.equal(equivalentCommand('still', '/f', {scale: 2}), 'KISEKI_RENDER_SPEED=balanced kiseki still /f');

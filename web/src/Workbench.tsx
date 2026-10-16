@@ -15,7 +15,7 @@ import {Dialog} from './Dialog';
 import type {JobKind, JobRequest} from './useJob';
 import {useJob} from './useJob';
 import {clearLastJobRecord, readLastJobRecord} from './lastJob';
-import {clearRecognizedLyrics, generatePhotoCaption, mutateAsset, savePhotoCaption, undoAssetDelete} from './api';
+import {clearPhotoCaptions, clearRecognizedLyrics, generatePhotoCaption, mutateAsset, savePhotoCaption, undoAssetDelete} from './api';
 import type {AssetItem} from './types';
 
 type SectionKey = 'materials' | 'make' | 'results';
@@ -27,7 +27,7 @@ const isCurrentJob = (value: unknown): value is {id: string; kind: JobKind; fold
   'id' in value && typeof value.id === 'string' &&
   'kind' in value && typeof value.kind === 'string' &&
   'folder' in value && typeof value.folder === 'string' &&
-  ['render', 'still', 'fetch-audio', 'lyrics'].includes(value.kind);
+  ['render', 'still', 'fetch-audio', 'lyrics', 'captions'].includes(value.kind);
 
 const SECTIONS: {key: SectionKey; label: string}[] = [
   {key: 'materials', label: '素材'},
@@ -65,6 +65,7 @@ export const Workbench = ({
   onCaptionKeySaved,
 }: WorkbenchProps) => {
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
+  const [photoTabRequest, setPhotoTabRequest] = useState(0);
   const [doctorRequest, setDoctorRequest] = useState(0);
   const capabilities = deriveCapabilities(project, doctor, runtime);
   const locked = projectSelection === 'sandbox' && project.root === project.path;
@@ -96,7 +97,7 @@ export const Workbench = ({
   const [restartNotice, setRestartNotice] = useState<string | null>(null);
 
   const jobKindLabel = (kind: string) =>
-    ({render: '渲染', still: '导出静态图', 'fetch-audio': '获取音频', lyrics: '识别歌词'})[kind] ?? kind;
+    ({render: '渲染', still: '导出静态图', 'fetch-audio': '获取音频', lyrics: '识别歌词', captions: '生成图片旁白'})[kind] ?? kind;
 
   const invalidateProbe = useCallback(() => {
     ++probeGenerationRef.current;
@@ -279,6 +280,45 @@ export const Workbench = ({
       });
     });
   };
+  const handleGenerateCaptions = (missing: number) => {
+    if (missing <= 0 || assetBusy || jobBusy) return;
+    setDialog({
+      title: `为 ${missing} 张照片生成旁白？`,
+      message: '会将缩小后的照片预览发送给 DeepSeek，原图不会上传。已有旁白和手动修改的内容会保留。',
+      confirmLabel: '开始生成',
+      confirm: async () => {
+        await handleStart({kind: 'captions'});
+        setDialog(null);
+      },
+    });
+  };
+  const handleClearCaptions = (stored: number, visible: number, edited: number) => {
+    if ((stored <= 0 && !project.captionCacheInvalid) || assetBusy || jobBusy) return;
+    const expectedRevision = project.captionRevision ?? 0;
+    const expectedFingerprint = project.captionCacheFingerprint ?? null;
+    setDialog({
+      title: '清空全部图片旁白？',
+      message: `${project.captionCacheInvalid ? '缓存为旧格式或已损坏；' : ''}将清空当前素材夹的旁白记录${stored > 0 ? `（共 ${stored} 条，当前可见 ${visible} 条${edited > 0 ? `，其中 ${edited} 条由你修改过` : ''}）` : ''}。照片和已完成的作品不会删除；此操作无法恢复。`,
+      destructive: true,
+      confirmLabel: '清空旁白',
+      confirm: async () => {
+        if (assetBusy || jobBusy) return;
+        setAssetBusy(true);
+        try {
+          const result = await clearPhotoCaptions(project.path, expectedRevision, expectedFingerprint);
+          if (!result.ok) {
+            onProjectRefresh();
+            setDialog({title: '旁白没有清空', message: result.message});
+            return;
+          }
+          onProjectRefresh();
+          setDialog(null);
+        } finally {
+          setAssetBusy(false);
+        }
+      },
+    });
+  };
   const performDeleteAll = async (items: AssetItem[]): Promise<boolean> => {
     if (assetBusy || jobBusy) return false;
     const targets = items.filter((item) => item.manageable !== false);
@@ -440,7 +480,7 @@ export const Workbench = ({
         {!locked && jobBusy && (
           <p className="locked-note" id="folder-switch-busy">
             {jobLock === 'checking' || jobLock === 'unknown' ? '正在确认后台任务，这期间不能改动素材夹。' : '任务还在跑，这期间换不了素材夹 —— 换了进度和取消入口都会消失，任务却还在后台继续。'}
-            <button className="link-button" onClick={() => setSection(activeKind ? 'make' : 'materials')}>回到任务</button>
+            <button className="link-button" onClick={() => setSection(activeKind === 'render' || activeKind === 'still' ? 'make' : 'materials')}>回到任务</button>
           </p>
         )}
         {projectStale && (
@@ -463,7 +503,7 @@ export const Workbench = ({
               capabilities={capabilities}
               onRemedy={handleRemedy}
               job={job}
-              activeKind={activeKind === 'fetch-audio' || activeKind === 'lyrics' ? activeKind : null}
+              activeKind={activeKind === 'fetch-audio' || activeKind === 'lyrics' || activeKind === 'captions' ? activeKind : null}
               onStart={handleStart}
               onReset={resetJobDisplay}
               onRefresh={onProjectRefresh}
@@ -475,6 +515,9 @@ export const Workbench = ({
               onCaption={handleCaption}
               onSaveCaption={handleSaveCaption}
               onConfirmRewrite={confirmRewrite}
+              onGenerateCaptions={handleGenerateCaptions}
+              onClearCaptions={handleClearCaptions}
+              photoTabRequest={photoTabRequest}
             />
           )}
           {section === 'make' && (
@@ -482,6 +525,7 @@ export const Workbench = ({
               project={project}
               capabilities={capabilities}
               onRemedy={handleRemedy}
+              onManageCaptions={() => { setPhotoTabRequest((value) => value + 1); setSection('materials'); }}
               job={job}
               activeKind={activeKind === 'render' || activeKind === 'still' ? activeKind : null}
               onStart={(kind, options) => handleStart({kind, options})}

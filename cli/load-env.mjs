@@ -51,6 +51,11 @@ export const loadLocalEnv = ({
   envPath = envFilePath(env),
   readFileSync = fs.readFileSync,
 } = {}) => {
+  if (env.KISEKI_DISABLE_CAPTION_KEY === '1') {
+    delete env.DEEPSEEK_API_KEY;
+    prependToolPaths(env);
+    return env;
+  }
   let text;
   try {
     text = readFileSync(envPath, 'utf8');

@@ -64,7 +64,7 @@ test('featured render styles use abstract explanatory previews with motion safeg
   assert.match(make, /speed: 'balanced'/);
   assert.match(make, /template: null/);
   assert.match(make, /<FieldHelp label="了解歌词显示">当前歌词没有中文译文，将显示原文。<\/FieldHelp>/);
-  assert.match(make, /<FieldHelp label="了解图片旁白">为照片补上一句画外之意。开启后会将缩小后的预览发给 DeepSeek，全部生成后再开始制作。原图不会上传。<\/FieldHelp>/);
+  assert.match(make, /<FieldHelp label="了解图片旁白">只在作品中显示已生成的文字，不会在制作时调用 AI。可以先到素材页生成或修改。<\/FieldHelp>/);
   assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。<\/FieldHelp>/);
   assert.doesNotMatch(make, /改变照片布局、转场和字幕样式|抽象图形仅说明布局与动效|非品牌官方模拟，效果会受原片色彩和曝光影响。/);
   assert.doesNotMatch(make, /title=\{item\.hint\}/);

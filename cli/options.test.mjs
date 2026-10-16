@@ -68,6 +68,16 @@ test('render command accepts --draft before or after the folder', () => {
   assert.equal(parseArgs(['--draft', 'album']).draft, true);
 });
 
+test('caption generation is an explicit command while rendering can use existing captions', () => {
+  assert.deepEqual(parseArgs(['captions', 'album']), {command: 'captions', folder: 'album'});
+  assert.equal(parseArgs(['./captions']).command, 'render');
+  assert.equal(parseArgs(['album', '--use-photo-captions']).photoCaptionMode, 'existing');
+  assert.equal(parseArgs(['still', 'album', '--use-photo-captions']).photoCaptionMode, 'existing');
+  assert.equal(parseArgs(['album', '--photo-caption']).photoCaptionMode, undefined);
+  assert.throws(() => parseArgs(['album', '--photo-caption', '--use-photo-captions']), /不能同时使用/);
+  assert.throws(() => parseArgs(['still', 'album', '--use-photo-captions', '--photo-caption']), /不能同时使用/);
+});
+
 test('render and still accept one portrait or square preset, but not both', () => {
   assert.equal(parseArgs(['album', '--portrait']).portrait, true);
   assert.equal(parseArgs(['album', '--square']).square, true);

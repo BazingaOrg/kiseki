@@ -32,6 +32,7 @@ export interface JobOptions {
   /** 仅 still */
   scale?: number;
   photoCaption?: boolean;
+  photoCaptionMode?: 'existing';
   lyricsMode?: 'original' | 'bilingual' | 'none';
   /** 仅 render。空字符串隐藏片尾文字。 */
   outroText?: string;
@@ -56,6 +57,7 @@ export interface LyricsJobOptions {
  */
 export type JobRequest =
   | {kind: 'render' | 'still'; options: JobOptions}
+  | {kind: 'captions'}
   | {kind: 'fetch-audio'; options: FetchAudioOptions}
   | {kind: 'lyrics'; options?: LyricsJobOptions};
 

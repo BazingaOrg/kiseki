@@ -28,6 +28,7 @@ import {
 import {runDoctor} from './doctor.mjs';
 import {offerFetch, runFetch} from './fetch.mjs';
 import {runLyrics} from './lyrics.mjs';
+import {runCaptions} from './captions.mjs';
 import {MENU_BACK, isResidentCommand, runMenu, writeBanner, writeFarewell} from './menu.mjs';
 import {PromptAbortError, PromptQuitError} from './prompts.mjs';
 import {runStill} from './still.mjs';
@@ -58,7 +59,7 @@ export const readValidatedTimeline = (timelinePath, readFileSync = fs.readFileSy
 
 export const runCommandFromArgv = async (
   argv,
-  {trimInteractive, trimPromptRunner, runCommandImpl, runCommandSpecImpl = runCommandSpec, offerFetchImpl = offerFetch, runLyricsImpl = runLyrics, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {},
+  {trimInteractive, trimPromptRunner, runCommandImpl, runCommandSpecImpl = runCommandSpec, offerFetchImpl = offerFetch, runLyricsImpl = runLyrics, runCaptionsImpl = runCaptions, runtime = sourceRuntimeLayout, commandResolver = createNodeCommandResolver({runtime})} = {},
 ) => {
   const runResolvedCommand = (stage, spec) => runCommandImpl
     ? runCommandImpl(stage, spec.executable, spec.args, {env: spec.env})
@@ -76,6 +77,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
   if (parsed.command === 'fetch') return runFetch(parsed.folder, {runtime});
+  if (parsed.command === 'captions') return runCaptionsImpl(parsed.folder);
   if (parsed.command === 'lyrics') {
     const lyricsFolder = path.resolve(parsed.folder);
     const inherited = [
@@ -97,7 +99,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
 
-  const {folder: folderArg, output, exif, sign, photoCaption, dark, portrait, square, draft, trim, filter, template, lyricsMode, outroText, signatureName} = parsed;
+  const {folder: folderArg, output, exif, sign, photoCaption, photoCaptionMode, dark, portrait, square, draft, trim, filter, template, lyricsMode, outroText, signatureName} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -116,7 +118,7 @@ export const runCommandFromArgv = async (
   // The loose scan is read-only and lets us compute the exact default output
   // name even when fetch is about to supply a currently missing audio file.
   const preflight = scanFolderLoose(folder);
-  if (photoCaption) requireCaptionApiKey();
+  if (photoCaption && photoCaptionMode !== 'existing') requireCaptionApiKey();
   const outputPath = resolveRenderOutputPath({
     folder, output, exif, sign, photoCaption, dark, portrait, square, draft, filter, template, lyricsMode,
     filterConfig: readFilterConfig(folder), photoNames: preflight.photos,
@@ -130,7 +132,7 @@ export const runCommandFromArgv = async (
     [...Object.keys(task.env), 'TMPDIR', 'TMP', 'TEMP', 'DEEPSEEK_API_KEY'].map((key) => [key, process.env[key]]),
   );
   Object.assign(process.env, task.env);
-  const capturedKey = photoCaption ? requireCaptionApiKey() : undefined;
+  const capturedKey = photoCaption && photoCaptionMode !== 'existing' ? requireCaptionApiKey() : undefined;
   if (photoCaption) delete process.env.DEEPSEEK_API_KEY;
   let succeeded = false;
   try {
@@ -295,7 +297,7 @@ export const runCommandFromArgv = async (
       `歌词: ${tl.subtitles.length > 0 ? `${tl.subtitles.length} 行` : '无(纯音乐或未识别)'}`,
   );
 
-  if (photoCaption) {
+  if (photoCaption && photoCaptionMode !== 'existing') {
     const sources = [];
     const seen = new Set();
     for (const clip of photoClips) {

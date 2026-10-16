@@ -2,7 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {cacheHit, loadCaptionCache, captionsPathFor} from '../ai/photo-caption-cache.mjs';
+import {cacheHit, readCaptionCacheState, captionsPathFor} from '../ai/photo-caption-cache.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
 import {normalizePhotoKey} from '../ai/photo-key.mjs';
 import {DEFAULT_OUTRO_TEXT, effectiveOutroText} from '../branding.mjs';
@@ -189,9 +189,11 @@ export const getProject = (root, requestedPath) => {
   const stills = listOutputFiles(path.join(outputDir, 'stills'), IMAGE_EXTS);
   const exportedVideos = listOutputFiles(outputDir, VIDEO_EXTS);
   let captions = null;
+  let captionCacheState = null;
   try {
     const captionCachePath = safeCaptionCachePath(safePath);
-    captions = captionCachePath ? loadCaptionCache(captionCachePath) : null;
+    captionCacheState = captionCachePath ? readCaptionCacheState(captionCachePath) : null;
+    captions = captionCacheState?.cache ?? null;
   } catch {
     captions = null;
   }
@@ -231,6 +233,10 @@ export const getProject = (root, requestedPath) => {
     status: 200,
     body: {
       outroText,
+      captionRevision: Number(captions?.revision ?? 0),
+      captionItemCount: captionCacheState?.itemCount ?? 0,
+      captionCacheFingerprint: captionCacheState?.fingerprint ?? null,
+      captionCacheInvalid: captionCacheState?.invalid ?? false,
       path: safePath,
       name: path.basename(safePath),
       // 沙箱根.`kiseki web <folder>` 会把根锁定成那个素材夹,此时 root === path,
