@@ -600,3 +600,17 @@ test('probeAudio lowercases tag keys and swallows ffprobe failures', () => {
   assert.deepEqual(probeAudio('a.mp3', () => ({status: 1, stdout: ''})), {});
   assert.deepEqual(probeAudio('a.mp3', () => ({status: 0, stdout: 'not json'})), {});
 });
+
+test('direct audio probe excludes the caption key', () => {
+  const previous = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = 'secret';
+  try {
+    probeAudio('a.mp3', (_command, _args, options) => {
+      assert.equal(options.env.DEEPSEEK_API_KEY, undefined);
+      return {status: 1, stdout: ''};
+    });
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+  }
+});

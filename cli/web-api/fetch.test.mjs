@@ -94,7 +94,7 @@ test('runProcess 只解析一次结果(超时与退出竞争时不会重复 reso
   assert.equal((await promise).status, 0);
 });
 
-test('runProcess 只在显式提供时向子进程传递 resolver env', async () => {
+test('runProcess passes resolver env while filtering secrets from every child', async () => {
   const options = [];
   const spawnImpl = (_command, _args, received) => {
     options.push(received);
@@ -105,10 +105,18 @@ test('runProcess 只在显式提供时向子进程传递 resolver env', async ()
     queueMicrotask(() => child.emit('close', 0));
     return child;
   };
-  await runProcess('x', [], {spawnImpl, env: {ONLY: 'resolver'}});
-  await runProcess('x', [], {spawnImpl});
+  const previous = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = 'test-secret';
+  try {
+    await runProcess('x', [], {spawnImpl, env: {ONLY: 'resolver', DEEPSEEK_API_KEY: 'test-secret'}});
+    await runProcess('x', [], {spawnImpl});
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+  }
   assert.deepEqual(options[0].env, {ONLY: 'resolver'});
-  assert.equal(Object.hasOwn(options[1], 'env'), false);
+  assert.equal(options[1].env.DEEPSEEK_API_KEY, undefined);
+  assert.equal(typeof options[1].env.PATH, 'string');
 });
 
 test('runProcess abort 会等待 child close 与进程树消失后才收尾', async () => {

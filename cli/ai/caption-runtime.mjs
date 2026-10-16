@@ -1,12 +1,5 @@
 import {defaultJsonWrite, jsonProgressEnabled} from '../term.mjs';
-
-const SECRET_ENV_KEYS = ['DEEPSEEK_API_KEY'];
-
-export const envWithoutSecrets = (env = process.env) => {
-  const next = {...env};
-  for (const key of SECRET_ENV_KEYS) delete next[key];
-  return next;
-};
+export {envWithoutSecrets} from '../secret-env.mjs';
 
 export const withProcessAbort = async (fn, {signals = ['SIGTERM', 'SIGINT']} = {}) => {
   const controller = new AbortController();

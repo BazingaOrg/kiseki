@@ -1,4 +1,5 @@
 import {spawnSync} from 'node:child_process';
+import {envWithoutSecrets} from './secret-env.mjs';
 
 /** Web runtime 的唯一 shutdown 入口:先停止接新请求,再回收任务,绝不抢在异步收尾前退出. */
 export const installRuntimeShutdown = ({server, killAll, processImpl = process, deadlineMs = 8000}) => {
@@ -33,7 +34,7 @@ export const installRuntimeShutdown = ({server, killAll, processImpl = process, 
 
 const command = (file, args) => {
   try {
-    const result = spawnSync(file, args, {encoding: 'utf8', timeout: 2000, windowsHide: true});
+    const result = spawnSync(file, args, {env: envWithoutSecrets(), encoding: 'utf8', timeout: 2000, windowsHide: true});
     if (result.error || result.signal) return {state: 'unknown'};
     return {state: 'ok', status: result.status, stdout: result.stdout ?? ''};
   } catch { return {state: 'unknown'}; }

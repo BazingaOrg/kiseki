@@ -6,6 +6,7 @@ import readline from 'node:readline';
 import {createPercentProgress} from './progress.mjs';
 import {scanFolderLoose} from './project.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {envWithoutSecrets} from './secret-env.mjs';
 
 export const AUDIO_PROVIDER_LIMIT = 20;
 export const AUDIO_SEARCH_LIMIT = 10;
@@ -50,7 +51,7 @@ export const parseSearchCandidates = (stdout) => {
 };
 
 export const checkYtDlp = (spawn = spawnSync, runtime = sourceRuntimeLayout) => {
-  const r = spawn(runtime.ytDlp, ['--version'], {encoding: 'utf8'});
+  const r = spawn(runtime.ytDlp, ['--version'], {encoding: 'utf8', env: envWithoutSecrets()});
   if (r.error || r.status !== 0) return {ok: false};
   return {ok: true, version: (r.stdout ?? '').trim()};
 };
@@ -64,7 +65,7 @@ export const searchYtDlp = (query, {spawn = spawnSync, runtime = sourceRuntimeLa
       '--flat-playlist',
       '--print', '%(id)s\t%(title)s\t%(duration_string)s\t%(channel,uploader)s',
     ],
-    {encoding: 'utf8'},
+    {encoding: 'utf8', env: envWithoutSecrets()},
   );
   if (r.error || r.status !== 0) {
     return {ok: false, stderr: (r.stderr ?? '').trim()};
@@ -86,7 +87,7 @@ export const downloadWithYtDlp = (
   const r = spawn(
     runtime.ytDlp,
     ['-x', '--audio-format', 'm4a', '--no-playlist', '-o', path.join(tempDir, '%(title)s.%(ext)s'), url],
-    {stdio},
+    {stdio, env: envWithoutSecrets()},
   );
   if (r.error || r.status !== 0) {
     fs.rmSync(tempDir, {recursive: true, force: true});
@@ -138,7 +139,7 @@ export const downloadWithYtDlpProgress = (
         '-x', '--audio-format', 'm4a', '--no-playlist', '--newline', '--no-color',
         '-o', path.join(tempDir, '%(title)s.%(ext)s'), url,
       ],
-      {stdio: ['ignore', 'pipe', 'pipe']},
+      {stdio: ['ignore', 'pipe', 'pipe'], env: envWithoutSecrets()},
     );
   } catch (error) {
     finish({ok: false, stderr: error instanceof Error ? error.message : String(error)});

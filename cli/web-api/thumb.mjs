@@ -8,6 +8,7 @@ import {resolveSafePath} from './sandbox.mjs';
 import {sourceIdentity} from '../image-identity.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createProcessCompletion} from './process-lifecycle.mjs';
+import {envWithoutSecrets} from '../secret-env.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const defaultCacheDir = (runtime) => runtime.thumbCacheRoot;
@@ -123,6 +124,7 @@ export const runFfmpeg = (source, destination, width, {spawn: spawnImpl = spawn,
   withFfmpegSlot(() => new Promise((resolve) => {
     if (signal?.aborted) { resolve(false); return; }
     const child = spawnImpl(runtime.ffmpeg, ffmpegArgs(source, destination, width), {
+      env: envWithoutSecrets(),
       stdio: 'ignore',
       detached: true,
       ...(process.platform === 'win32' ? {windowsHide: true} : {}),

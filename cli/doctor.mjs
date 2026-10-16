@@ -9,6 +9,7 @@ import path from 'node:path';
 import {term} from './term.mjs';
 import {FIXES} from './dependencies.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {envWithoutSecrets} from './secret-env.mjs';
 
 export {FIXES} from './dependencies.mjs';
 
@@ -33,7 +34,7 @@ const nodeCheck = () => {
 };
 
 const commandCheck = (label, cmd, args, {versionRegex, fix}) => {
-  const r = spawnSync(cmd, args, {encoding: 'utf8', timeout: PROBE_TIMEOUT_MS});
+  const r = spawnSync(cmd, args, {encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, env: envWithoutSecrets()});
   if (r.error || r.status !== 0) {
     return {id: label, ok: false, line: `${label} 未找到`, fix};
   }
@@ -82,7 +83,7 @@ const commandCheckAsync = (label, cmd, args, {versionRegex, fix, optional = fals
   };
 
   try {
-    child = spawnImpl(cmd, args, {stdio: ['ignore', 'pipe', 'pipe']});
+    child = spawnImpl(cmd, args, {stdio: ['ignore', 'pipe', 'pipe'], env: envWithoutSecrets()});
     child.stdout?.on('data', (chunk) => { stdout += chunk; });
     child.stderr?.on('data', (chunk) => { stderr += chunk; });
     child.once('error', fail);
@@ -131,7 +132,7 @@ const rendererCheck = (runtime) => {
 
 /** 可选依赖 yt-dlp:仅提示,从不判定失败(只有 fetch 下载音频用到,用户自装). */
 const ytDlpCheck = (runtime) => {
-  const r = spawnSync(runtime.ytDlp, ['--version'], {encoding: 'utf8', timeout: PROBE_TIMEOUT_MS});
+  const r = spawnSync(runtime.ytDlp, ['--version'], {encoding: 'utf8', timeout: PROBE_TIMEOUT_MS, env: envWithoutSecrets()});
   if (!r.error && r.status === 0) {
     return {id: 'yt-dlp', ok: true, optional: true, line: `yt-dlp v${(r.stdout ?? '').trim()}`};
   }

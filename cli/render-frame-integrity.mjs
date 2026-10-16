@@ -1,4 +1,5 @@
 import {spawn} from 'node:child_process';
+import {envWithoutSecrets} from './secret-env.mjs';
 
 const FRAME_BYTES = 64 * 64;
 
@@ -33,7 +34,7 @@ export const scanSingleFrameDiscontinuities = async (videoPath, ffmpegPath) => {
     '-hide_banner', '-loglevel', 'error', '-i', videoPath,
     '-map', '0:v:0', '-vf', 'scale=64:64,format=gray',
     '-fps_mode', 'passthrough', '-f', 'rawvideo', '-',
-  ], {stdio: ['ignore', 'pipe', 'pipe']});
+  ], {env: envWithoutSecrets(), stdio: ['ignore', 'pipe', 'pipe']});
   const exit = new Promise((resolve) => {
     child.once('error', (error) => resolve({error}));
     child.once('close', (code) => resolve({code}));

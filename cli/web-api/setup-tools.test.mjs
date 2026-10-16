@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {EventEmitter} from 'node:events';
 import path from 'node:path';
 import test from 'node:test';
 
@@ -27,4 +28,24 @@ test('prependToolPaths adds the user tool bin once', () => {
   assert.equal(env.PATH, expected);
   prependToolPaths(env, {platform: 'darwin', home: '/Users/me'});
   assert.equal(env.PATH, expected);
+});
+
+test('tool installer excludes the caption key from its child', async () => {
+  let childEnv;
+  const result = await installTool({
+    tool: 'ffmpeg',
+    platform: 'darwin',
+    env: {PATH: '/usr/bin', DEEPSEEK_API_KEY: 'secret'},
+    spawnImpl: (_command, _args, options) => {
+      childEnv = options.env;
+      const child = new EventEmitter();
+      child.stdout = new EventEmitter();
+      child.stderr = new EventEmitter();
+      queueMicrotask(() => child.emit('close', 0));
+      return child;
+    },
+  });
+  assert.equal(result.status, 200);
+  assert.equal(childEnv.DEEPSEEK_API_KEY, undefined);
+  assert.equal(childEnv.PATH, '/usr/bin');
 });

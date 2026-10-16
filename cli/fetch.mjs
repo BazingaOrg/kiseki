@@ -22,6 +22,7 @@ import {checkYtDlp, downloadWithYtDlpProgress, searchYtDlp} from './ytdlp.mjs';
 import {acquireCommandLease, createTaskLeaseManager} from './task-lease.mjs';
 import {installAtomicOutputs} from './atomic-output.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {envWithoutSecrets} from './secret-env.mjs';
 import {normalizeAmllCandidate, parseAmllLyrics} from './amll.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
@@ -117,7 +118,7 @@ export const amllRawLyricsUrls = (filename) => {
 const amllRawCurlArgs = (url) => ['-sS', '--max-time', '20', '--max-filesize', String(AMLL_TTML_MAX_BYTES), '-w', '\n%{http_code}', url];
 
 export const requestAmllRawLyrics = (url, runtime = sourceRuntimeLayout) =>
-  spawnSync(runtime.curl, amllRawCurlArgs(url), {encoding: 'utf8', maxBuffer: AMLL_RAW_STDOUT_MAX_BUFFER});
+  spawnSync(runtime.curl, amllRawCurlArgs(url), {encoding: 'utf8', maxBuffer: AMLL_RAW_STDOUT_MAX_BUFFER, env: envWithoutSecrets()});
 
 export const readAmllRawTtml = async (filename, request) => {
   for (const url of amllRawLyricsUrls(filename)) {
@@ -318,7 +319,7 @@ export const probeAudio = (file, spawn = spawnSync, runtime = sourceRuntimeLayou
   const r = spawn(
     runtime.ffprobe,
     ['-v', 'error', '-show_entries', 'format=duration:format_tags=title,artist', '-of', 'json', file],
-    {encoding: 'utf8'},
+    {encoding: 'utf8', env: envWithoutSecrets()},
   );
   if (r.error || r.status !== 0) return {};
   try {
@@ -346,7 +347,7 @@ const createLrclibFetch = (runtime = sourceRuntimeLayout) => (pathname, params) 
   const r = spawnSync(
     runtime.curl,
     ['-sS', '--max-time', '20', '-H', `User-Agent: ${LRCLIB_UA}`, '-w', '\n%{http_code}', url.toString()],
-    {encoding: 'utf8'},
+    {encoding: 'utf8', env: envWithoutSecrets()},
   );
   if (r.error?.code === 'ENOENT') throw new Error('找不到命令 curl');
   const parsed = parseCurlResponse(r.stdout);
@@ -376,7 +377,7 @@ const createAmllFetch = (runtime = sourceRuntimeLayout) => (pathname, params = {
   for (const [key, value] of Object.entries(params)) {
     if (value !== null && value !== undefined) url.searchParams.set(key, value);
   }
-  const result = spawnSync(runtime.curl, ['-sS', '--max-time', '20', '--max-filesize', '1048576', '-w', '\n%{http_code}', url.toString()], {encoding: 'utf8'});
+  const result = spawnSync(runtime.curl, ['-sS', '--max-time', '20', '--max-filesize', '1048576', '-w', '\n%{http_code}', url.toString()], {encoding: 'utf8', env: envWithoutSecrets()});
   if (result.error?.code === 'ENOENT') throw new Error('找不到命令 curl');
   const parsed = parseCurlResponse(result.stdout);
   if (result.error || result.status !== 0 || !parsed) throw new Error((result.stderr ?? '').trim().split('\n').pop() || '请求失败');
@@ -554,7 +555,7 @@ export const lyricsFlow = async (
   if (usingDefaultLrclib && runtime !== sourceRuntimeLayout) fetcher = createLrclibFetch(runtime);
   if (amllFetcher === undefined && usingDefaultLrclib) amllFetcher = runtime === sourceRuntimeLayout ? amllFetch : createAmllFetch(runtime);
   let lrclibUnreachable = false;
-  if (usingDefaultLrclib && !lrclibProbeOk(spawnSync(runtime.curl, lrclibProbeArgs(), {encoding: 'utf8'}))) {
+  if (usingDefaultLrclib && !lrclibProbeOk(spawnSync(runtime.curl, lrclibProbeArgs(), {encoding: 'utf8', env: envWithoutSecrets()}))) {
     lrclibUnreachable = true;
     fetcher = null;
   }

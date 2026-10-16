@@ -35,6 +35,7 @@ import {canReach, LRCLIB_REACH_URL, YOUTUBE_REACH_URL} from '../reach.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
 import {createNodeCommandResolver} from '../command-resolver.mjs';
 import {createProcessCompletion} from './process-lifecycle.mjs';
+import {envWithoutSecrets} from '../secret-env.mjs';
 
 const LRCLIB_BASE = 'https://lrclib.net/api';
 const LYRICS_UNREACHABLE = '连不上歌词服务，这次没能在线查找。可以把 .lrc 放进素材夹。';
@@ -71,7 +72,7 @@ export const runProcess = (command, args, {timeout = DEFAULT_TIMEOUT_MS, spawnIm
         stdio: ['ignore', 'pipe', 'pipe'],
         detached: true,
         ...(process.platform === 'win32' ? {windowsHide: true} : {}),
-        ...(env ? {env} : {}),
+        env: envWithoutSecrets(env ?? process.env),
       });
     } catch {
       resolve({status: null, stdout: '', stderr: ''});

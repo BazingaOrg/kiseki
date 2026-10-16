@@ -56,6 +56,27 @@ test('desktop ffmpeg download writes both tools into app data', async () => {
   fs.rmSync(tools, {recursive: true, force: true});
 });
 
+test('portable tool probes exclude the caption key', async () => {
+  const tools = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-tools-'));
+  const previous = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = 'secret';
+  try {
+    const result = await installPortableTool({
+      tool: 'ffmpeg', platform: 'darwin', arch: 'arm64', toolsRoot: tools,
+      fetchImpl: async () => ({ok: true, status: 200, body: Buffer.from('binary')}),
+      spawnImpl: (command, _args, options) => {
+        assert.equal(options.env.DEEPSEEK_API_KEY, undefined);
+        return closeOk(String(command).endsWith('ffprobe') ? 'ffprobe version 8.1' : 'ffmpeg version 8.1');
+      },
+    });
+    assert.equal(result.status, 200);
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+    fs.rmSync(tools, {recursive: true, force: true});
+  }
+});
+
 test('a gzip ffmpeg download is unpacked before the version check', async () => {
   const tools = fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-tools-'));
   const result = await installTool({

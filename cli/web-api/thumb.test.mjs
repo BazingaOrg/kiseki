@@ -269,6 +269,26 @@ test('卡死的 ffmpeg 超时后等待 close 与树消失再失败返回', async
   assert.equal(state.signals, 1);
 });
 
+test('thumbnail ffmpeg does not inherit the caption key', async () => {
+  const previous = process.env.DEEPSEEK_API_KEY;
+  process.env.DEEPSEEK_API_KEY = 'secret';
+  try {
+    const child = new EventEmitter();
+    child.pid = 123456;
+    const pending = runFfmpeg('/src.jpg', '/dst.jpg', 400, {
+      spawn: (_command, _args, options) => {
+        assert.equal(options.env.DEEPSEEK_API_KEY, undefined);
+        queueMicrotask(() => child.emit('close', 0));
+        return child;
+      },
+    });
+    assert.equal(await pending, false);
+  } finally {
+    if (previous === undefined) delete process.env.DEEPSEEK_API_KEY;
+    else process.env.DEEPSEEK_API_KEY = previous;
+  }
+});
+
 test('pruner 冷启动校准真实数量,之后只在计数超限时才扫盘修剪', () => {
   const dir = makeTempRoot();
   const limit = 5;

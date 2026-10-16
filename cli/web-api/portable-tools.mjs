@@ -8,6 +8,7 @@ import zlib from 'node:zlib';
 
 import {findBundledPython, packagedToolsRoot, relocateVirtualenv} from '../desktop-runtime.mjs';
 import {sourceRuntimeLayout} from '../runtime-layout.mjs';
+import {envWithoutSecrets} from '../secret-env.mjs';
 
 const UV_VERSION = '0.12.13';
 const FFMPEG_TAG = 'n8.1.2-1';
@@ -84,7 +85,7 @@ const runChild = (spawnImpl, command, args, {env = process.env, timeoutMs = 1800
   };
   let child;
   try {
-    child = spawnImpl(command, args, {env, stdio: ['ignore', 'pipe', 'pipe']});
+    child = spawnImpl(command, args, {env: envWithoutSecrets(env), stdio: ['ignore', 'pipe', 'pipe']});
   } catch (error) {
     resolve({code: 1, output: error instanceof Error ? error.message : '无法启动。'});
     return;

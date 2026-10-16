@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {createNodeCommandResolver} from './command-resolver.mjs';
+import {envWithoutSecrets} from './secret-env.mjs';
 
 export const ANALYSIS_CACHE_VERSION = 2;
 
@@ -38,7 +39,7 @@ export const readAnalysisFingerprint = (analyzer, spawn = spawnSync, runtime = s
   const result = spawn(
     command.executable,
     command.args,
-    {encoding: 'utf8', env: command.env, stdio: command.stdio},
+    {encoding: 'utf8', env: envWithoutSecrets(command.env), stdio: command.stdio},
   );
   if (result.error || result.status !== 0) return null;
   const value = parseRuntimeFingerprint(result.stdout);

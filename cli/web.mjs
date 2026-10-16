@@ -16,6 +16,7 @@ import {createImmutableRootController} from './root-controller.mjs';
 import {term} from './term.mjs';
 import {shouldOpenWebBrowser} from './desktop-runtime.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
+import {envWithoutSecrets} from './secret-env.mjs';
 
 /** 尝试用系统默认程序打开 URL;跨平台命令都试了仍失败也不报错,只提示手动打开. */
 const tryOpenBrowser = (url) => {
@@ -23,8 +24,8 @@ const tryOpenBrowser = (url) => {
   const cmd = platform === 'darwin' ? 'open' : platform === 'win32' ? 'start' : 'xdg-open';
   try {
     const child = platform === 'win32'
-      ? spawn('cmd', ['/c', 'start', '""', url], {stdio: 'ignore', detached: true})
-      : spawn(cmd, [url], {stdio: 'ignore', detached: true});
+      ? spawn('cmd', ['/c', 'start', '""', url], {env: envWithoutSecrets(), stdio: 'ignore', detached: true})
+      : spawn(cmd, [url], {env: envWithoutSecrets(), stdio: 'ignore', detached: true});
     child.on('error', () => {
       term.detail(`未能自动打开浏览器,请手动访问: ${url}`);
     });

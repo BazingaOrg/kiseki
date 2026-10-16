@@ -2,6 +2,7 @@ import {spawn} from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 
+import {envWithoutSecrets} from '../secret-env.mjs';
 import {installPortableTool} from './portable-tools.mjs';
 
 export const toolCommand = (tool, platform = process.platform) => {
@@ -67,7 +68,7 @@ export const installTool = ({
       resolve(result);
     };
     try {
-      child = spawnImpl(spec.command, spec.args, {env, stdio: ['ignore', 'pipe', 'pipe']});
+      child = spawnImpl(spec.command, spec.args, {env: envWithoutSecrets(env), stdio: ['ignore', 'pipe', 'pipe']});
     } catch (error) {
       finish({status: 500, body: {error: error instanceof Error ? error.message : '无法启动安装。'}});
       return;

@@ -1,4 +1,5 @@
 import {spawn as spawnActual} from 'node:child_process';
+import {envWithoutSecrets} from '../secret-env.mjs';
 
 import {
   executorIdentity,
@@ -19,10 +20,10 @@ const mergeDescendants = (left, right) => {
   return [...merged.values()];
 };
 
-const defaultWindowsTerminate = (pid) => new Promise((resolve) => {
+export const terminateWindowsProcess = (pid, spawnImpl = spawnActual) => new Promise((resolve) => {
   let child;
   try {
-    child = spawnActual('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {stdio: 'ignore', windowsHide: true});
+    child = spawnImpl('taskkill.exe', ['/PID', String(pid), '/T', '/F'], {env: envWithoutSecrets(), stdio: 'ignore', windowsHide: true});
   } catch {
     resolve(false);
     return;
@@ -39,7 +40,7 @@ const defaultLifecycle = {
   absent: (executor, descendants, {platform}) => executorTreeAbsent(executor, descendants, {platform}),
   freeze: (executor, {platform}) => freezeExecutorTree(executor, {platform, snapshot: () => snapshotExecutorDescendants(executor.pid, {platform})}),
   resume: (executor, frozen, {platform}) => resumeFrozenExecutorTree(executor, frozen, {platform}),
-  terminateWindows: defaultWindowsTerminate,
+  terminateWindows: terminateWindowsProcess,
 };
 
 export const createProcessCompletion = ({pid, platform = process.platform, lifecycle = defaultLifecycle, pollMs = 25, settle}) => {
