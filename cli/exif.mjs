@@ -5,6 +5,8 @@
 
 import exifr from 'exifr';
 
+import {detectSourceLook} from '../film/src/index.mjs';
+
 /** @typedef {{camera?: string, lens?: string, params?: string[], datetime?: string}} FormattedExif */
 
 const clean = (value) => {
@@ -181,4 +183,40 @@ export const readPhotoExif = async (filePath) => {
 export const extractFormattedExif = async (filePath) => {
   const {formatted} = await readPhotoExif(filePath);
   return formatted;
+};
+
+const FILM_SOURCE_PARSE_OPTIONS = {
+  gps: false,
+  makerNote: true,
+  pick: ['MakerNote', 'DateTimeOriginal', 'CreateDate'],
+};
+
+const pad2 = (value) => String(value).padStart(2, '0');
+
+export const formatFilmDate = (value) => {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
+  }
+  const s = clean(value);
+  const m = s?.match(/^(\d{4})[:\-/.](\d{2})[:\-/.](\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+};
+
+export const readFilmSource = async (filePath, {parse = (file, options) => exifr.parse(file, options)} = {}) => {
+  let raw = null;
+  try {
+    raw = await parse(filePath, FILM_SOURCE_PARSE_OPTIONS);
+  } catch {
+    raw = null;
+  }
+  if (!raw || typeof raw !== 'object') return {sourceLook: null, date: null};
+  let sourceLook = null;
+  try {
+    const makerNote = raw.makerNote ?? raw.MakerNote;
+    sourceLook = makerNote instanceof Uint8Array ? detectSourceLook(makerNote) : null;
+  } catch {
+    sourceLook = null;
+  }
+  return {sourceLook, date: formatFilmDate(raw.DateTimeOriginal ?? raw.CreateDate)};
 };

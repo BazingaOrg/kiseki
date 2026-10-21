@@ -1,6 +1,7 @@
 import React from 'react';
-import {AbsoluteFill, Easing, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Easing, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {FramedPhoto} from './FramedPhoto';
+import {FilmImg} from './film';
 import {hashString} from './motion';
 import {openingRecapFrameBounds, openingRecapFrameState} from './openingRecapTiming';
 import {getVisualScale, type Palette} from './theme';
@@ -27,8 +28,9 @@ const PolaroidCard: React.FC<{
       boxShadow: '0 14px 36px rgba(10, 12, 16, 0.26)',
     }}
   >
-    <Img
+    <FilmImg
       src={toStatic(clip.src)}
+      film={clip.film}
       style={{display: 'block', maxWidth, maxHeight, objectFit: 'contain', background: '#000'}}
     />
   </div>
@@ -104,11 +106,11 @@ export const OpeningRecap: React.FC<{
                 <FramedPhoto
                   key={clip.src}
                   src={toStatic(clip.src)}
+                  film={clip.film}
                   maxWidth={cellWidth}
                   maxHeight={cellHeight}
                   renderScale={scale}
                   palette={palette}
-                  filter={clip.filter ?? meta.filter}
                 />
               )}
             </div>
@@ -153,9 +155,10 @@ export const OpeningRecap: React.FC<{
     return (
       <AbsoluteFill style={{backgroundColor: meta.background, opacity: recapOpacity}}>
         <AbsoluteFill style={{...motionStyle, justifyContent: 'center', alignItems: 'center'}}>
-          <Img
+          <FilmImg
             key={clip.src}
             src={toStatic(clip.src)}
+            film={clip.film}
             style={{
               display: 'block',
               maxWidth: meta.width * mainScale,
@@ -183,9 +186,10 @@ export const OpeningRecap: React.FC<{
           {strip.map((item) => {
             const current = item === clip;
             return (
-              <Img
+              <FilmImg
                 key={item.src}
                 src={toStatic(item.src)}
+                film={item.film}
                 style={{
                   display: 'block',
                   height: stripHeight * 0.72,
@@ -213,7 +217,6 @@ export const OpeningRecap: React.FC<{
           maxHeight={meta.height * photoScale}
           renderScale={scale}
           palette={palette}
-          filter={clip.filter ?? meta.filter}
         />
       </div>
     </AbsoluteFill>

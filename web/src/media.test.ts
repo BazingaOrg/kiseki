@@ -63,20 +63,12 @@ test('photo controls expose one chronological toggle and no photo rename path', 
   assert.match(css, /box-shadow: 0 8px 24px rgba\(24, 22, 18, 0\.08\)/);
 });
 
-test('make output uses tabs and the filter select has a project-styled wrapper', async () => {
+test('make output uses tabs', async () => {
   const make = await readFile(new URL('./Make.tsx', import.meta.url), 'utf8');
-  const css = await readFile(new URL('./App.css', import.meta.url), 'utf8');
   assert.match(make, /role="tablist" aria-label="输出方式"/);
   assert.match(make, /role="tabpanel" aria-labelledby=\{`make-output-tab-\$\{selectedTab\.kind\}`\}/);
-  assert.match(make, /className="make-filter-picker"/);
-  assert.match(make, /role="listbox" aria-label="滤镜选项"/);
   assert.match(make, /const \[expanded, setExpanded\] = useState\(true\)/);
-  assert.match(make, /setMenuPlacement\(placeTop \? 'top' : 'bottom'\)/);
-  assert.match(make, /className=\{`make-filter-menu make-filter-menu-\$\{menuPlacement\}`\}/);
   assert.doesNotMatch(make, /输出倍率/);
-  assert.match(css, /\.make-filter-picker\s*\{/);
-  assert.match(css, /\.make-filter-option\s*\{/);
-  assert.match(css, /\.make-filter-menu-top\s*\{/);
 });
 
 test('theme mode has system, light and dark choices with a restrained transition', async () => {

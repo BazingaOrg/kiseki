@@ -1,32 +1,38 @@
+import {ROLL_IDS, isRollId} from '../film/src/index.mjs';
 import {outroTextError} from './branding.mjs';
-import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 import {TEMPLATE_IDS, normalizeTemplateId} from './templates.mjs';
 
 export class CliError extends Error {}
 
-const parseFilterIntensity = (raw, flagLabel) => {
+const parseFilmRoll = (argv, i) => {
+  if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
+    throw new CliError(`--film 需要胶卷 id 或 none(可选: ${ROLL_IDS.join(', ')})`);
+  }
+  const raw = argv[i + 1];
+  if (raw === 'none') return null;
+  if (!isRollId(raw)) throw new CliError(`--film 未知胶卷 id: ${raw}(可选: none, ${ROLL_IDS.join(', ')})`);
+  return raw;
+};
+
+const parseFilmStrength = (argv, i) => {
+  if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
+    throw new CliError('--film-strength 需要 0–1 之间的数字');
+  }
+  const raw = argv[i + 1];
   const value = Number(raw);
   if (!/^(?:\d+(?:\.\d+)?|\.\d+)$/.test(raw) || !Number.isFinite(value) || value < 0 || value > 1) {
-    throw new CliError(`${flagLabel} 需要 0–1 之间的数字,收到 ${raw}`);
+    throw new CliError(`--film-strength 需要 0–1 之间的数字,收到 ${raw}`);
   }
   return value;
 };
 
-const parseFilterId = (raw) => {
-  const id = normalizeFilterId(raw);
-  if (!id) {
-    throw new CliError(`--filter 未知滤镜 id: ${raw}(可选: ${FILTER_IDS.join(', ')})`);
-  }
-  return id;
-};
-
-const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --signature-name <name>  --photo-caption|--use-photo-captions  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --filter <id>  --filter-intensity <0-1>';
+const STILL_OPTIONS = '-o <out.png|dir>  --exif  --sign  --signature-name <name>  --photo-caption|--use-photo-captions  --dark  --portrait|--square  --skip-existing  --scale <1-4>(默认 2)  --film <roll-id|none>  --film-strength <0-1>';
 export const STILL_USAGE = `用法: kiseki still <photo|folder> ${STILL_OPTIONS}`;
 
 export const USAGE =
   '用法:\n' +
   '  kiseki                                    不带参数进入常驻菜单(仅交互终端)\n' +
-  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption|--use-photo-captions] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--filter <id>] [--filter-intensity <0-1>] [--template <id>] [--lyrics-mode original|bilingual|none] [--outro-text <text>] [--signature-name <name>]  渲染相册视频(默认命令)\n' +
+  '  kiseki <folder> [-o out.mp4] [--exif] [--sign] [--photo-caption|--use-photo-captions] [--dark] [--portrait|--square] [--draft] [--trim auto|full|秒数] [--film <roll-id|none>] [--film-strength <0-1>] [--template <id>] [--lyrics-mode original|bilingual|none] [--outro-text <text>] [--signature-name <name>]  渲染相册视频(默认命令)\n' +
   '  kiseki still <photo|folder> [选项]         按视频同款视觉导出静态图\n' +
   '  kiseki captions <folder>                 主动补齐素材照片的图片旁白\n' +
   '  kiseki doctor                             检查依赖是否就绪\n' +
@@ -40,9 +46,7 @@ export const USAGE =
   '若文件夹名恰好叫 doctor / lyrics / captions / still / fetch / web / help,用路径前缀转义,如 kiseki ./still';
 
 const parseRenderArgs = (argv) => {
-  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
-  let filterId = null;
-  let filterIntensity = null;
+  const args = {command: 'render', folder: null, output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, template: null};
   for (let i = 0; i < argv.length; i++) {
     if (argv[i] === '-o' || argv[i] === '--output') {
       if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
@@ -68,11 +72,12 @@ const parseRenderArgs = (argv) => {
       args.square = true;
     } else if (argv[i] === '--draft') {
       args.draft = true;
-    } else if (argv[i] === '--filter') {
-      if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
-        throw new CliError(`--filter 需要滤镜 id(可选: ${FILTER_IDS.join(', ')})`);
-      }
-      filterId = parseFilterId(argv[++i]);
+    } else if (argv[i] === '--film') {
+      args.film = parseFilmRoll(argv, i);
+      i += 1;
+    } else if (argv[i] === '--film-strength') {
+      args.filmStrength = parseFilmStrength(argv, i);
+      i += 1;
     } else if (argv[i] === '--lyrics-mode') {
       const mode = argv[++i];
       if (!['original', 'bilingual', 'none'].includes(mode)) throw new CliError('--lyrics-mode 必须是 original、bilingual 或 none');
@@ -86,11 +91,6 @@ const parseRenderArgs = (argv) => {
         throw new CliError(`--template 未知模板 id: ${argv[i]}(可选: ${TEMPLATE_IDS.join(', ')})`);
       }
       args.template = id;
-    } else if (argv[i] === '--filter-intensity') {
-      if (i + 1 >= argv.length || argv[i + 1].startsWith('-')) {
-        throw new CliError('--filter-intensity 需要 0–1 之间的数字');
-      }
-      filterIntensity = parseFilterIntensity(argv[++i], '--filter-intensity');
     } else if (argv[i] === '--outro-text') {
       if (i + 1 >= argv.length) throw new CliError('--outro-text 需要片尾文字，留空表示不显示');
       const value = argv[++i];
@@ -126,10 +126,6 @@ const parseRenderArgs = (argv) => {
     throw new CliError(USAGE);
   }
   if (args.portrait && args.square) throw new CliError('--portrait 与 --square 不能同时使用');
-  if (filterIntensity !== null && filterId === null) {
-    throw new CliError('--filter-intensity 需要搭配 --filter <id> 使用');
-  }
-  if (filterId !== null) args.filter = {id: filterId, ...(filterIntensity !== null ? {intensity: filterIntensity} : {})};
   return args;
 };
 
@@ -203,11 +199,8 @@ const parseStillArgs = (rest) => {
     square: false,
     skipExisting: false,
     scale: 2,
-    filter: null,
     photoCaption: false,
   };
-  let filterId = null;
-  let filterIntensity = null;
   for (let i = 0; i < rest.length; i++) {
     const token = rest[i];
     if (token === '-o' || token === '--output') {
@@ -248,16 +241,12 @@ const parseStillArgs = (rest) => {
         throw new CliError(`--scale 必须是 1–4 的整数,收到 ${raw}`);
       }
       args.scale = Number(raw);
-    } else if (token === '--filter') {
-      if (i + 1 >= rest.length || rest[i + 1].startsWith('-')) {
-        throw new CliError(`--filter 需要滤镜 id(可选: ${FILTER_IDS.join(', ')})`);
-      }
-      filterId = parseFilterId(rest[++i]);
-    } else if (token === '--filter-intensity') {
-      if (i + 1 >= rest.length || rest[i + 1].startsWith('-')) {
-        throw new CliError('--filter-intensity 需要 0–1 之间的数字');
-      }
-      filterIntensity = parseFilterIntensity(rest[++i], '--filter-intensity');
+    } else if (token === '--film') {
+      args.film = parseFilmRoll(rest, i);
+      i += 1;
+    } else if (token === '--film-strength') {
+      args.filmStrength = parseFilmStrength(rest, i);
+      i += 1;
     } else if (token.startsWith('-')) {
       throw new CliError(`未知参数: ${token}\n${STILL_USAGE}`);
     } else if (!args.target) {
@@ -270,10 +259,6 @@ const parseStillArgs = (rest) => {
     throw new CliError(STILL_USAGE);
   }
   if (args.portrait && args.square) throw new CliError('--portrait 与 --square 不能同时使用');
-  if (filterIntensity !== null && filterId === null) {
-    throw new CliError('--filter-intensity 需要搭配 --filter <id> 使用');
-  }
-  if (filterId !== null) args.filter = {id: filterId, ...(filterIntensity !== null ? {intensity: filterIntensity} : {})};
   return args;
 };
 

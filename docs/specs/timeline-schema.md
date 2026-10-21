@@ -17,7 +17,7 @@
 - `background`：字符串
 - `photo_scale`：正有限数
 
-可选 `meta.sign` 是布尔值；`meta.filter` 为 `null` 或对象 `{ "id": string, "intensity"?: 0..1 }`，其中 `id` 不能空。
+可选 `meta.sign` 是布尔值。
 
 可选 `meta.trim` 必须有 `mode`（`"auto"`、`"full"` 或 `"seconds"`）、`applied`（布尔）、`full_duration` 与 `trimmed_duration`（正有限数），且后者不大于前者。可选 `meta.chapters` 必须有 `enabled`（布尔）、`day_count` 与 `card_count`（非负整数）。可选 `meta.branding` 的 `outro_text`、`signature` 为字符串，`intro` 为布尔。`meta.audio_credit` 只在渲染时注入，是片尾谢幕语下面的「歌名 · 作者」，不写回磁盘 timeline。
 
@@ -28,7 +28,7 @@
 每个 `photos[i]` 是对象，且 `start`、`end` 都是非负有限数，`end > start` 且不超过 `$.meta.duration`。
 
 - 省略 `kind` 仍按旧版照片处理。
-- `kind: "photo"` 必须有非空 `src`；可选 `transition` 是 `{ "type": "album" | "crossfade" | "cut" | "none", "duration": 非负有限数 }`，其中 `cut` 与 `none` 的 duration 必须为 0。可选 `motion` 的 type 是 `"kenburns"` 或 `"none"`，`from`、`to` 为正有限数。可选 `filter` 服从 `meta.filter` 的形状。可选 `day_mark` 仍接受字符串，当前计划不再写入。换日处对不上 1–3 秒的节拍卡时，改插入较短的 `kind: "chapter"`。磁盘 timeline 中即使出现 `caption` 也不作为旁白输入；旁白是 `--photo-caption` 控制的运行时注入字段，不是手工编辑的核心字段。
+- `kind: "photo"` 必须有非空 `src`；可选 `transition` 是 `{ "type": "album" | "crossfade" | "cut" | "none", "duration": 非负有限数 }`，其中 `cut` 与 `none` 的 duration 必须为 0。可选 `motion` 的 type 是 `"kenburns"` 或 `"none"`，`from`、`to` 为正有限数。可选 `day_mark` 仍接受字符串，当前计划不再写入。换日处对不上 1–3 秒的节拍卡时，改插入较短的 `kind: "chapter"`。磁盘 timeline 中即使出现 `caption` 也不作为旁白输入；旁白是 `--photo-caption` 控制的运行时注入字段，不是手工编辑的核心字段。
 - `kind: "chapter"` 必须有字符串 `text`。
 - 任何未知字符串 `kind` 保留并跳过其余字段校验，以兼容未来事件；这不表示旧渲染器一定理解它。
 

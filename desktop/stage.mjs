@@ -30,6 +30,7 @@ const stageNode = () => {
 };
 
 const stageProjects = () => {
+  copyTree(path.join(repo, 'film'), path.join(runtime, 'film'), new Set(['tools', 'test', 'node_modules']));
   copyTree(path.join(repo, 'cli'), path.join(runtime, 'cli'), new Set(['node_modules']));
   run('npm', ['ci', '--omit=dev'], {cwd: path.join(runtime, 'cli')});
   copyTree(path.join(repo, 'renderer'), path.join(runtime, 'renderer'), new Set(['node_modules', 'out']));

@@ -35,13 +35,12 @@ export const Photo: React.FC<{
   canvasHeight: number;
   sign?: boolean;
   signature?: SignatureData | null;
-  filter?: {id: string; intensity?: number} | null;
   /** 模板注入的照片运镜;缺省保持静态 */
   motion?: TemplateMotion;
   motionStart?: number;
   fontFamily?: FontFamily;
   captionOpacity?: number;
-}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, filter, motion, motionStart, fontFamily = 'serif', captionOpacity = 0}) => {
+}> = ({clip, backgroundColor, safeWidth, safeHeight, palette, canvasWidth, canvasHeight, sign = false, signature, motion, motionStart, fontFamily = 'serif', captionOpacity = 0}) => {
   const frame = useCurrentFrame();
   const {fps, width, height} = useVideoConfig();
   const t = frame / fps;
@@ -132,11 +131,11 @@ export const Photo: React.FC<{
       <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
         <FramedPhoto
           src={toStatic(clip.src)}
+          film={clip.film}
           maxWidth={maxWidth}
           maxHeight={maxHeight}
           renderScale={renderScale}
           palette={palette}
-          filter={filter}
         />
         <DayStamp text={clip.day_mark} scale={renderScale} fontFamily={fontFamily} />
       </div>

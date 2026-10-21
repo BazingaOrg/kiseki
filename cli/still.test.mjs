@@ -5,7 +5,8 @@ import path from 'node:path';
 import test from 'node:test';
 
 import {CliError} from './options.mjs';
-import {formatStillDiagnostics, loadStillCanvasConfig, prepareStillJobs, resolveJobs, resolveStillSignature} from './still.mjs';
+import {filmSeedFor, filmSettingsPathFor, writeFilmSettings} from './film-settings.mjs';
+import {formatStillDiagnostics, loadStillCanvasConfig, prepareStillJobs, resolveJobs, resolveStillFilms, resolveStillSignature} from './still.mjs';
 
 const fixture = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-still-'));
 
@@ -72,25 +73,6 @@ test('default and EXIF variants use separate output names', () => {
   assert.equal(path.basename(resolveJobs(photo, null, {exif: true, sign: true}).jobs[0].outPath), 'IMG-exif-sign.png');
   assert.equal(path.basename(resolveJobs(photo, null, {photoCaption: true}).jobs[0].outPath), 'IMG-caption.png');
   assert.equal(path.basename(resolveJobs(photo, null, {sign: true, photoCaption: true, dark: true}).jobs[0].outPath), 'IMG-sign-caption-dark.png');
-});
-
-test('still filter suffix is stable and never rewrites an explicit output file', () => {
-  const dir = fixture();
-  const photo = path.join(dir, 'IMG.jpg');
-  fs.writeFileSync(photo, 'x');
-  assert.equal(path.basename(resolveJobs(photo, null, {filter: {id: 'mono', intensity: 0.80}}).jobs[0].outPath), 'IMG-mono-0.8.png');
-  assert.equal(
-    resolveJobs(photo, path.join(dir, 'custom.png'), {filter: {id: 'mono', intensity: 0.8}}).jobs[0].outPath,
-    path.join(dir, 'custom.png'),
-  );
-});
-
-test('still reads an explicit project filter config for the default filename', () => {
-  const dir = fixture();
-  const photo = path.join(dir, 'IMG.jpg');
-  fs.writeFileSync(photo, 'x');
-  fs.writeFileSync(path.join(dir, 'kiseki.json'), JSON.stringify({filter: 'teal_orange', intensity: 0.80}));
-  assert.equal(path.basename(resolveJobs(photo, null).jobs[0].outPath), 'IMG-teal-orange-0.8.png');
 });
 
 test('dark variants append a final suffix for every EXIF/sign combination', () => {
@@ -170,5 +152,29 @@ test('batch rejects collisions with every portrait and square presentation combi
     fs.writeFileSync(path.join(dir, 'IMG.jpg'), 'x');
     fs.writeFileSync(path.join(dir, `IMG${suffix}.jpg`), 'x');
     assert.throws(() => resolveJobs(dir, null), /still 变体输出冲突/);
+  }
+});
+
+test('still resolves each photo film from the project film settings and command-line overrides', async () => {
+  const dir = fs.realpathSync(fixture());
+  try {
+    writeFilmSettings(filmSettingsPathFor(dir), {roll: 'classic-chrome', strength: 0.8, photos: {'b.jpg': {roll: null, strength: 1}}});
+    const jobs = ['a.jpg', 'b.jpg'].map((name) => ({src: name, absPath: path.join(dir, name), outPath: path.join(dir, 'output', 'stills', `${name}.png`)}));
+    const calls = [];
+    const extractFilmSource = async (absPath) => {
+      calls.push(absPath);
+      return {sourceLook: null, date: '2026-10-03'};
+    };
+    const films = await resolveStillFilms(jobs, {projectRoot: dir, extractFilmSource});
+    assert.deepEqual(calls, [path.join(dir, 'a.jpg')]);
+    assert.deepEqual(films.get(path.join(dir, 'a.jpg')), {roll: 'classic-chrome', strength: 0.8, sourceLook: null, date: '2026-10-03', seed: filmSeedFor('a.jpg')});
+    assert.equal(films.has(path.join(dir, 'b.jpg')), false);
+    const overridden = await resolveStillFilms(jobs, {projectRoot: dir, film: 'gold-200', filmStrength: 0.5, extractFilmSource});
+    assert.equal(overridden.get(path.join(dir, 'a.jpg')).roll, 'gold-200');
+    assert.equal(overridden.get(path.join(dir, 'a.jpg')).strength, 0.5);
+    const none = await resolveStillFilms(jobs, {projectRoot: dir, film: null, extractFilmSource});
+    assert.equal(none.size, 0);
+  } finally {
+    fs.rmSync(dir, {recursive: true, force: true});
   }
 });

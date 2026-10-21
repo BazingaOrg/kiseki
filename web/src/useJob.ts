@@ -19,8 +19,6 @@ export interface JobOptions {
   sign: boolean;
   dark: boolean;
   format: 'landscape' | 'portrait' | 'square';
-  filter: string | null;
-  filterIntensity: number | null;
   /** 仅 render */
   draft?: boolean;
   /** 仅 render */

@@ -235,6 +235,25 @@ test('caption route rejects a non-directory folder before generation', async () 
   } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
 });
 
+test('film route requires a token, stays in the sandbox, and returns normalized settings', async () => {
+  const root = fs.realpathSync(makeTempRoot());
+  fs.writeFileSync(path.join(root, 'photo.jpg'), 'image');
+  const {server, token} = createTestGalleryServer(root, {
+    filmDeps: {leaseManager: {acquire: () => ({}), release: () => true}},
+  });
+  const port = await listen(server);
+  try {
+    assert.equal((await postJson(port, '/api/film', {folder: root, roll: 'velvia'})).status, 403);
+    assert.equal((await postJson(port, '/api/film', {folder: path.dirname(root), roll: 'velvia'}, {'X-Kiseki-Token': token})).status, 403);
+    assert.equal((await postJson(port, '/api/film', {folder: path.join(root, 'photo.jpg'), roll: 'velvia'}, {'X-Kiseki-Token': token})).status, 400);
+    const unknown = await postJson(port, '/api/film', {folder: root, roll: 'kodachrome'}, {'X-Kiseki-Token': token});
+    assert.equal(unknown.status, 400);
+    const result = await postJson(port, '/api/film', {folder: root, roll: 'classic-chrome', strength: 0.5, photo: {assetId: 'photo:photo.jpg', roll: 'acros', strength: 1}}, {'X-Kiseki-Token': token});
+    assert.equal(result.status, 200);
+    assert.deepEqual(result.body, {version: 1, roll: 'classic-chrome', strength: 0.5, photos: {'photo.jpg': {roll: 'acros', strength: 1}}});
+  } finally { server.close(); fs.rmSync(root, {recursive: true, force: true}); }
+});
+
 test('bulk caption clear requires a token and only targets the selected project', async () => {
   const root = fs.realpathSync(makeTempRoot());
   const {server, token} = createTestGalleryServer(root, {

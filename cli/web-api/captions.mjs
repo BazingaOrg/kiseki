@@ -18,7 +18,7 @@ export class CaptionRequestError extends Error {
 
 const inside = (root, target) => target === root || target.startsWith(root + path.sep);
 
-const canonicalProject = (folder) => {
+export const canonicalProject = (folder) => {
   if (typeof folder !== 'string' || !folder || folder.includes('\0')) throw new CaptionRequestError(403, '路径越界或无效');
   let stat;
   try { stat = fs.lstatSync(folder); } catch { throw new CaptionRequestError(400, 'folder 不是一个存在的目录'); }
@@ -30,7 +30,7 @@ const canonicalProject = (folder) => {
   return real;
 };
 
-const assertCanonicalPath = (root, target, {file = false, allowMissing = false, message}) => {
+export const assertCanonicalPath = (root, target, {file = false, allowMissing = false, message}) => {
   const resolved = path.resolve(target);
   if (!inside(root, resolved)) throw new CaptionRequestError(403, message);
   const relative = path.relative(root, resolved);

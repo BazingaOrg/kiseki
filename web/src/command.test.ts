@@ -17,8 +17,6 @@ test('render: 默认选项保留 balanced 诊断环境变量', () => {
     sign: false,
     dark: false,
     format: 'landscape',
-    filter: null,
-    filterIntensity: null,
     draft: false,
     trim: null,
     speed: 'balanced',
@@ -32,15 +30,13 @@ test('render: 全部选项开启,精确匹配整串(含 env 前缀)', () => {
     sign: true,
     dark: true,
     format: 'square',
-    filter: 'faded',
-    filterIntensity: 0.42,
     draft: true,
     trim: 'auto',
     speed: 'full',
   };
   assert.equal(
     equivalentCommand('render', '/f', options),
-    'KISEKI_RENDER_SPEED=full KISEKI_CONCURRENCY=90% kiseki /f --exif --sign --dark --square --filter faded --filter-intensity 0.42 --draft --trim auto',
+    'KISEKI_RENDER_SPEED=full KISEKI_CONCURRENCY=90% kiseki /f --exif --sign --dark --square --draft --trim auto',
   );
 });
 
@@ -85,7 +81,7 @@ test('同源断言:equivalentCommand 与直接调用 buildJobArgv + buildJobEnv 
   const cases: Array<[('render' | 'still'), string, Record<string, unknown>]> = [
     ['render', '/f', {}],
     ['render', '/f', {exif: true, format: 'portrait', speed: 'saver'}],
-    ['still', '/f', {scale: 3, filter: 'mono', filterIntensity: 0.2}],
+    ['still', '/f', {scale: 3}],
     ['still', '/Users/me/My Photos', {}],
   ];
   for (const [kind, folder, options] of cases) {

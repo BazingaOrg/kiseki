@@ -23,7 +23,7 @@ import {
 } from './analysis-cache.mjs';
 import {
   computeInputHash, copyLegacyJson, copyLegacyMetadata, ensureProjectDirs, hasExplicitTrimConfig,
-  readFilterConfig, readTrimPreference, resolveProjectPaths, scanFolder, scanFolderLoose,
+  readTrimPreference, resolveProjectPaths, scanFolder,
 } from './project.mjs';
 import {runDoctor} from './doctor.mjs';
 import {offerFetch, runFetch} from './fetch.mjs';
@@ -99,7 +99,7 @@ export const runCommandFromArgv = async (
     return 0;
   }
 
-  const {folder: folderArg, output, exif, sign, photoCaption, photoCaptionMode, dark, portrait, square, draft, trim, filter, template, lyricsMode, outroText, signatureName} = parsed;
+  const {folder: folderArg, output, exif, sign, photoCaption, photoCaptionMode, dark, portrait, square, draft, trim, template, lyricsMode, outroText, signatureName, film, filmStrength} = parsed;
   const folder = path.resolve(folderArg);
   if (!fs.existsSync(folder)) throw new CliError(`找不到路径: ${folder}`);
   if (!fs.statSync(folder).isDirectory()) {
@@ -115,13 +115,9 @@ export const runCommandFromArgv = async (
 
   // Claim before offerFetch: that interactive helper can download audio or
   // persist lyrics, so an inherited web lease must be authenticated first.
-  // The loose scan is read-only and lets us compute the exact default output
-  // name even when fetch is about to supply a currently missing audio file.
-  const preflight = scanFolderLoose(folder);
   if (photoCaption && photoCaptionMode !== 'existing') requireCaptionApiKey();
   const outputPath = resolveRenderOutputPath({
-    folder, output, exif, sign, photoCaption, dark, portrait, square, draft, filter, template, lyricsMode,
-    filterConfig: readFilterConfig(folder), photoNames: preflight.photos,
+    folder, output, exif, sign, photoCaption, dark, portrait, square, draft, template, lyricsMode,
   });
   const project = resolveProjectPaths(folder, outputPath);
   // An inherited job must prove it owns the exact final output before any
@@ -375,8 +371,8 @@ export const runCommandFromArgv = async (
       ...(portrait ? ['--portrait'] : []),
       ...(square ? ['--square'] : []),
       ...(draft ? ['--draft'] : []),
-      ...(filter ? ['--filter', filter.id] : []),
-      ...(filter?.intensity !== undefined ? ['--filter-intensity', String(filter.intensity)] : []),
+      ...(film !== undefined ? ['--film', film ?? 'none'] : []),
+      ...(filmStrength !== undefined ? ['--film-strength', String(filmStrength)] : []),
       ...(template ? ['--template', template] : []),
       ...(lyricsMode ? ['--lyrics-mode', lyricsMode] : []),
       ...(outroText !== undefined ? ['--outro-text', outroText] : []),

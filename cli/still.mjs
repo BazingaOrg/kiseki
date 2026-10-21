@@ -7,7 +7,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 
-import {extractFormattedExif} from './exif.mjs';
+import {extractFormattedExif, readFilmSource} from './exif.mjs';
+import {filmSettingsPathFor, filmSettingsWithOverrides, readFilmSettings, resolveClipFilms} from './film-settings.mjs';
 import {GENERATED_SIGNATURE_REL} from './branding.mjs';
 import {loadProjectConfig} from './config.mjs';
 import {CliError} from './options.mjs';
@@ -17,9 +18,8 @@ import {resolveChromeExecutable} from './chrome-browser.mjs';
 import {sourceRuntimeLayout} from './runtime-layout.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {createPercentProgress} from './progress.mjs';
-import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
 import {formatDuration, paint, term} from './term.mjs';
-import {enumerateOutputVariantSuffixes, resolveFilterOutputSuffix, resolveOutputVariantSuffix} from './output-naming.mjs';
+import {enumerateOutputVariantSuffixes, resolveOutputVariantSuffix} from './output-naming.mjs';
 import {acquireCommandLease} from './task-lease.mjs';
 import {assertUnchangedSources, captionsForKeys, preparePhotoCaptions, requireCaptionApiKey} from './ai/photo-caption-service.mjs';
 import {emitCaptionFailure, withProcessAbort} from './ai/caption-runtime.mjs';
@@ -64,8 +64,8 @@ const listPhotosInFolder = (folder) => {
     .map((f) => path.join(folder, f));
 };
 
-const assertNoCrossVariantCollisions = (jobs, variantSuffix, extraFilterSuffixes = ['']) => {
-  const suffixes = enumerateOutputVariantSuffixes({extraFilterSuffixes});
+const assertNoCrossVariantCollisions = (jobs, variantSuffix) => {
+  const suffixes = enumerateOutputVariantSuffixes();
   const producers = new Map();
   for (const job of jobs) {
     const currentStem = path.basename(job.outPath, '.png');
@@ -87,7 +87,7 @@ const assertNoCrossVariantCollisions = (jobs, variantSuffix, extraFilterSuffixes
   }
 };
 
-export const resolveJobs = (target, output, {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null} = {}) => {
+export const resolveJobs = (target, output, {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false} = {}) => {
   const resolved = path.resolve(target);
   if (!fs.existsSync(resolved)) {
     throw new CliError(`找不到路径: ${resolved}`);
@@ -100,10 +100,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, photoCa
       throw new CliError(`不是支持的图片格式: ${resolved}(支持 ${[...IMAGE_EXTS].join(' ')})`);
     }
     const publicDir = path.dirname(resolved);
-    const variantSuffix = resolveOutputVariantSuffix({
-      exif, sign, photoCaption, dark, portrait, square, filter,
-      filterConfig: readFilterConfig(publicDir), photoNames: [path.basename(resolved)],
-    });
+    const variantSuffix = resolveOutputVariantSuffix({exif, sign, photoCaption, dark, portrait, square});
     const base = path.basename(resolved, path.extname(resolved));
     const filename = `${base}${variantSuffix}.png`;
     let outPath;
@@ -135,10 +132,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, photoCa
     if (photos.length === 0) {
       throw new CliError(`文件夹里没有照片: ${resolved}`);
     }
-    const variantSuffix = resolveOutputVariantSuffix({
-      exif, sign, photoCaption, dark, portrait, square, filter,
-      filterConfig: readFilterConfig(resolved), photoNames: photos.map((photo) => path.basename(photo)),
-    });
+    const variantSuffix = resolveOutputVariantSuffix({exif, sign, photoCaption, dark, portrait, square});
     const outDir = output
       ? path.resolve(output)
       : path.join(resolved, 'output', 'stills');
@@ -160,12 +154,7 @@ export const resolveJobs = (target, output, {exif = false, sign = false, photoCa
       }
       term.warn(`同名照片输出冲突,已保留源扩展名消歧: ${group.map((job) => path.basename(job.outPath)).join(', ')}`);
     }
-    const extraFilter = resolveFilterOutputSuffix({
-      filter,
-      filterConfig: readFilterConfig(resolved),
-      photoNames: photos.map((photo) => path.basename(photo)),
-    });
-    assertNoCrossVariantCollisions(jobs, variantSuffix, extraFilter ? ['', extraFilter] : ['']);
+    assertNoCrossVariantCollisions(jobs, variantSuffix);
     return {
       publicDir: resolved,
       canvasFolder: resolved,
@@ -203,8 +192,21 @@ export const prepareStillJobs = async (jobs, {
   return {prepared, skipped, skippedExif};
 };
 
+export const resolveStillFilms = (jobs, {
+  projectRoot,
+  film,
+  filmStrength,
+  readFilm = () => readFilmSettings(filmSettingsPathFor(projectRoot)),
+  extractFilmSource = readFilmSource,
+} = {}) => resolveClipFilms(jobs.map((job) => ({src: job.absPath})), {
+  settings: filmSettingsWithOverrides(readFilm(), {film, filmStrength}),
+  photoKey: (absPath) => normalizePhotoKey(projectRoot, absPath),
+  resolvePhotoPath: (absPath) => absPath,
+  extractFilmSource,
+});
+
 /**
- * @param {{target: string, output: string | null, exif: boolean, sign: boolean, photoCaption?: boolean, dark: boolean, skipExisting: boolean, scale: number, filter?: {id: string, intensity?: number} | null}} opts
+ * @param {{target: string, output: string | null, exif: boolean, sign: boolean, photoCaption?: boolean, dark: boolean, skipExisting: boolean, scale: number, film?: string | null, filmStrength?: number}} opts
  */
 export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
   const rendererPackage = path.join(runtime.rendererRoot, 'node_modules', '@remotion', 'renderer');
@@ -242,9 +244,6 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
     delete process.env.DEEPSEEK_API_KEY;
 
     const canvas = loadStillCanvasConfig(resolved.canvasFolder);
-    const filterConfig = readFilterConfig(resolved.canvasFolder);
-    const resolveJobFilter = (job) =>
-      resolveFilterForPhoto({config: filterConfig, cliFilter: opts.filter ?? null, photoName: job.src});
     if (opts.dark) canvas.background = '#000000';
     if (opts.portrait) Object.assign(canvas, {width: 1080, height: 1920});
     if (opts.square) Object.assign(canvas, {width: 1080, height: 1080});
@@ -295,6 +294,12 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         if (item?.text) captionTexts.set(key, item.text);
       }
     }
+
+    const filmByAbsPath = await resolveStillFilms(preparedJobs, {
+      projectRoot: resolved.canvasFolder,
+      film: opts.film,
+      filmStrength: opts.filmStrength,
+    });
 
     const {openBrowser, renderStill, selectComposition} = loadRemotionRenderer(runtime);
     progress = createPercentProgress();
@@ -347,7 +352,6 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
       height: canvas.height,
       exif: null,
       ...signatureProps,
-      filter: resolveJobFilter(preparedJobs[0]),
     };
     const composition = await selectComposition({serveUrl: bundled.serveUrl, id: 'Still', inputProps: compositionInputProps, logLevel: 'error', puppeteerInstance: browser});
     term.detail(formatStillDiagnostics({canvas, scale: opts.scale, jobs: preparedJobs}));
@@ -368,7 +372,7 @@ export const runStill = async (opts, {runtime = sourceRuntimeLayout} = {}) => {
         height: canvas.height,
         ...signatureProps,
         exif: job.exifProps ?? null,
-        filter: resolveJobFilter(job),
+        ...(filmByAbsPath.has(job.absPath) ? {film: filmByAbsPath.get(job.absPath)} : {}),
       };
       if (opts.photoCaption && key && captionTexts.get(key)) {
         const cache = loadCaptionCache(captionsPathFor(resolved.canvasFolder));

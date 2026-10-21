@@ -3,7 +3,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {renamePerPhotoConfig, resolveProjectPaths, scanFolderLoose} from '../project.mjs';
+import {resolveProjectPaths, scanFolderLoose} from '../project.mjs';
 import {isRecognizedLyricsManageable} from '../recognized-lyrics.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
 
@@ -230,25 +230,14 @@ const relativeMove = (folder, operationDir, move) => {
   };
 };
 
-const writeManifest = ({folder, operationDir, id, action, files, derived, config = null}) => {
+const writeManifest = ({folder, operationDir, id, action, files, derived}) => {
   fs.writeFileSync(operationPath(operationDir, 'manifest.json'), `${JSON.stringify({
     version: 2,
     id,
     action,
     files: files.map((move) => relativeMove(folder, operationDir, move)),
     derived: derived.map((move) => relativeMove(folder, operationDir, move)),
-    config,
   }, null, 2)}\n`);
-};
-
-const restoreConfig = ({jsonPath, rawText}) => {
-  const temporary = `${jsonPath}.${process.pid}.${crypto.randomUUID()}.undo`;
-  try {
-    fs.writeFileSync(temporary, rawText, 'utf8');
-    move(temporary, jsonPath);
-  } finally {
-    if (fs.existsSync(temporary)) fs.rmSync(temporary, {force: true});
-  }
 };
 
 const removeOperationDir = (record) => {
@@ -262,28 +251,22 @@ const removeOperationDir = (record) => {
     const manifestPath = operationPath(record.operationDir, 'manifest.json');
     let manifest;
     try { manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); } catch { throw new AssetMutationError(409, '回收记录已变化,不能清理'); }
-    const expectedConfig = record.config ? {
-      path: path.relative(record.folder, record.config.jsonPath),
-      backup: path.relative(record.operationDir, record.config.backupPath),
-    } : null;
     if (manifest.id !== record.id || manifest.action !== record.action || !Array.isArray(manifest.files) || !Array.isArray(manifest.derived)
       || JSON.stringify(manifest.files) !== JSON.stringify(record.files.map((move) => relativeMove(record.folder, record.operationDir, move)))
-      || JSON.stringify(manifest.derived) !== JSON.stringify(record.derived.map((move) => relativeMove(record.folder, record.operationDir, move)))
-      || JSON.stringify(manifest.config ?? null) !== JSON.stringify(expectedConfig)) {
+      || JSON.stringify(manifest.derived) !== JSON.stringify(record.derived.map((move) => relativeMove(record.folder, record.operationDir, move)))) {
       throw new AssetMutationError(409, '回收记录已变化,不能清理');
     }
     const expectedFiles = new Set(['manifest.json']);
     const restoredPaths = new Set();
-    const addOperationPath = (relative, destination) => {
+    const addOperationPath = (relative) => {
       if (typeof relative !== 'string' || !relative || path.isAbsolute(relative)) throw new AssetMutationError(409, '回收记录已变化,不能清理');
       const target = operationPath(record.operationDir, relative);
       if (path.relative(record.operationDir, target) !== relative || !inside(record.operationDir, target)) throw new AssetMutationError(409, '回收记录已变化,不能清理');
-      (destination ? expectedFiles : restoredPaths).add(relative);
+      restoredPaths.add(relative);
     };
     // Undo has already moved operation-stored files back to the project.  Their
-    // paths must now be absent; only the manifest and config backup remain.
-    for (const entry of [...manifest.files, ...manifest.derived]) if (entry?.storedInOperation) addOperationPath(entry.to, false);
-    if (manifest.config) addOperationPath(manifest.config.backup, true);
+    // paths must now be absent; only the manifest remains.
+    for (const entry of [...manifest.files, ...manifest.derived]) if (entry?.storedInOperation) addOperationPath(entry.to);
     const expectedDirs = new Set(['']);
     for (const relative of [...expectedFiles, ...restoredPaths]) {
       for (let parent = path.dirname(relative); parent && parent !== '.'; parent = path.dirname(parent)) expectedDirs.add(parent);
@@ -389,37 +372,21 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
       if (fs.existsSync(to)) throw new AssetMutationError(409, '配对歌词的目标文件已存在');
       changes.push({from: lyric.target, to});
     }
-    let configBackup = null;
     let derived = [];
     const id = crypto.randomUUID();
     const operationDir = createOperationDir(folder, id);
     try {
-      if (asset.kind === 'photo') {
-        try { configBackup = renamePerPhotoConfig(folder, path.basename(asset.target), name); } catch (error) {
-          throw new AssetMutationError(409, error.message);
-        }
-        if (configBackup) {
-          const backupPath = operationPath(operationDir, 'metadata', 'kiseki.json');
-          fs.mkdirSync(path.dirname(backupPath), {recursive: true});
-          fs.writeFileSync(backupPath, configBackup.rawText, 'utf8');
-          configBackup = {...configBackup, backupPath};
-        }
-      }
       for (const change of changes) move(change.from, change.to);
       derived = invalidateDerived(folder, operationDir, asset.kind);
-      writeManifest({
-        folder, operationDir, id, action: 'rename', files: changes, derived,
-        config: configBackup ? {path: path.relative(folder, configBackup.jsonPath), backup: path.relative(operationDir, configBackup.backupPath)} : null,
-      });
+      writeManifest({folder, operationDir, id, action: 'rename', files: changes, derived});
     } catch (error) {
       rollbackForwardMoves(changes);
       for (const entry of [...derived].reverse()) {
         try { if (fs.existsSync(entry.destination) && !fs.existsSync(entry.source)) move(entry.destination, entry.source); } catch {}
       }
-      if (configBackup) fs.writeFileSync(configBackup.jsonPath, configBackup.rawText, 'utf8');
       throw error;
     }
-    const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: false})), derived, config: configBackup};
+    const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: false})), derived};
     undoRecords.set(id, record);
     return {
       data: {assetId: `${asset.kind}:${path.relative(folder, destination)}`, name},
@@ -447,7 +414,7 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
     }
     throw error;
   }
-  const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived, config: null};
+  const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived};
   undoRecords.set(id, record);
   return {
     data: {},
@@ -471,7 +438,7 @@ export const clearRecognizedLyrics = ({folder, isJobRunning, leaseManager}) => w
   const id = crypto.randomUUID();
   const operationDir = createOperationDir(folder, id);
   const changes = files.map((from) => ({from, to: operationPath(operationDir, 'files', path.relative(folder, from))}));
-  const record = {id, action: 'clear-recognized-lyrics', folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived: [], config: null, recoveryState: 'moving'};
+  const record = {id, action: 'clear-recognized-lyrics', folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: true})), derived: [], recoveryState: 'moving'};
   undoRecords.set(id, record);
   const moved = [];
   try {
@@ -526,21 +493,13 @@ const undoAssetDeleteCore = ({folder, undoId, isJobRunning, retainRecord = false
     throw recoveryFailure(record, '回收记录或目标路径已变化', error);
   }
   for (const change of changes) {
-    // Rename files remain in the project under their new names; only deleted files,
-    // derived metadata, and config backups are stored in the operation directory.
+    // Rename files remain in the project under their new names; only deleted files
+    // and derived metadata are stored in the operation directory.
     if (!entries.find((entry) => entry.change === change)?.move) continue;
-  }
-  if (record.config) {
-    const backupPath = record.config.backupPath;
-    try {
-      if (!inside(record.operationDir, backupPath) || !inside(folder, record.config.jsonPath) || !fs.lstatSync(backupPath).isFile() || fs.lstatSync(backupPath).isSymbolicLink() || !fs.lstatSync(record.config.jsonPath).isFile() || fs.lstatSync(record.config.jsonPath).isSymbolicLink()) throw new Error('link');
-      if (fs.realpathSync(backupPath) !== backupPath || fs.realpathSync(path.dirname(backupPath)) !== path.dirname(backupPath) || fs.realpathSync(record.config.jsonPath) !== record.config.jsonPath || fs.realpathSync(path.dirname(record.config.jsonPath)) !== path.dirname(record.config.jsonPath)) throw new Error('drift');
-    } catch { throw new AssetMutationError(409, '回收记录或目标路径已变化'); }
   }
   const reverse = entries.filter((entry) => entry.move).map(({source, destination}) => ({from: source, to: destination}));
   try {
     for (const change of reverse) move(change.from, change.to);
-    if (record.config) restoreConfig(record.config);
   } catch (error) { rollbackForwardMoves(reverse); throw error; }
   record.restored = true;
   record.recoveryState = 'cleanup-pending';

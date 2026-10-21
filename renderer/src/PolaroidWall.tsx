@@ -7,9 +7,10 @@
  * 模板的 transition 字段对本 composition 无意义——卡片有自己的入场动效。
  */
 import React from 'react';
-import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Audio, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
 import {DayStamp} from './DayStamp';
+import {FilmImg} from './film';
 import {childOpacityForParent, photoCaptionLayerPresentation, polaroidCardPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
@@ -151,8 +152,9 @@ export const PolaroidWall: React.FC<Timeline> = ({meta, photos, subtitles}) => {
               }}
             >
               <div style={{position: 'relative', display: 'inline-flex', maxWidth: '100%'}}>
-                <Img
+                <FilmImg
                   src={toStatic(clip.src)}
+                  film={clip.film}
                   style={{
                     display: 'block',
                     maxWidth: safeWidth * photoFactor,

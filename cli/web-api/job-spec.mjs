@@ -9,7 +9,7 @@ import path from 'node:path';
 
 import {buildAudioFilename, installDownloadedAudio, sanitizeFilePart} from '../fetch.mjs';
 import {FIXES} from '../dependencies.mjs';
-import {readFilterConfig, scanFolderLoose} from '../project.mjs';
+import {scanFolderLoose} from '../project.mjs';
 import {resolveJobs} from '../still.mjs';
 import {resolveRenderOutputPath} from '../output-naming.mjs';
 import {JobValidationError, buildJobInvocation} from '../job-argv.mjs';
@@ -145,15 +145,11 @@ export const buildJobSpec = ({kind, folder, options = {}, tempParent, runtime = 
         draft: options.draft,
         template: options.template ?? null,
         lyricsMode: options.lyricsMode,
-        filter: options.filter ? {id: options.filter, ...(options.filterIntensity != null ? {intensity: options.filterIntensity} : {})} : null,
-        filterConfig: readFilterConfig(folder),
-        photoNames: fs.existsSync(folder) ? scanFolderLoose(folder).photos : [],
       })]
       : kind === 'still'
         ? resolveJobs(folder, options.output ?? null, {
           exif: options.exif, sign: options.sign, photoCaption: options.photoCaption, dark: options.dark,
           portrait: options.format === 'portrait', square: options.format === 'square',
-          filter: options.filter ? {id: options.filter, ...(options.filterIntensity != null ? {intensity: options.filterIntensity} : {})} : null,
         }).jobs.map((job) => job.outPath)
         : [],
   };

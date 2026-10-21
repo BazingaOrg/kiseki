@@ -7,7 +7,8 @@ import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-iden
 import {normalizePhotoKey} from '../ai/photo-key.mjs';
 import {DEFAULT_OUTRO_TEXT, effectiveOutroText} from '../branding.mjs';
 import {loadProjectConfig} from '../config.mjs';
-import {readFilterConfig, resolveProjectPaths, scanFolderLoose} from '../project.mjs';
+import {emptyFilmSettings, filmSettingsPathFor, readFilmSettings} from '../film-settings.mjs';
+import {resolveProjectPaths, scanFolderLoose} from '../project.mjs';
 import {parseLrc} from '../lrc.mjs';
 import {readUsableRecognizedLyrics, recognizedLyricsStatus} from '../recognized-lyrics.mjs';
 import {resolveSafePath} from './sandbox.mjs';
@@ -15,8 +16,7 @@ import {resolveSafePath} from './sandbox.mjs';
 const VIDEO_EXTS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm', '.m4v']);
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 
-const safeCaptionCachePath = (folder) => {
-  const target = captionsPathFor(folder);
+const safeMetadataPath = (folder, target) => {
   const relative = path.relative(folder, target);
   let cursor = folder;
   for (const [index, part] of relative.split(path.sep).entries()) {
@@ -177,21 +177,13 @@ export const getProject = (root, requestedPath) => {
     }
   }
 
-  let filterConfig = null;
-  try {
-    filterConfig = readFilterConfig(safePath);
-  } catch {
-    // kiseki.json 非法时不阻断画廊浏览,只是不带滤镜配置回去
-    filterConfig = null;
-  }
-
   const outputDir = path.join(safePath, 'output');
   const stills = listOutputFiles(path.join(outputDir, 'stills'), IMAGE_EXTS);
   const exportedVideos = listOutputFiles(outputDir, VIDEO_EXTS);
   let captions = null;
   let captionCacheState = null;
   try {
-    const captionCachePath = safeCaptionCachePath(safePath);
+    const captionCachePath = safeMetadataPath(safePath, captionsPathFor(safePath));
     captionCacheState = captionCachePath ? readCaptionCacheState(captionCachePath) : null;
     captions = captionCacheState?.cache ?? null;
   } catch {
@@ -221,6 +213,14 @@ export const getProject = (root, requestedPath) => {
     }
   };
 
+  let film = emptyFilmSettings();
+  try {
+    const filmPath = safeMetadataPath(safePath, filmSettingsPathFor(safePath));
+    film = filmPath ? readFilmSettings(filmPath) : emptyFilmSettings();
+  } catch {
+    film = emptyFilmSettings();
+  }
+
   let outroText = DEFAULT_OUTRO_TEXT;
   try {
     const loaded = loadProjectConfig(safePath);
@@ -237,6 +237,7 @@ export const getProject = (root, requestedPath) => {
       captionItemCount: captionCacheState?.itemCount ?? 0,
       captionCacheFingerprint: captionCacheState?.fingerprint ?? null,
       captionCacheInvalid: captionCacheState?.invalid ?? false,
+      film,
       path: safePath,
       name: path.basename(safePath),
       // 沙箱根.`kiseki web <folder>` 会把根锁定成那个素材夹,此时 root === path,
@@ -267,7 +268,6 @@ export const getProject = (root, requestedPath) => {
       recognizedLyricsStatus: existsFile(lyricsPath) ? recognizedLyricsStatus(lyricsPath) : null,
       timelinePath: existsFile(timelinePath) ? timelinePath : null,
       unsupportedVideos,
-      filterConfig,
       output: {
         stills,
         videos: exportedVideos,

@@ -12,9 +12,10 @@ import {resolveAudioCredit} from './fetch.mjs';
 import {bundleRenderer, loadRemotionRenderer} from './bundle.mjs';
 import {commitAtomicOutput, createPartialOutput, removePartialOutput, resolveAtomicTaskId} from './atomic-output.mjs';
 import {FIXES} from './dependencies.mjs';
-import {extractFormattedExif} from './exif.mjs';
+import {extractFormattedExif, readFilmSource} from './exif.mjs';
+import {emptyFilmSettings, filmSettingsPathFor, filmSettingsWithOverrides, isFilmPhotoClip, readFilmSettings, resolveClipFilms} from './film-settings.mjs';
 import {createPercentProgress} from './progress.mjs';
-import {readFilterConfig, resolveFilterForPhoto} from './project.mjs';
+import {isRollId} from '../film/src/index.mjs';
 import {resolveTemplateComposition, TEMPLATES, templateMotionZoom} from './templates.mjs';
 import {term} from './term.mjs';
 import {resolveChromeExecutable} from './chrome-browser.mjs';
@@ -125,8 +126,8 @@ const normalizeLoudness = (file, runtime = sourceRuntimeLayout) => {
  * dark → 黑底;sign → 落款;exif → 按 src 去重逐张提取展签,信息不足置 null;
  * template → meta.templateId(呈现层由渲染器注册表解析,见 renderer/src/templates.ts).
  * @param {object} timeline
- * @param {{exif?: boolean, sign?: boolean, photoCaption?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, filter?: {id: string, intensity?: number} | null, template?: string | null}} flags
- * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, filterConfig?: object | null, publicDir?: string | null, probeAudio?: Function, audioExists?: (file: string) => boolean}} deps
+ * @param {{exif?: boolean, sign?: boolean, photoCaption?: boolean, dark?: boolean, portrait?: boolean, square?: boolean, template?: string | null, film?: string | null, filmStrength?: number}} flags
+ * @param {{resolvePhotoPath: (src: string) => string, extractExif?: typeof extractFormattedExif, onExifShortage?: (count: number) => void, publicDir?: string | null, probeAudio?: Function, audioExists?: (file: string) => boolean, readFilm?: () => object, extractFilmSource?: typeof readFilmSource}} deps
  */
 const stripRuntimeCaptions = (timeline) => {
   timeline.photos = (timeline.photos ?? []).map((photo) => {
@@ -138,8 +139,17 @@ const stripRuntimeCaptions = (timeline) => {
 
 export const applyRenderVariants = async (
   timeline,
-  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null, lyricsMode = 'bilingual', outroText, signature} = {},
-  {resolvePhotoPath, extractExif = extractFormattedExif, onExifShortage, filterConfig = null, publicDir = null, probeAudio, audioExists} = {},
+  {exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, template = null, lyricsMode = 'bilingual', outroText, signature, film, filmStrength} = {},
+  {
+    resolvePhotoPath,
+    extractExif = extractFormattedExif,
+    onExifShortage,
+    publicDir = null,
+    probeAudio,
+    audioExists,
+    readFilm = () => (publicDir ? readFilmSettings(filmSettingsPathFor(publicDir)) : emptyFilmSettings()),
+    extractFilmSource = readFilmSource,
+  } = {},
 ) => {
   if (!['original', 'bilingual', 'none'].includes(lyricsMode)) throw new Error('--lyrics-mode 必须是 original、bilingual 或 none');
   timeline.meta = {...timeline.meta, lyrics_mode: lyricsMode};
@@ -151,9 +161,6 @@ export const applyRenderVariants = async (
   }
   if (sign) {
     timeline.meta = {...timeline.meta, sign: true};
-  }
-  if (filter) {
-    timeline.meta = {...timeline.meta, filter};
   }
   if (template) {
     timeline.meta = {...timeline.meta, templateId: template};
@@ -168,18 +175,6 @@ export const applyRenderVariants = async (
     ...(audioExists ? {exists: audioExists} : {}),
   });
   if (audioCredit) timeline.meta = {...timeline.meta, audio_credit: audioCredit};
-  // 逐张滤镜:CLI --filter > kiseki.json 的 perPhoto > 全局配置 > 无;写入 clip.filter
-  if (filterConfig) {
-    timeline.photos = (timeline.photos ?? []).map((photo) => {
-      if ((photo.kind !== undefined && photo.kind !== 'photo') || typeof photo.src !== 'string') return photo;
-      const resolved = resolveFilterForPhoto({
-        config: filterConfig,
-        cliFilter: filter,
-        photoName: path.basename(photo.src),
-      });
-      return resolved ? {...photo, filter: resolved} : photo;
-    });
-  }
   stripRuntimeCaptions(timeline);
   const captionSources = [];
   if (photoCaption && publicDir) {
@@ -223,6 +218,18 @@ export const applyRenderVariants = async (
     const shortage = [...exifBySrc.values()].filter((formatted) => !formatted).length;
     if (shortage > 0) onExifShortage?.(shortage);
   }
+  const filmBySrc = await resolveClipFilms(timeline.photos ?? [], {
+    settings: filmSettingsWithOverrides(readFilm(), {film, filmStrength}),
+    photoKey: (src) => (publicDir ? normalizePhotoKey(publicDir, src) : src),
+    resolvePhotoPath,
+    extractFilmSource,
+  });
+  timeline.photos = (timeline.photos ?? []).map((photo) => {
+    if (!isFilmPhotoClip(photo)) return photo;
+    const {film: _film, ...rest} = photo;
+    const resolved = filmBySrc.get(photo.src);
+    return resolved ? {...rest, film: resolved} : rest;
+  });
   return timeline;
 };
 
@@ -277,16 +284,25 @@ export const applyCaptionLayouts = async (timeline, {page, templateId = null, mo
   return {skippedLayout};
 };
 
+export const readFilmFlags = (readFlagValue) => {
+  const roll = readFlagValue('--film');
+  const strength = readFlagValue('--film-strength');
+  if (roll !== undefined && roll !== 'none' && !isRollId(roll)) throw new Error(`--film 未知胶卷 id: ${roll}`);
+  if (strength !== undefined && !(Number(strength) >= 0 && Number(strength) <= 1)) throw new Error('--film-strength 需要 0–1 之间的数字');
+  return {
+    ...(roll !== undefined ? {film: roll === 'none' ? null : roll} : {}),
+    ...(strength !== undefined ? {filmStrength: Number(strength)} : {}),
+  };
+};
+
 const main = async () => {
   const [timelineArg, outputArg, publicDirArg, ...flagArgs] = process.argv.slice(2);
   if (!timelineArg || !outputArg || !publicDirArg) {
     throw new Error(
-      '用法: render.mjs <timeline.json> <output.mp4> <public-dir> [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--filter <id>] [--filter-intensity <0-1>] [--template <id>]\n' +
+      '用法: render.mjs <timeline.json> <output.mp4> <public-dir> [--exif] [--sign] [--dark] [--portrait|--square] [--draft] [--template <id>]\n' +
         '此为内部入口,日常请用 kiseki <folder>',
     );
   }
-  const filterIndex = flagArgs.indexOf('--filter');
-  const filterIntensityIndex = flagArgs.indexOf('--filter-intensity');
   const templateIndex = flagArgs.indexOf('--template');
   const lyricsModeIndex = flagArgs.indexOf('--lyrics-mode');
   const readFlagValue = (flag) => {
@@ -304,16 +320,11 @@ const main = async () => {
     portrait: flagArgs.includes('--portrait'),
     square: flagArgs.includes('--square'),
     draft: flagArgs.includes('--draft'),
-    filter: filterIndex >= 0
-      ? {
-          id: flagArgs[filterIndex + 1],
-          ...(filterIntensityIndex >= 0 ? {intensity: Number(flagArgs[filterIntensityIndex + 1])} : {}),
-        }
-      : null,
     template: templateIndex >= 0 ? flagArgs[templateIndex + 1] : null,
     lyricsMode: lyricsModeIndex >= 0 ? flagArgs[lyricsModeIndex + 1] ?? null : 'bilingual',
     outroText: readFlagValue('--outro-text'),
     signature: readFlagValue('--signature'),
+    ...readFilmFlags(readFlagValue),
   };
 
   const timelinePath = path.resolve(timelineArg);
@@ -330,11 +341,9 @@ const main = async () => {
   let cleanup = () => {};
   let browser = null;
 
-  const filterConfig = readFilterConfig(publicDir);
   const inputProps = await applyRenderVariants(timeline, flags, {
     resolvePhotoPath: (src) => path.join(publicDir, src),
     onExifShortage: (count) => progress.println(`└ ${count} 张照片 EXIF 信息不足,视频中不显示展签`),
-    filterConfig,
     publicDir,
   });
   const captionSources = inputProps._captionSources ?? [];

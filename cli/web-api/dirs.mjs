@@ -7,7 +7,7 @@ import path from 'node:path';
 
 import {resolveSafePath} from './sandbox.mjs';
 
-const PROJECT_HINTS = ['kiseki.toml', 'kiseki.json', 'output'];
+const PROJECT_HINTS = ['kiseki.toml', 'output'];
 
 /**
  * @param {string} root 允许浏览的根目录

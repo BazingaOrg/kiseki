@@ -1,5 +1,4 @@
 import {outroTextError} from './branding.mjs';
-import {FILTER_IDS, normalizeFilterId} from './filters.mjs';
 import {TEMPLATE_IDS, normalizeTemplateId} from './templates.mjs';
 
 export class JobValidationError extends Error {
@@ -74,25 +73,6 @@ export const buildJobArgv = ({kind, folder, options = {}}) => {
   }
   if (format === 'portrait') flags.push('--portrait');
   if (format === 'square') flags.push('--square');
-
-  const hasFilter = opts.filter !== undefined && opts.filter !== null;
-  const filter = hasFilter ? normalizeFilterId(opts.filter) : null;
-  if (hasFilter && !filter) {
-    throw new JobValidationError('filter', `filter 必须是以下之一: ${FILTER_IDS.join(', ')}`);
-  }
-
-  const hasFilterIntensity = opts.filterIntensity !== undefined && opts.filterIntensity !== null;
-  if (hasFilterIntensity) {
-    if (typeof opts.filterIntensity !== 'number' || opts.filterIntensity < 0 || opts.filterIntensity > 1) {
-      throw new JobValidationError('filterIntensity', 'filterIntensity 必须是 0–1 之间的数字');
-    }
-    if (!hasFilter) {
-      throw new JobValidationError('filterIntensity', '--filter-intensity 需要搭配 --filter <id> 使用');
-    }
-  }
-
-  if (hasFilter) flags.push('--filter', filter);
-  if (hasFilterIntensity) flags.push('--filter-intensity', String(opts.filterIntensity));
 
   if (kind === 'render') {
     if (opts.lyricsMode !== undefined) {

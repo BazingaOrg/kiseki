@@ -668,7 +668,6 @@ html[data-theme-transition] .action-card,
 html[data-theme-transition] .photo-card,
 html[data-theme-transition] .field-help-tooltip,
 html[data-theme-transition] .theme-toggle,
-html[data-theme-transition] .make-filter-menu,
 html[data-theme-transition] .make-output-tabs,
 html[data-theme-transition] .make-output-tab,
 html[data-theme-transition] .result-video-picker-inner,
@@ -937,7 +936,6 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 .asset-rename-input,
 .photo-caption-input,
 .fetch-input,
-.make-filter-trigger,
 .audio-confirm-field input,
 .doctor-key input,
 .make-text-input {
@@ -954,7 +952,6 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 .asset-rename-input:focus,
 .photo-caption-input:focus,
 .fetch-input:focus,
-.make-filter-trigger:focus-visible,
 .audio-confirm-field input:focus,
 .doctor-key input:focus,
 .make-text-input:focus {
@@ -1485,96 +1482,6 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
   gap: 0.4rem 1.1rem;
 }
 
-.make-filter-picker {
-  position: relative;
-  margin-bottom: 0.5rem;
-}
-
-.make-filter-trigger {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  text-align: left;
-  cursor: pointer;
-}
-
-.make-filter-chevron {
-  flex: 0 0 auto;
-  color: var(--color-secondary-text);
-  transition: transform 160ms ease-out;
-}
-
-.make-filter-chevron-open {
-  transform: rotate(180deg);
-}
-
-.make-filter-menu {
-  position: absolute;
-  z-index: 10;
-  top: calc(100% + 0.35rem);
-  right: 0;
-  left: 0;
-  max-height: min(20rem, 52vh);
-  overflow-y: auto;
-  padding: 0.35rem;
-  border: 1px solid var(--color-divider);
-  border-radius: var(--radius-control);
-  background: var(--color-background);
-  box-shadow: 0 14px 32px rgba(24, 22, 18, 0.15);
-}
-
-.make-filter-menu-top {
-  top: auto;
-  bottom: calc(100% + 0.35rem);
-}
-
-.make-filter-group + .make-filter-group {
-  margin-top: 0.25rem;
-  padding-top: 0.25rem;
-  border-top: 1px solid var(--color-divider);
-}
-
-.make-filter-group-label {
-  display: block;
-  padding: 0.35rem 0.55rem 0.2rem;
-  color: var(--color-faint-text);
-  font-size: 0.7rem;
-  letter-spacing: 0.02em;
-}
-
-.make-filter-option {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100%;
-  min-height: 2rem;
-  padding: 0.35rem 0.55rem;
-  border: 0;
-  border-radius: calc(var(--radius-control) - 1px);
-  background: transparent;
-  color: var(--color-secondary-text);
-  font: inherit;
-  font-size: 0.82rem;
-  text-align: left;
-  transition: background-color 120ms ease-out, color 120ms ease-out;
-}
-
-.make-filter-option:hover,
-.make-filter-option:focus-visible,
-.make-filter-option-selected {
-  background: var(--color-surface);
-  color: var(--color-text);
-}
-
-.make-filter-option-selected {
-  font-weight: 500;
-}
-
-.make-field input[type='range'] {
-  width: 100%;
-}
-
 .make-start-row {
   display: flex;
   align-items: center;
@@ -1620,36 +1527,6 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
   align-items: center;
   justify-content: flex-end;
   gap: 0.75rem;
-}
-
-/* 滤镜实时预览:与成片同源的 CSS/SVG,仅浏览器渲染,细节以成片为准 */
-.filter-preview {
-  margin-bottom: 0.85rem;
-}
-
-.filter-preview-frame {
-  position: relative;
-  display: inline-flex;
-  border-radius: var(--radius-media);
-  overflow: hidden;
-  box-shadow: var(--shadow-photo);
-}
-
-.filter-preview-frame img {
-  display: block;
-  width: 160px;
-  height: 160px;
-  object-fit: cover;
-}
-
-.filter-preview-overlay {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-}
-
-.filter-preview-note {
-  margin-top: 0.4rem;
 }
 
 /* 进度面板:替换掉表单,占同一块地方,不额外挤压卡片高度 */
@@ -3588,4 +3465,107 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 
 .make-field-hint + .make-template-default {
   margin-top: 0.55rem;
+}
+
+/* ── 胶片 ─────────────────────────────────────────────── */
+
+.film-field-row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.film-field-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.25rem 0.6rem; font-family: var(--font-serif); font-size: 0.95rem; }
+.film-field-extra { font-family: var(--font-sans); font-size: 0.78rem; color: var(--color-secondary-text); }
+.film-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: var(--control-height);
+  padding: 0 0.85rem;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-control);
+  background: var(--color-background);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color 160ms ease-out, transform 120ms ease-out;
+}
+.film-button:active { transform: scale(0.97); }
+.film-button:disabled { opacity: 0.5; cursor: default; }
+@media (hover: hover) and (pointer: fine) { .film-button:hover:not(:disabled) { border-color: var(--color-secondary-text); } }
+
+.darkroom {
+  --dr-bg: #151412;
+  --dr-panel: #1d1c19;
+  --dr-line: #2e2c28;
+  --dr-text: #e8e5de;
+  --dr-muted: #a29e95;
+  --dr-faint: #75716a;
+  --color-text: var(--dr-text);
+  --color-secondary-text: var(--dr-muted);
+  --color-divider: var(--dr-line);
+  position: fixed;
+  inset: 0;
+  z-index: 10040;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  background: var(--dr-bg);
+  color: var(--dr-text);
+  animation: dialog-fade-in 160ms ease-out;
+}
+.darkroom-header { display: flex; align-items: center; gap: 0.9rem; padding: 0.7rem 1rem; border-bottom: 1px solid var(--dr-line); }
+.darkroom-header h2 { margin: 0; font-family: var(--font-serif); font-size: 1.05rem; font-weight: 500; letter-spacing: 0.08em; }
+.darkroom-scope { display: inline-flex; padding: 2px; border: 1px solid var(--dr-line); border-radius: var(--radius-control); }
+.darkroom-scope button { min-height: 1.8rem; padding: 0 0.8rem; border: none; border-radius: 3px; background: none; color: var(--dr-muted); font: inherit; font-size: 0.82rem; cursor: pointer; transition: background 160ms ease-out, color 160ms ease-out; }
+.darkroom-scope button.active { background: var(--dr-text); color: var(--dr-bg); }
+.darkroom-scope-hint { flex: 1; margin: 0; color: var(--dr-faint); font-size: 0.78rem; }
+.darkroom-icon { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border: none; border-radius: var(--radius-control); background: none; color: var(--dr-muted); cursor: pointer; transition: color 160ms ease-out, background 160ms ease-out; }
+.darkroom-icon:disabled { opacity: 0.35; cursor: default; }
+@media (hover: hover) and (pointer: fine) { .darkroom-icon:hover:not(:disabled) { color: var(--dr-text); background: var(--dr-panel); } }
+
+.darkroom-body { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; min-height: 0; }
+.darkroom-stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; padding: 1rem 1rem 0.75rem; gap: 0.6rem; }
+.darkroom-photo { display: grid; place-items: center; min-height: 0; }
+.darkroom-photo img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 2px; box-shadow: 0 0 40px -12px rgba(255, 252, 244, 0.08); }
+.darkroom-stage-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.darkroom-current { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-family: var(--font-serif); font-size: 1rem; }
+.darkroom-tag { padding: 0.05rem 0.45rem; border: 1px solid var(--dr-muted); border-radius: 3px; font-family: var(--font-sans); font-size: 0.72rem; color: var(--dr-text); }
+.darkroom-tag-quiet { border-color: var(--dr-line); color: var(--dr-muted); }
+.darkroom-hold { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 1.9rem; padding: 0 0.7rem; border: 1px solid var(--dr-line); border-radius: var(--radius-control); background: none; color: var(--dr-muted); font: inherit; font-size: 0.78rem; cursor: pointer; user-select: none; touch-action: none; }
+.darkroom-hold:active { color: var(--dr-text); border-color: var(--dr-muted); }
+.darkroom-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; font-size: 0.82rem; }
+.darkroom-controls .link-button { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--dr-muted); }
+.darkroom-strength { display: flex; align-items: center; gap: 0.6rem; color: var(--dr-muted); }
+.darkroom-strength input { width: 12rem; accent-color: var(--dr-text); }
+.darkroom-strength output { min-width: 2.6rem; color: var(--dr-text); font-variant-numeric: tabular-nums; }
+.darkroom-strip { display: flex; gap: 0.4rem; margin: 0; padding: 0.15rem 0 0.25rem; overflow-x: auto; list-style: none; scrollbar-width: thin; }
+.darkroom-strip button { display: grid; gap: 0.2rem; width: 4.6rem; padding: 0; border: none; background: none; color: var(--dr-faint); cursor: pointer; }
+.darkroom-strip img { width: 4.6rem; height: 3.1rem; object-fit: cover; border-radius: 2px; outline: 1px solid transparent; outline-offset: 1px; opacity: 0.7; transition: opacity 160ms ease-out, outline-color 160ms ease-out; }
+.darkroom-strip button.active img { opacity: 1; outline-color: var(--dr-text); }
+.darkroom-strip-label { overflow: hidden; font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
+.darkroom-strip-label.overridden { color: var(--dr-text); }
+
+.darkroom-films { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; border-left: 1px solid var(--dr-line); background: var(--dr-panel); }
+.darkroom-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.85rem 0.85rem 0.6rem; }
+.darkroom-tags .photo-sort-button { min-height: 1.6rem; padding: 0 0.55rem; font-size: 0.74rem; }
+.darkroom-film-list { display: grid; align-content: start; gap: 0.5rem; padding: 0 0.85rem 0.85rem; overflow-y: auto; scrollbar-width: thin; }
+.film-card { display: grid; grid-template-columns: 6.2rem minmax(0, 1fr); gap: 0.7rem; padding: 0.45rem; border: 1px solid transparent; border-radius: var(--radius-panel); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color 160ms ease-out, background 160ms ease-out; }
+.film-card-selected { border-color: var(--dr-text); background: rgba(255, 252, 244, 0.04); }
+@media (hover: hover) and (pointer: fine) { .film-card:hover:not(.film-card-selected) { border-color: var(--dr-line); } }
+.film-card-thumb { position: relative; align-self: start; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 2px; background: #000; }
+.film-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.film-card-maker { position: absolute; left: 0.25rem; bottom: 0.25rem; padding: 0 0.3rem; border-radius: 2px; background: rgba(12, 11, 10, 0.72); color: #e8e5de; font-size: 0.64rem; line-height: 1.5; }
+.film-card-body { display: grid; align-content: start; gap: 0.2rem; min-width: 0; }
+.film-card-name { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-serif); font-size: 0.95rem; }
+.film-card-badge { padding: 0 0.3rem; border: 1px solid var(--dr-muted); border-radius: 3px; font-family: var(--font-sans); font-size: 0.64rem; color: var(--dr-muted); }
+.film-card-desc { display: -webkit-box; overflow: hidden; color: var(--dr-muted); font-size: 0.75rem; line-height: 1.5; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.film-card-ref { color: var(--dr-faint); font-size: 0.68rem; }
+.film-card-note { color: var(--color-status-warn); font-size: 0.68rem; }
+.darkroom-keys { margin: 0; padding: 0.6rem 0.85rem; border-top: 1px solid var(--dr-line); color: var(--dr-faint); font-size: 0.72rem; }
+.darkroom-error { position: absolute; left: 50%; bottom: 1rem; margin: 0; padding: 0.5rem 0.9rem; border-radius: var(--radius-control); background: #3a1d19; color: #f09a8f; font-size: 0.82rem; transform: translateX(-50%); }
+
+@media (max-width: 760px) {
+  .darkroom-scope-hint { display: none; }
+  .darkroom-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .darkroom-films { border-left: none; border-top: 1px solid var(--dr-line); }
+  .darkroom-strength input { width: 8rem; }
+  .darkroom-keys { display: none; }
 }

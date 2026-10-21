@@ -7,9 +7,10 @@
  * 相邻帧就是 timeline 里的前后照片。
  */
 import React from 'react';
-import {AbsoluteFill, Audio, Img, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
+import {AbsoluteFill, Audio, interpolate, staticFile, useCurrentFrame, useVideoConfig} from 'remotion';
 import {ChapterCard} from './ChapterCard';
 import {DayStamp} from './DayStamp';
+import {FilmImg} from './film';
 import {childOpacityForParent, filmstripLayerPresentation, photoCaptionLayerPresentation} from './compositionTiming';
 import {ensureFonts} from './fonts';
 import {Intro, introDuration} from './Intro';
@@ -153,8 +154,9 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
             />
           ) : null}
           <div style={{position: 'relative', display: 'inline-flex', maxWidth: '86%'}}>
-              <Img
+              <FilmImg
                 src={toStatic(clip.src)}
+                film={clip.film}
                 style={{
                   display: 'block',
                   maxWidth: mainSafeWidth,
@@ -205,9 +207,10 @@ export const Filmstrip: React.FC<Timeline> = ({meta, photos, subtitles}) => {
         {strip.map((clip, index) => {
           const isCurrent = clip === active;
           return (
-            <Img
+            <FilmImg
               key={`${clip.src}-${index}`}
               src={toStatic(clip.src)}
+              film={clip.film}
               style={{
                 display: 'block',
                 height: stripHeight * 0.72,

@@ -4,8 +4,9 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import {applyRenderVariants, detectParallelism, formatRenderDiagnostics, resolveCaptureSettings, resolveRenderSettings} from './render.mjs';
+import {applyRenderVariants, detectParallelism, readFilmFlags, formatRenderDiagnostics, resolveCaptureSettings, resolveRenderSettings} from './render.mjs';
 import {CACHE_VERSION} from './ai/photo-caption-cache.mjs';
+import {filmSeedFor, filmSettingsPathFor, writeFilmSettings} from './film-settings.mjs';
 import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from './ai/photo-caption-prompt.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from './image-identity.mjs';
 
@@ -123,31 +124,6 @@ test('song credit is injected for the outro and stays off the outro text', async
 test('sign sets meta.sign to true', async () => {
   const result = await applyRenderVariants(timeline(), {sign: true}, {resolvePhotoPath: (src) => src});
   assert.equal(result.meta.sign, true);
-});
-
-test('filterConfig writes per-photo clip.filter, and a --filter flag overrides every clip', async () => {
-  const filterConfig = {
-    filter: 'mono',
-    intensity: 0.5,
-    perPhoto: {'b.jpg': {filter: 'riso', intensity: 0.9}},
-  };
-  const withConfig = await applyRenderVariants(timeline(), {}, {resolvePhotoPath: (src) => src, filterConfig});
-  assert.deepEqual(withConfig.photos[0].filter, {id: 'mono', intensity: 0.5});
-  assert.deepEqual(withConfig.photos[1].filter, {id: 'riso', intensity: 0.9});
-  assert.deepEqual(withConfig.photos[2].filter, {id: 'mono', intensity: 0.5});
-
-  const withCliOverride = await applyRenderVariants(
-    timeline(),
-    {filter: {id: 'warm'}},
-    {resolvePhotoPath: (src) => src, filterConfig},
-  );
-  assert.deepEqual(withCliOverride.photos[0].filter, {id: 'warm'});
-  assert.deepEqual(withCliOverride.photos[1].filter, {id: 'warm'});
-});
-
-test('without filterConfig, clip.filter is left untouched', async () => {
-  const result = await applyRenderVariants(timeline(), {}, {resolvePhotoPath: (src) => src});
-  assert.equal(result.photos[0].filter, undefined);
 });
 
 test('exif extracts once per unique src and attaches to every matching clip', async () => {
@@ -288,4 +264,77 @@ test('render concurrency supports explicit integer and percentage escape hatches
 test('render parallelism respects container CPU quotas when Node exposes them', () => {
   assert.equal(detectParallelism({availableParallelism: () => 2, cpus: () => Array(64)}), 2);
   assert.equal(detectParallelism({cpus: () => Array(4)}), 4);
+});
+
+const filmSource = async (absPath) => ({
+  sourceLook: absPath.endsWith('a.jpg') ? {maker: 'fujifilm', label: '经典铬', roll: 'classic-chrome'} : null,
+  date: '2026-10-02',
+});
+
+test('film settings attach a resolved film to every photo clip that has a roll', async () => {
+  const calls = [];
+  const tl = timeline();
+  tl.photos.push({kind: 'chapter', text: 'Day 2', start: 3}, {src: 'c.jpg', start: 4, film: {roll: 'velvia'}});
+  const result = await applyRenderVariants(tl, {}, {
+    resolvePhotoPath: (src) => `/public/${src}`,
+    readFilm: () => ({version: 1, roll: 'classic-chrome', strength: 0.7, photos: {'b.jpg': {roll: 'velvia', strength: 0.4}, 'c.jpg': {roll: null, strength: 1}}}),
+    extractFilmSource: async (absPath) => {
+      calls.push(absPath);
+      return filmSource(absPath);
+    },
+  });
+  assert.deepEqual(calls, ['/public/a.jpg', '/public/b.jpg']);
+  assert.deepEqual(result.photos[0].film, {
+    roll: 'classic-chrome',
+    strength: 0.7,
+    sourceLook: {maker: 'fujifilm', label: '经典铬', roll: 'classic-chrome'},
+    date: '2026-10-02',
+    seed: filmSeedFor('a.jpg'),
+  });
+  assert.deepEqual(result.photos[1].film, {roll: 'velvia', strength: 0.4, sourceLook: null, date: '2026-10-02', seed: filmSeedFor('b.jpg')});
+  assert.deepEqual(result.photos[2].film, result.photos[0].film);
+  assert.equal('film' in result.photos[3], false);
+  assert.equal('film' in result.photos[4], false);
+});
+
+test('command-line film flags replace the whole-roll default but keep photo overrides', async () => {
+  const readFilm = () => ({version: 1, roll: 'classic-chrome', strength: 0.7, photos: {'b.jpg': {roll: 'velvia', strength: 0.4}}});
+  const swapped = await applyRenderVariants(timeline(), {film: 'acros', filmStrength: 0.3}, {
+    resolvePhotoPath: (src) => src,
+    readFilm,
+    extractFilmSource: filmSource,
+  });
+  assert.equal(swapped.photos[0].film.roll, 'acros');
+  assert.equal(swapped.photos[0].film.strength, 0.3);
+  assert.equal(swapped.photos[1].film.roll, 'velvia');
+  const none = await applyRenderVariants(timeline(), {film: null}, {resolvePhotoPath: (src) => src, readFilm, extractFilmSource: filmSource});
+  assert.equal('film' in none.photos[0], false);
+  assert.equal(none.photos[1].film.roll, 'velvia');
+});
+
+test('render reads film.json from the project folder and keys photos by their project path', async () => {
+  const folder = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-render-film-')));
+  try {
+    writeFilmSettings(filmSettingsPathFor(folder), {roll: null, strength: 1, photos: {'day1/a.jpg': {roll: 'eterna', strength: 0.5}}});
+    const tl = {...timeline(), photos: [{src: 'day1/a.jpg', start: 0}, {src: 'b.jpg', start: 1}]};
+    const result = await applyRenderVariants(tl, {}, {
+      resolvePhotoPath: (src) => path.join(folder, src),
+      publicDir: folder,
+      extractFilmSource: async () => ({sourceLook: null, date: null}),
+    });
+    assert.deepEqual(result.photos[0].film, {roll: 'eterna', strength: 0.5, sourceLook: null, date: null, seed: filmSeedFor('day1/a.jpg')});
+    assert.equal('film' in result.photos[1], false);
+  } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
+test('the internal render entry reads forwarded film flags', () => {
+  const flags = (values) => readFilmFlags((flag) => values[flag]);
+  assert.deepEqual(flags({}), {});
+  assert.deepEqual(flags({'--film': 'none'}), {film: null});
+  assert.deepEqual(flags({'--film': 'velvia', '--film-strength': '0.25'}), {film: 'velvia', filmStrength: 0.25});
+  assert.throws(() => flags({'--film': 'kodachrome'}), /未知胶卷/);
+  assert.throws(() => flags({'--film-strength': '2'}), /0–1/);
+  assert.throws(() => flags({'--film-strength': 'x'}), /0–1/);
 });

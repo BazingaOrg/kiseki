@@ -56,16 +56,6 @@ test('render: format 三态', () => {
   assert.deepEqual(buildJobArgv({kind: 'render', folder: '/f', options: {format: 'square'}}), ['/f', '--square']);
 });
 
-test('render: filter + filterIntensity', () => {
-  const argv = buildJobArgv({kind: 'render', folder: '/f', options: {filter: 'warm', filterIntensity: 0.5}});
-  assert.deepEqual(argv, ['/f', '--filter', 'warm', '--filter-intensity', '0.5']);
-});
-
-test('web job argv normalizes a filter alias before it reaches the CLI', () => {
-  const argv = buildJobArgv({kind: 'render', folder: '/f', options: {filter: 'tealorange', filterIntensity: 0.8}});
-  assert.deepEqual(argv, ['/f', '--filter', 'teal-orange', '--filter-intensity', '0.8']);
-});
-
 test('render: draft + trim', () => {
   const argv = buildJobArgv({kind: 'render', folder: '/f', options: {draft: true, trim: 'auto'}});
   assert.deepEqual(argv, ['/f', '--draft', '--trim', 'auto']);
@@ -114,7 +104,7 @@ test('still: 各选项组合 + 自定义 scale', () => {
   const argv = buildJobArgv({
     kind: 'still',
     folder: '/f',
-    options: {exif: true, sign: true, dark: true, format: 'square', filter: 'mono', filterIntensity: 1, scale: 4},
+    options: {exif: true, sign: true, dark: true, format: 'square', scale: 4},
   });
   assert.deepEqual(argv, [
     'still',
@@ -123,10 +113,6 @@ test('still: 各选项组合 + 自定义 scale', () => {
     '--sign',
     '--dark',
     '--square',
-    '--filter',
-    'mono',
-    '--filter-intensity',
-    '1',
     '--scale',
     '4',
   ]);
@@ -157,30 +143,6 @@ test('非法 format 抛错,field 为 format', () => {
   assert.throws(() => buildJobArgv({kind: 'render', folder: '/f', options: {format: 'diamond'}}), (error) => {
     assert.ok(error instanceof JobValidationError);
     assert.equal(error.field, 'format');
-    return true;
-  });
-});
-
-test('非法 filter 抛错,field 为 filter', () => {
-  assert.throws(() => buildJobArgv({kind: 'render', folder: '/f', options: {filter: 'nope'}}), (error) => {
-    assert.equal(error.field, 'filter');
-    return true;
-  });
-});
-
-test('filterIntensity 超出 0-1 抛错', () => {
-  assert.throws(
-    () => buildJobArgv({kind: 'render', folder: '/f', options: {filter: 'warm', filterIntensity: 1.5}}),
-    (error) => {
-      assert.equal(error.field, 'filterIntensity');
-      return true;
-    },
-  );
-});
-
-test('给了 filterIntensity 但没给 filter 抛错', () => {
-  assert.throws(() => buildJobArgv({kind: 'render', folder: '/f', options: {filterIntensity: 0.5}}), (error) => {
-    assert.equal(error.field, 'filterIntensity');
     return true;
   });
 });
@@ -866,13 +828,13 @@ test('buildJobSpec claims the same canonical variant outputs the child CLI will 
   try {
     fs.writeFileSync(path.join(folder, 'a.jpg'), 'x');
     fs.writeFileSync(path.join(folder, 'b.png'), 'x');
-    const options = {exif: true, sign: true, dark: true, format: 'square', draft: true, filter: 'mono', filterIntensity: 0.8, scale: 4};
+    const options = {exif: true, sign: true, dark: true, format: 'square', draft: true, scale: 4};
     const render = buildJobSpec({kind: 'render', folder, options});
-    assert.deepEqual(render.outputPaths, [path.join(folder, 'output', `${path.basename(folder)}-exif-sign-dark-square-draft-mono-0.8.mp4`)]);
+    assert.deepEqual(render.outputPaths, [path.join(folder, 'output', `${path.basename(folder)}-exif-sign-dark-square-draft.mp4`)]);
     const still = buildJobSpec({kind: 'still', folder, options});
     assert.deepEqual(still.outputPaths, [
-      path.join(folder, 'output', 'stills', 'a-exif-sign-dark-square-mono-0.8.png'),
-      path.join(folder, 'output', 'stills', 'b-exif-sign-dark-square-mono-0.8.png'),
+      path.join(folder, 'output', 'stills', 'a-exif-sign-dark-square.png'),
+      path.join(folder, 'output', 'stills', 'b-exif-sign-dark-square.png'),
     ]);
   } finally {
     fs.rmSync(folder, {recursive: true, force: true});

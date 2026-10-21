@@ -9,7 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import {isDisplayableExif, readPhotoExif} from '../exif.mjs';
+import {isDisplayableExif, readFilmSource, readPhotoExif} from '../exif.mjs';
 import {resolveSafePath} from './sandbox.mjs';
 
 const IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -34,7 +34,7 @@ export const getExif = async (root, requestedPath) => {
     return {status: 400, body: {error: '不是支持的图片格式'}};
   }
 
-  const {formatted, shotTime} = await readPhotoExif(safePath);
+  const [{formatted, shotTime}, {sourceLook}] = await Promise.all([readPhotoExif(safePath), readFilmSource(safePath)]);
   return {
     status: 200,
     body: {
@@ -44,6 +44,7 @@ export const getExif = async (root, requestedPath) => {
       exif: formatted ?? null,
       displayable: isDisplayableExif(formatted),
       shotTime,
+      sourceLook,
     },
   };
 };

@@ -8,7 +8,6 @@ import os from 'node:os';
 import fs from 'node:fs';
 
 import {formatEquivalentCommand} from './command-format.mjs';
-import {FILTER_IDS} from './filters.mjs';
 import {TEMPLATES} from './templates.mjs';
 import {PICK_BACK, withPrompts} from './prompts.mjs';
 import {paint, term} from './term.mjs';
@@ -67,7 +66,7 @@ export const normalizeDroppedPath = (input) => {
 };
 
 /** 由菜单选择组装 argv,与命令行同一语义;未知选择返回 null. */
-export const buildArgvFromChoices = ({choice, target, exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, filter = null, template = null}) => {
+export const buildArgvFromChoices = ({choice, target, exif = false, sign = false, photoCaption = false, dark = false, portrait = false, square = false, template = null}) => {
   if (choice === '1') {
     const argv = [target];
     if (exif) argv.push('--exif');
@@ -77,7 +76,6 @@ export const buildArgvFromChoices = ({choice, target, exif = false, sign = false
     if (portrait) argv.push('--portrait');
     if (square) argv.push('--square');
     if (template) argv.push('--template', template);
-    if (filter) argv.push('--filter', filter);
     return argv;
   }
   if (choice === '2') {
@@ -88,7 +86,6 @@ export const buildArgvFromChoices = ({choice, target, exif = false, sign = false
     if (dark) argv.push('--dark');
     if (portrait) argv.push('--portrait');
     if (square) argv.push('--square');
-    if (filter) argv.push('--filter', filter);
     return argv;
   }
   if (choice === '3') return ['lyrics', target];
@@ -147,7 +144,6 @@ export const runMenu = async (
     let dark = false;
     let portrait = false;
     let square = false;
-    let filter = null;
     let template = null;
     if (item.key === '1' || item.key === '2') {
       exif = await ask.confirm('显示 EXIF 拍摄参数和相机信息?', {
@@ -168,19 +164,15 @@ export const runMenu = async (
       portrait = format.index === 1;
       square = format.index === 2;
       if (item.key === '1') {
-        // 呈现层模板只影响转场/字幕/章节卡的"长相",滤镜等素材基调选项保持独立
+        // 呈现层模板只影响转场/字幕/章节卡的"长相"
         const templateChoice = await ask.pick('选择呈现模板', ['不应用模板(默认)', ...TEMPLATES.map((t) => `${t.name}(${t.description})`)], {
           allowBack: false, defaultIndex: 0, enterLabel: '不应用模板(默认)',
         });
         template = templateChoice.index === 0 ? null : TEMPLATES[templateChoice.index - 1].id;
       }
-      const filterChoice = await ask.pick('选择滤镜', ['无滤镜', ...FILTER_IDS], {
-        allowBack: false, defaultIndex: 0, enterLabel: '无滤镜',
-      });
-      filter = filterChoice.index === 0 ? null : FILTER_IDS[filterChoice.index - 1];
     }
 
-    const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, photoCaption, dark, portrait, square, filter, template});
+    const argv = buildArgvFromChoices({choice: item.key, target, exif, sign, photoCaption, dark, portrait, square, template});
     term.detail(`等效命令: ${formatEquivalentCommand(argv)}`);
     if (!['4', '5', '6'].includes(item.key)) {
       term.detail('进阶配置(分辨率/过渡/字幕/背景...)见素材夹 kiseki.toml,参考 docs/config.md');

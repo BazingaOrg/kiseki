@@ -2,6 +2,9 @@
  * Timeline 的渲染前边界检查.它有意不是 JSON Schema:只验证当前渲染器消费的
  * 字段,不改写输入,也不拒绝未知 kind,以便新版 planner 产物仍可被旧 CLI 透传.
  */
+
+import {isRollId} from '../film/src/index.mjs';
+
 export class TimelineValidationError extends Error {
   constructor(path, message) {
     super(`timeline ${path}: ${message}`);
@@ -35,16 +38,6 @@ const finite = (value, path, {positive = false, nonNegative = false, integer = f
   return value;
 };
 
-const validateFilter = (value, path) => {
-  if (value === null) return;
-  const filter = object(value, path);
-  if (string(filter.id, `${path}.id`).length === 0) fail(`${path}.id`, '不能为空');
-  if ('intensity' in filter) {
-    const intensity = finite(filter.intensity, `${path}.intensity`);
-    if (intensity < 0 || intensity > 1) fail(`${path}.intensity`, '必须在 0 到 1 之间');
-  }
-};
-
 const validateClipBounds = (clip, path, duration) => {
   const start = finite(clip.start, `${path}.start`, {nonNegative: true});
   const end = finite(clip.end, `${path}.end`, {nonNegative: true});
@@ -68,6 +61,16 @@ const validateMotion = (value, path) => {
   finite(motion.to, `${path}.to`, {positive: true});
 };
 
+const validateFilm = (value, path) => {
+  const film = object(value, path);
+  if (!isRollId(film.roll)) fail(`${path}.roll`, '必须是已知胶卷 id');
+  const strength = finite(film.strength, `${path}.strength`);
+  if (strength < 0 || strength > 1) fail(`${path}.strength`, '必须在 0 到 1 之间');
+  if (film.sourceLook !== null) object(film.sourceLook, `${path}.sourceLook`);
+  if (film.date !== null && !/^\d{4}-\d{2}-\d{2}$/.test(string(film.date, `${path}.date`))) fail(`${path}.date`, '必须是 YYYY-MM-DD 或 null');
+  finite(film.seed, `${path}.seed`, {integer: true});
+};
+
 /** @param {unknown} timeline @returns {unknown} the original input, unchanged */
 export const validateTimeline = (timeline) => {
   const root = object(timeline, '$');
@@ -83,7 +86,6 @@ export const validateTimeline = (timeline) => {
   finite(meta.photo_scale, '$.meta.photo_scale', {positive: true});
 
   if ('sign' in meta) boolean(meta.sign, '$.meta.sign');
-  if ('filter' in meta) validateFilter(meta.filter, '$.meta.filter');
   if ('trim' in meta) {
     const trim = object(meta.trim, '$.meta.trim');
     if (!['auto', 'full', 'seconds'].includes(string(trim.mode, '$.meta.trim.mode'))) fail('$.meta.trim.mode', '必须是 auto、full 或 seconds');
@@ -133,8 +135,8 @@ export const validateTimeline = (timeline) => {
     if (string(clip.src, `${path}.src`).length === 0) fail(`${path}.src`, '不能为空');
     if ('transition' in clip) validateTransition(clip.transition, `${path}.transition`);
     if ('motion' in clip) validateMotion(clip.motion, `${path}.motion`);
-    if ('filter' in clip) validateFilter(clip.filter, `${path}.filter`);
     if ('day_mark' in clip) string(clip.day_mark, `${path}.day_mark`);
+    if ('film' in clip) validateFilm(clip.film, `${path}.film`);
   });
 
   array(root.subtitles, '$.subtitles').forEach((value, index) => {

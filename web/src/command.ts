@@ -1,6 +1,6 @@
 /**
  * web 展示的"等效终端命令"必须和服务端实际执行的 argv 同源,避免像过去那样
- * 命令展示写死成 `kiseki <folder>`、画幅/滤镜/EXIF/草稿/倍率全部对不上。
+ * 命令展示写死成 `kiseki <folder>`、画幅/EXIF/草稿/倍率全部对不上。
  * 这里直接复用 cli/job-argv.mjs 的纯函数,渲染层只管拼字符串。
  */
 import {buildJobInvocation} from '../../cli/job-argv.mjs';

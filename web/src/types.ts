@@ -72,7 +72,24 @@ export interface AssetCollection {
   state: AssetState;
 }
 
+export interface FilmChoice {
+  roll: string | null;
+  strength: number;
+}
+
+export interface FilmSettings extends FilmChoice {
+  version: 1;
+  photos: Record<string, FilmChoice>;
+}
+
+export interface FilmPatch {
+  roll?: string | null;
+  strength?: number;
+  photo?: {assetId: string; roll?: string | null; strength?: number; inherit?: true};
+}
+
 export interface ProjectResponse {
+  film?: FilmSettings;
   captionRevision?: number;
   captionItemCount?: number;
   captionCacheFingerprint?: string | null;
@@ -108,7 +125,6 @@ export interface ProjectResponse {
   /** output/metadata/timeline.json —— 规划过时间线,说明这个素材夹渲染过 */
   timelinePath: string | null;
   unsupportedVideos: string[];
-  filterConfig: unknown;
   /** 这次成片片尾白场上的字。素材夹没写 outro_text 时是 Thanks for watching :) */
   outroText?: string;
   output: {

@@ -42,7 +42,6 @@ const emptyProject: ProjectResponse = {
   recognizedLyricsPath: null,
   timelinePath: null,
   unsupportedVideos: [],
-  filterConfig: null,
   output: {stills: [], videos: []},
 };
 

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import {CliError, parseArgs} from './options.mjs';
+import {CliError, STILL_USAGE, USAGE, parseArgs} from './options.mjs';
 
 test('bare folder argument routes to the render command', () => {
   assert.deepEqual(parseArgs(['album']), {
-    command: 'render', folder: 'album', output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null,
+    command: 'render', folder: 'album', output: null, exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, template: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4']), {
     command: 'render',
@@ -19,7 +19,6 @@ test('bare folder argument routes to the render command', () => {
     square: false,
     draft: false,
     trim: null,
-    filter: null,
     template: null,
   });
 });
@@ -37,7 +36,6 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     square: false,
     draft: false,
     trim: null,
-    filter: null,
     template: null,
   });
   assert.deepEqual(parseArgs(['album', '-o', 'out.mp4', '--exif']), {
@@ -52,7 +50,6 @@ test('render command accepts --exif, --sign, and --dark flags', () => {
     square: false,
     draft: false,
     trim: null,
-    filter: null,
     template: null,
   });
 });
@@ -141,7 +138,7 @@ test('a leading `help` token (or -h / --help) routes to the help command', () =>
 });
 
 test('a path-qualified folder named doctor/lyrics/still/fetch/help is the escape hatch, not a verb', () => {
-  const flags = {exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, filter: null, template: null};
+  const flags = {exif: false, sign: false, photoCaption: false, dark: false, portrait: false, square: false, draft: false, trim: null, template: null};
   assert.deepEqual(parseArgs(['./lyrics']), {command: 'render', folder: './lyrics', output: null, ...flags});
   assert.deepEqual(parseArgs(['./fetch']), {command: 'render', folder: './fetch', output: null, ...flags});
   assert.deepEqual(parseArgs(['./doctor']), {command: 'render', folder: './doctor', output: null, ...flags});
@@ -168,7 +165,6 @@ test('a leading `still` token routes to the still command with defaults', () => 
     square: false,
     skipExisting: false,
     scale: 2,
-    filter: null,
   });
 });
 
@@ -185,7 +181,6 @@ test('still accepts -o, --exif, and --scale', () => {
     square: false,
     skipExisting: false,
     scale: 3,
-    filter: null,
   });
 });
 
@@ -233,22 +228,6 @@ test('still without a target is a usage error', () => {
   assert.throws(() => parseArgs(['still']), /--skip-existing/);
 });
 
-test('render command accepts --filter with optional --filter-intensity', () => {
-  assert.deepEqual(parseArgs(['album', '--filter', 'mono']).filter, {id: 'mono'});
-  assert.deepEqual(parseArgs(['album', '--filter', 'mono', '--filter-intensity', '0.5']).filter, {
-    id: 'mono',
-    intensity: 0.5,
-  });
-  assert.deepEqual(parseArgs(['album', '--filter-intensity', '0.5', '--filter', 'warm']).filter, {
-    id: 'warm',
-    intensity: 0.5,
-  });
-});
-
-test('filter aliases are normalized to the registry id before render args are built', () => {
-  assert.deepEqual(parseArgs(['album', '--filter', 'teal_orange']).filter, {id: 'teal-orange'});
-});
-
 test('render command accepts an outro line and a signature name', () => {
   assert.equal(parseArgs(['album', '--outro-text', '谢谢观看']).outroText, '谢谢观看');
   assert.equal(parseArgs(['album', '--outro-text', '   ']).outroText, '');
@@ -269,30 +248,6 @@ test('render command rejects unknown or missing template id and lists available 
   assert.throws(() => parseArgs(['album', '--template']), /需要模板 id/);
 });
 
-test('render command rejects unknown filter id and lists available ids', () => {
-  assert.throws(() => parseArgs(['album', '--filter', 'nope']), /未知滤镜 id: nope/);
-  assert.throws(() => parseArgs(['album', '--filter', 'nope']), /faded/);
-});
-
-test('render command rejects --filter-intensity outside 0-1 or without --filter', () => {
-  assert.throws(() => parseArgs(['album', '--filter', 'mono', '--filter-intensity', '1.5']), /--filter-intensity/);
-  assert.throws(() => parseArgs(['album', '--filter', 'mono', '--filter-intensity', '-0.1']), /--filter-intensity/);
-  assert.throws(() => parseArgs(['album', '--filter-intensity', '0.5']), /--filter-intensity 需要搭配 --filter/);
-});
-
-test('still accepts --filter with optional --filter-intensity', () => {
-  assert.deepEqual(parseArgs(['still', 'a.jpg', '--filter', 'vintage']).filter, {id: 'vintage'});
-  assert.deepEqual(parseArgs(['still', 'a.jpg', '--filter', 'vintage', '--filter-intensity', '0.8']).filter, {
-    id: 'vintage',
-    intensity: 0.8,
-  });
-});
-
-test('still rejects unknown filter id and lists available ids', () => {
-  assert.throws(() => parseArgs(['still', 'a.jpg', '--filter', 'nope']), /未知滤镜 id: nope/);
-  assert.throws(() => parseArgs(['still', 'a.jpg', '--filter', 'nope']), /faded/);
-});
-
 test('missing folder in the default command reports usage listing all forms', () => {
   assert.throws(() => parseArgs([]), /kiseki <folder> \[-o out\.mp4\]/);
   assert.throws(() => parseArgs([]), /kiseki doctor/);
@@ -307,4 +262,36 @@ test('web command accepts an optional folder argument', () => {
 
 test('web command rejects extra flag-like arguments', () => {
   assert.throws(() => parseArgs(['web', 'album', '--bogus']), /未知参数: --bogus/);
+});
+
+test('render and still accept a film roll, none, and a film strength', () => {
+  const render = parseArgs(['album', '--film', 'classic-chrome', '--film-strength', '0.5']);
+  assert.equal(render.film, 'classic-chrome');
+  assert.equal(render.filmStrength, 0.5);
+  assert.equal(parseArgs(['album', '--film', 'none']).film, null);
+  assert.equal(parseArgs(['album']).film, undefined);
+  assert.equal(parseArgs(['album']).filmStrength, undefined);
+  const still = parseArgs(['still', 'photo.jpg', '--film', 'velvia', '--film-strength', '1']);
+  assert.equal(still.film, 'velvia');
+  assert.equal(still.filmStrength, 1);
+  assert.equal(parseArgs(['still', 'photo.jpg', '--film-strength', '.25']).filmStrength, 0.25);
+  assert.equal(parseArgs(['still', 'photo.jpg', '--film', 'none']).film, null);
+});
+
+test('render and still reject unknown rolls and out-of-range film strengths', () => {
+  for (const prefix of [['album'], ['still', 'photo.jpg']]) {
+    assert.throws(() => parseArgs([...prefix, '--film', 'kodachrome-64']), (error) => error instanceof CliError && /未知胶卷 id/.test(error.message));
+    assert.throws(() => parseArgs([...prefix, '--film']), CliError);
+    assert.throws(() => parseArgs([...prefix, '--film', '--exif']), CliError);
+    assert.throws(() => parseArgs([...prefix, '--film-strength', '1.5']), CliError);
+    assert.throws(() => parseArgs([...prefix, '--film-strength', 'strong']), CliError);
+    assert.throws(() => parseArgs([...prefix, '--film-strength']), CliError);
+  }
+});
+
+test('usage strings document the film flags', () => {
+  assert.match(USAGE, /--film <roll-id\|none>/);
+  assert.match(USAGE, /--film-strength <0-1>/);
+  assert.match(STILL_USAGE, /--film <roll-id\|none>/);
+  assert.match(STILL_USAGE, /--film-strength <0-1>/);
 });

@@ -32,7 +32,7 @@ node cli/kiseki.mjs help
 
 Without arguments, kiseki opens a persistent interactive menu; each flow returns after completion, cancellation, or failure, and `q` exits. Commands with arguments run once. `<folder>` makes a video, `lyrics` only previews lyrics, `fetch` interactively prepares online audio or lyrics, `still` exports PNGs, `doctor` checks dependencies, and `web [folder]` starts the local workbench; `help` is the complete syntax reference.
 
-The default video is `osaka-trip/output/osaka-trip.mp4`; stills default to `output/stills/`. When `-o` is omitted, EXIF, signature, photo captions, dark mode, aspect, draft, template, and an effective filter are appended in that order. An explicit `-o` path takes precedence unchanged.
+The default video is `osaka-trip/output/osaka-trip.mp4`; stills default to `output/stills/`. When `-o` is omitted, EXIF, signature, photo captions, dark mode, aspect, draft, and template are appended in that order. An explicit `-o` path takes precedence unchanged.
 
 Optional photo captions:
 

@@ -1,13 +1,11 @@
-import {useEffect, useId, useLayoutEffect, useMemo, useRef, useState} from 'react';
+import {useEffect, useLayoutEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
-import {Check, ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
+import {ChevronDown, Clapperboard, ImageDown, SlidersHorizontal} from 'lucide-react';
 
 import {DEFAULT_OUTRO_TEXT} from '../../cli/branding.mjs';
-import {FILTERS, getFilter} from '../../renderer/src/filters';
 import type {Capability, Capabilities, Remedy} from './capabilities';
 import {equivalentCommand} from './command';
 import {JobPanel} from './JobPanel';
-import {thumbUrl} from './media';
 import {LYRICS_MODE_EVENT, lyricsModeStorageKey, type ProjectResponse} from './types';
 import {Blocked, CommandHint, Section} from './ui';
 import {FieldHelp} from './FieldHelp';
@@ -15,6 +13,8 @@ import {SignaturePreview} from './SignaturePreview';
 import type {JobOptions} from './useJob';
 import {hasPhotoCaptionFailure, type useJob} from './useJob';
 import {useTransitionPresence} from './useTransitionPresence';
+import {FilmField} from './FilmField';
+import {EMPTY_FILM} from './film-state';
 
 type Kind = 'render' | 'still';
 
@@ -39,142 +39,6 @@ const FORMAT_LABELS: {value: 'landscape' | 'portrait'; label: string}[] = [
   {value: 'portrait', label: '竖版'},
 ];
 
-const FILTER_GROUPS = [
-  {id: 'camera', label: '经典相机'},
-  {id: 'film', label: '经典胶片'},
-] as const;
-
-const FilterPicker = ({value, onChange}: {value: string | null; onChange: (value: string | null) => void}) => {
-  const [open, setOpen] = useState(false);
-  const [menuPlacement, setMenuPlacement] = useState<'bottom' | 'top'>('bottom');
-  const [menuMaxHeight, setMenuMaxHeight] = useState(320);
-  const pickerRef = useRef<HTMLDivElement>(null);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const listboxId = useId();
-  const selectedFilter = FILTERS.find((filter) => filter.id === value);
-  const selectedLegacyFilter = FILTERS.find((filter) => filter.id === value && filter.group === 'legacy');
-  useEffect(() => {
-    if (!open) return;
-    const updateMenuPosition = () => {
-      const trigger = triggerRef.current;
-      if (!trigger) return;
-      const rect = trigger.getBoundingClientRect();
-      const gap = 6;
-      const viewportPadding = 8;
-      const preferredHeight = Math.min(320, Math.floor(window.innerHeight * 0.52));
-      const below = Math.max(0, window.innerHeight - rect.bottom - gap - viewportPadding);
-      const above = Math.max(0, rect.top - gap - viewportPadding);
-      const placeTop = below < Math.min(preferredHeight, 240) && above > below;
-      const available = placeTop ? above : below;
-      setMenuPlacement(placeTop ? 'top' : 'bottom');
-      setMenuMaxHeight(Math.max(96, Math.min(preferredHeight, available)));
-    };
-    const onPointerDown = (event: PointerEvent) => {
-      if (!pickerRef.current?.contains(event.target as Node)) {
-        setOpen(false);
-      }
-    };
-    updateMenuPosition();
-    window.addEventListener('resize', updateMenuPosition);
-    document.addEventListener('scroll', updateMenuPosition, true);
-    document.addEventListener('pointerdown', onPointerDown);
-    const selected = menuRef.current?.querySelector<HTMLButtonElement>('[aria-selected="true"]');
-    selected?.focus();
-    return () => {
-      window.removeEventListener('resize', updateMenuPosition);
-      document.removeEventListener('scroll', updateMenuPosition, true);
-      document.removeEventListener('pointerdown', onPointerDown);
-    };
-  }, [open]);
-
-  const choose = (next: string | null) => {
-    onChange(next);
-    setOpen(false);
-    triggerRef.current?.focus();
-  };
-
-  const moveFocus = (current: HTMLButtonElement, direction: 1 | -1) => {
-    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? [])];
-    const index = items.indexOf(current);
-    items[(index + direction + items.length) % items.length]?.focus();
-  };
-
-  const selectedLabel = selectedFilter?.label ?? '无';
-
-  return (
-    <div className="make-filter-picker" ref={pickerRef}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="make-filter-trigger"
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listboxId}
-        onClick={() => setOpen((current) => !current)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' || event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-      >
-        <span>{selectedLabel}</span>
-        <ChevronDown className={open ? 'make-filter-chevron make-filter-chevron-open' : 'make-filter-chevron'} size={14} aria-hidden="true" />
-      </button>
-      {open && (
-        <div ref={menuRef} id={listboxId} className={`make-filter-menu make-filter-menu-${menuPlacement}`} style={{maxHeight: `${menuMaxHeight}px`}} role="listbox" aria-label="滤镜选项" onKeyDown={(event) => {
-          const current = event.target as HTMLButtonElement;
-          if (event.key === 'Escape') {
-            event.preventDefault();
-            setOpen(false);
-            triggerRef.current?.focus();
-          } else if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            moveFocus(current, 1);
-          } else if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            moveFocus(current, -1);
-          } else if (event.key === 'Home' || event.key === 'End') {
-            event.preventDefault();
-            const items = menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]');
-            (event.key === 'Home' ? items?.[0] : items?.[items.length - 1])?.focus();
-          }
-        }}>
-          <FilterOption value={null} label="无" selected={value === null} onChoose={choose} />
-          {selectedLegacyFilter && (
-            <div className="make-filter-group" role="group" aria-label="旧项目滤镜">
-              <span className="make-filter-group-label">旧项目滤镜</span>
-              <FilterOption value={selectedLegacyFilter.id} label={selectedLegacyFilter.label} selected={value === selectedLegacyFilter.id} onChoose={choose} />
-            </div>
-          )}
-          {FILTER_GROUPS.map((group) => (
-            <div className="make-filter-group" role="group" aria-label={group.label} key={group.id}>
-              <span className="make-filter-group-label">{group.label}</span>
-              {FILTERS.filter((filter) => filter.group === group.id).map((filter) => (
-                <FilterOption key={filter.id} value={filter.id} label={filter.label} selected={value === filter.id} onChoose={choose} />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-const FilterOption = ({value, label, selected, onChoose}: {value: string | null; label: string; selected: boolean; onChoose: (value: string | null) => void}) => (
-  <button
-    type="button"
-    className={selected ? 'make-filter-option make-filter-option-selected' : 'make-filter-option'}
-    role="option"
-    aria-selected={selected}
-    onClick={() => onChoose(value)}
-  >
-    <span>{label}</span>
-    {selected && <Check size={14} aria-hidden="true" />}
-  </button>
-);
-
 const RENDER_DEFAULTS: JobOptions = {
   lyricsMode: 'bilingual',
   exif: false,
@@ -183,8 +47,6 @@ const RENDER_DEFAULTS: JobOptions = {
   photoCaptionMode: 'existing',
   dark: false,
   format: 'landscape',
-  filter: null,
-  filterIntensity: null,
   draft: false,
   trim: 'full',
   speed: 'balanced',
@@ -200,44 +62,8 @@ const STILL_DEFAULTS: JobOptions = {
   photoCaptionMode: 'existing',
   dark: false,
   format: 'landscape',
-  filter: null,
-  filterIntensity: null,
   scale: 2,
   signatureName: DEFAULT_SIGNATURE_NAME,
-};
-
-/**
- * 滤镜实时预览:取素材夹第一张照片的缩略图,套上与成片同一份 getFilter 输出的
- * CSS/SVG。浏览器与 headless Chromium 渲染 SVG 滤镜存在细微差异,所以只当预览,
- * 不当承诺 —— 提示语放在预览旁边,别让用户拿它去较真像素。
- */
-const FilterPreview = ({
-  photo,
-  filterId,
-  intensity,
-}: {
-  photo: string;
-  filterId: string | null;
-  intensity: number | null;
-}) => {
-  const resolved = useMemo(
-    () => getFilter(filterId, intensity ?? undefined),
-    [filterId, intensity],
-  );
-  return (
-    <div className="filter-preview">
-      <div className="filter-preview-frame">
-        {resolved.svgDefMarkup && (
-          <svg width={0} height={0} style={{position: 'absolute'}} aria-hidden="true">
-            <defs dangerouslySetInnerHTML={{__html: resolved.svgDefMarkup}} />
-          </svg>
-        )}
-        <img src={thumbUrl(photo, 240)} alt="" style={resolved.imgStyle} />
-        {resolved.overlayStyle && <div className="filter-preview-overlay" style={resolved.overlayStyle} />}
-      </div>
-      <p className="hint filter-preview-note">预览仅供参考，以成片为准。</p>
-    </div>
-  );
 };
 
 interface OptionsFormProps {
@@ -248,25 +74,18 @@ interface OptionsFormProps {
   captionCount: number;
   onManageCaptions: () => void;
   hasTranslation: boolean;
+  filmField: ReactNode;
 }
 
-const OptionsForm = ({kind, photos, options, onChange, captionCount, onManageCaptions, hasTranslation}: OptionsFormProps) => {
+const OptionsForm = ({kind, photos, options, onChange, captionCount, onManageCaptions, hasTranslation, filmField}: OptionsFormProps) => {
   const set = <K extends keyof JobOptions>(key: K, value: JobOptions[K]) =>
     onChange({...options, [key]: value});
 
-  // 换滤镜时把强度重置到那个滤镜自己的默认值,免得带着上一个滤镜的强度显得像调坏了
-  const handleFilterChange = (filterId: string) => {
-    if (filterId === '') {
-      onChange({...options, filter: null, filterIntensity: null});
-      return;
-    }
-    const def = FILTERS.find((item) => item.id === filterId);
-    onChange({...options, filter: filterId, filterIntensity: def?.defaultIntensity ?? 0.6});
-  };
   const format = options.format === 'portrait' ? 'portrait' : 'landscape';
 
   return (
     <div className="make-form">
+      {filmField}
       {kind === 'render' && (
         <div className="make-field">
           <span className="make-field-label make-field-label-with-help">
@@ -379,26 +198,6 @@ const OptionsForm = ({kind, photos, options, onChange, captionCount, onManageCap
           ))}
         </div>
       </div>
-
-      <div className="make-field">
-        <span className="make-field-label make-field-label-with-help">滤镜 <FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。</FieldHelp></span>
-        <FilterPicker value={options.filter} onChange={(filterId) => handleFilterChange(filterId ?? '')} />
-        {options.filter && (
-          <input
-            type="range"
-            min={0}
-            max={1}
-            step={0.05}
-            value={options.filterIntensity ?? 0.6}
-            onChange={(e) => set('filterIntensity', Number(e.target.value))}
-            aria-label="滤镜强度"
-          />
-        )}
-      </div>
-
-      {options.filter && photos[0] && (
-        <FilterPreview photo={photos[0]} filterId={options.filter} intensity={options.filterIntensity} />
-      )}
     </div>
   );
 };
@@ -418,6 +217,7 @@ interface ActionCardProps {
   captionCount: number;
   hasTranslation?: boolean;
   outroText: string;
+  filmField: ReactNode;
 }
 
 const ActionCard = ({
@@ -435,6 +235,7 @@ const ActionCard = ({
   captionCount,
   hasTranslation = false,
   outroText,
+  filmField,
 }: ActionCardProps) => {
   const [expanded, setExpanded] = useState(true);
   const [options, setOptions] = useState<JobOptions>(kind === 'render' ? {...RENDER_DEFAULTS, outroText} : STILL_DEFAULTS);
@@ -552,7 +353,7 @@ const ActionCard = ({
                   style={{pointerEvents: expanded ? undefined : 'none'}}
                   onTransitionEnd={optionsPresence.onTransitionEnd}
                 >
-                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} captionCount={captionCount} onManageCaptions={onManageCaptions} hasTranslation={hasTranslation} />
+                  <OptionsForm kind={kind} photos={photos} options={options} onChange={handleOptionsChange} captionCount={captionCount} onManageCaptions={onManageCaptions} hasTranslation={hasTranslation} filmField={filmField} />
                 </div>
               )}
               {otherRunning && <p className="hint">另一项任务正在跑，等它结束再开始。</p>}
@@ -601,6 +402,7 @@ export const Make = ({project, capabilities, onRemedy, onManageCaptions, job, ac
     {kind: 'still', label: '导出静态图', description: '按成片同款视觉导出单张照片，可带 EXIF 展签，也可以填名字生成签名落款。', icon: <ImageDown size={18} strokeWidth={1.5} />, capability: capabilities.exportStill},
   ];
   const selectedTab = outputTabs.find((tab) => tab.kind === selectedKind) ?? outputTabs[0];
+  const filmField = <FilmField folder={project.path} photos={project.assets?.photos.items ?? []} initial={project.film ?? EMPTY_FILM} locked={locked} />;
 
   return (
     <Section title="制作" titleHidden>
@@ -638,6 +440,7 @@ export const Make = ({project, capabilities, onRemedy, onManageCaptions, job, ac
           captionCount={captionCount}
           hasTranslation={selectedKind === 'render' && Boolean(project.lyrics?.some((line) => line.translation?.text))}
           outroText={project.outroText ?? DEFAULT_OUTRO_TEXT}
+          filmField={filmField}
         />
         </div>
       </div>

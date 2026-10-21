@@ -1,4 +1,4 @@
-import type {AudioCandidate, LyricsCandidate, LyricsPreview, LyricsSearchResult, LyricsValidation} from './types';
+import type {AudioCandidate, FilmPatch, FilmSettings, LyricsCandidate, LyricsPreview, LyricsSearchResult, LyricsValidation} from './types';
 
 export type ApiResult<T> =
   | {ok: true; data: T}
@@ -108,6 +108,9 @@ export const saveCaptionKey = (apiKey: string) =>
 
 export const installSetupTool = (tool: 'uv' | 'ffmpeg' | 'analyzer') =>
   postAsset<{ok: boolean; tool: string}>('/api/setup/install', {tool});
+
+export const saveFilm = (folder: string, patch: FilmPatch) =>
+  postAsset<FilmSettings>('/api/film', {folder, ...patch});
 
 export const undoAssetDelete = (folder: string, undoId: string) =>
   postAsset<{restored: number}>('/api/assets/undo', {folder, undoId});

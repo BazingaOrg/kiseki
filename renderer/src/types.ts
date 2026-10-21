@@ -1,4 +1,5 @@
 import type {StillExif} from './ExifPanel';
+import type {SourceLook} from '../../film/src/index.mjs';
 
 export type TransitionSpec = {
   type: 'album' | 'crossfade' | 'cut' | 'none';
@@ -14,6 +15,14 @@ export type MotionSpec = {
   to: number;
 };
 
+export type PhotoFilm = {
+  roll: string;
+  strength: number;
+  sourceLook: SourceLook | null;
+  date: string | null;
+  seed: number;
+};
+
 export type PhotoClip = {
   kind?: 'photo';
   src: string;
@@ -24,8 +33,6 @@ export type PhotoClip = {
   motion: MotionSpec;
   /** 渲染时覆盖注入的 EXIF 展签数据;无内容或未开启 --exif 时为空 */
   exif?: StillExif | null;
-  /** 渲染时覆盖注入的滤镜;id 见 renderer/src/filters.ts 注册表,intensity 缺省用滤镜自身默认值 */
-  filter?: {id: string; intensity?: number} | null;
   /** 渲染输入专用,不是 timeline 手改字段 */
   caption?: string | null;
   captionLayout?: {
@@ -37,6 +44,7 @@ export type PhotoClip = {
     letterSpacing: string;
   } | null;
   day_mark?: string;
+  film?: PhotoFilm | null;
 };
 
 export type ChapterClip = {kind: 'chapter'; text: string; start: number; end: number};
@@ -96,8 +104,6 @@ export type TimelineMeta = {
   branding?: Branding;
   /** 渲染时覆盖注入的照片签名落款开关;缺省 false */
   sign?: boolean;
-  /** 渲染时覆盖注入的全局滤镜;逐张覆盖见 PhotoClip.filter(阶段二实现) */
-  filter?: {id: string; intensity?: number} | null;
   /** 渲染时覆盖注入的呈现层模板 id(见 renderer/src/templates.ts);缺省不应用模板 */
   templateId?: string;
   lyrics_mode?: 'original' | 'bilingual' | 'none';

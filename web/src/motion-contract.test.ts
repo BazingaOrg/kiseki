@@ -65,7 +65,6 @@ test('featured render styles use abstract explanatory previews with motion safeg
   assert.match(make, /template: null/);
   assert.match(make, /<FieldHelp label="了解歌词显示">当前歌词没有中文译文，将显示原文。<\/FieldHelp>/);
   assert.match(make, /<FieldHelp label="了解图片旁白">只在作品中显示已生成的文字，不会在制作时调用 AI。可以先到素材页生成或修改。<\/FieldHelp>/);
-  assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果，并非品牌官方模拟；实际效果会受原片色彩和曝光影响。<\/FieldHelp>/);
   assert.doesNotMatch(make, /改变照片布局、转场和字幕样式|抽象图形仅说明布局与动效|非品牌官方模拟，效果会受原片色彩和曝光影响。/);
   assert.doesNotMatch(make, /title=\{item\.hint\}/);
   assert.match(fieldHelp, /import \{Info\} from 'lucide-react';/);
@@ -84,18 +83,7 @@ test('featured render styles use abstract explanatory previews with motion safeg
   assert.match(appCss, /@media \(max-width: 600px\) \{\s*\.field-help-tooltip \{\s*position: fixed;[\s\S]*right: 1rem;[\s\S]*bottom: 1rem;[\s\S]*left: 1rem;/);
   assert.match(appCss, /\.make-field-label \{\s*display: block;/);
   assert.match(appCss, /\.make-field-label-with-help \{\s*display: flex;[\s\S]*align-items: center;[\s\S]*gap: 0\.3rem;/);
-  assert.equal([...make.matchAll(/make-field-label make-field-label-with-help/g)].length, 2);
+  assert.equal([...make.matchAll(/make-field-label make-field-label-with-help/g)].length, 1);
   assert.doesNotMatch(make, /约四分之一核心|约一半核心|几乎占满，风扇会转起来/);
   assert.doesNotMatch(make, /晴天 海边 午后|SAMPLE_CAPTION/);
-});
-
-test('filter picker exposes only grouped classic styles and preserves a selected legacy value', async () => {
-  const make = await source('Make.tsx');
-  assert.match(make, /\{id: 'camera', label: '经典相机'\}/);
-  assert.match(make, /\{id: 'film', label: '经典胶片'\}/);
-  assert.match(make, /filter\.id === value && filter\.group === 'legacy'/);
-  assert.match(make, /role="group" aria-label="旧项目滤镜"/);
-  assert.match(make, /role="listbox" aria-label="滤镜选项"/);
-  assert.match(make, /FILTERS\.filter\(\(filter\) => filter\.group === group\.id\)/);
-  assert.match(make, /<FieldHelp label="了解滤镜">这些是接近经典相机与胶片观感的风格效果/);
 });

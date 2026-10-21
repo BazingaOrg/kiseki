@@ -7,6 +7,7 @@ import {Signature, getSignatureDisplayWidth, useSignatureData} from './Signature
 import {PhotoCaption} from './PhotoCaption';
 import {CAPTION_BAND_PAD, CAPTION_SUBJECT_GAP, signaturePhotoLift} from './photoCaptionLayout.mjs';
 import {resolveFontFamily} from './fontFamily';
+import type {PhotoFilm} from './types';
 import {CANVAS, STILL, getExifLayout, getPalette, getVisualScale, signaturePathProps} from './theme';
 
 export type {StillExif} from './ExifPanel';
@@ -20,7 +21,6 @@ export type StillProps = {
   exif?: StillExif | null;
   sign?: boolean;
   signatureSrc?: string;
-  filter?: {id: string; intensity?: number} | null;
   caption?: string | null;
   captionLayout?: {
     x: number;
@@ -30,6 +30,7 @@ export type StillProps = {
     fontSize: number;
     letterSpacing: string;
   } | null;
+  film?: PhotoFilm | null;
 };
 
 const toStatic = (src: string) => staticFile(src.replace(/^\.\//, ''));
@@ -46,9 +47,9 @@ export const Still: React.FC<StillProps> = ({
   exif,
   sign = false,
   signatureSrc,
-  filter,
   caption,
   captionLayout,
+  film,
 }) => {
   ensureFonts('serif');
   const scale = getVisualScale(width, height);
@@ -133,7 +134,7 @@ export const Still: React.FC<StillProps> = ({
     });
     return stage(
       <div style={{display: 'inline-flex', transform: lift ? `translateY(${-lift}px)` : undefined}}>
-        <FramedPhoto src={toStatic(src)} maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} filter={filter} />
+        <FramedPhoto src={toStatic(src)} film={film} grain="baked" maxWidth={safeW} maxHeight={safeH} renderScale={scale} palette={palette} />
       </div>,
     );
   }
@@ -159,11 +160,12 @@ export const Still: React.FC<StillProps> = ({
     >
       <FramedPhoto
         src={toStatic(src)}
+        film={film}
+        grain="baked"
         maxWidth={photoMaxWidth}
         maxHeight={photoMaxHeight}
         renderScale={scale}
         palette={palette}
-        filter={filter}
       />
       <ExifPanel exif={exif!} scale={scale} width={Math.min(layout.panelWidth, maxPhotoWidth)} sign={sign} signature={signature} palette={palette} align={stacked ? 'center' : 'left'} />
     </div>,

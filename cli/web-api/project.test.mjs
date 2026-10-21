@@ -7,6 +7,7 @@ import test from 'node:test';
 import {CACHE_VERSION} from '../ai/photo-caption-cache.mjs';
 import {CAPTION_MODEL, PROMPT_VERSION, promptHash} from '../ai/photo-caption-prompt.mjs';
 import {PREVIEW_WIDTH, readSourceStat, sourceIdentityRecord} from '../image-identity.mjs';
+import {filmSettingsPathFor} from '../film-settings.mjs';
 import {getProject} from './project.mjs';
 
 const makeTempRoot = () => fs.mkdtempSync(path.join(os.tmpdir(), 'kiseki-project-'));
@@ -45,22 +46,6 @@ test('echoes the visible outro, including an explicit empty string', () => {
   assert.equal(getProject(root, root).body.outroText, '');
   fs.writeFileSync(path.join(root, 'kiseki.toml'), 'outro_text = "谢谢观看"\n');
   assert.equal(getProject(root, root).body.outroText, '谢谢观看');
-});
-
-test('includes filterConfig when kiseki.json is present and valid', () => {
-  const root = makeTempRoot();
-  fs.writeFileSync(path.join(root, 'kiseki.json'), JSON.stringify({filter: 'riso', intensity: 0.5}));
-  const result = getProject(root, root);
-  assert.equal(result.status, 200);
-  assert.deepEqual(result.body.filterConfig, {filter: 'riso', intensity: 0.5});
-});
-
-test('does not blow up when kiseki.json is invalid, just omits filterConfig', () => {
-  const root = makeTempRoot();
-  fs.writeFileSync(path.join(root, 'kiseki.json'), '{not valid json');
-  const result = getProject(root, root);
-  assert.equal(result.status, 200);
-  assert.equal(result.body.filterConfig, null);
 });
 
 test('works on an empty folder without throwing (loose scan, no required audio)', () => {
@@ -318,4 +303,34 @@ test('开头就是空行时不炸,也不凭空造出一行', () => {
   fs.writeFileSync(path.join(root, 'music.lrc'), ['[00:00.00]', '[00:03.00]开场'].join('\n'));
   const {body} = getProject(root, root);
   assert.deepEqual(body.lyrics, [{time: 3, text: '开场', until: null}]);
+});
+
+test('project payload carries the normalized film settings read-only', () => {
+  const root = fs.realpathSync(makeTempRoot());
+  try {
+    fs.writeFileSync(path.join(root, 'a.jpg'), '');
+    assert.deepEqual(getProject(root, root).body.film, {version: 1, roll: null, strength: 1, photos: {}});
+    const filmPath = filmSettingsPathFor(root);
+    fs.mkdirSync(path.dirname(filmPath), {recursive: true});
+    const stored = JSON.stringify({version: 1, roll: 'velvia', strength: 4, photos: {'a.jpg': {roll: 'mystery', strength: 1}}});
+    fs.writeFileSync(filmPath, stored);
+    assert.deepEqual(getProject(root, root).body.film, {version: 1, roll: 'velvia', strength: 1, photos: {}});
+    assert.equal(fs.readFileSync(filmPath, 'utf8'), stored);
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+  }
+});
+
+test('project payload ignores film settings behind a symlinked metadata folder', () => {
+  const root = fs.realpathSync(makeTempRoot());
+  const outside = fs.realpathSync(makeTempRoot());
+  try {
+    fs.writeFileSync(path.join(outside, 'film.json'), JSON.stringify({version: 1, roll: 'velvia', strength: 1, photos: {}}));
+    fs.mkdirSync(path.join(root, 'output'));
+    fs.symlinkSync(outside, path.join(root, 'output', 'metadata'));
+    assert.deepEqual(getProject(root, root).body.film, {version: 1, roll: null, strength: 1, photos: {}});
+  } finally {
+    fs.rmSync(root, {recursive: true, force: true});
+    fs.rmSync(outside, {recursive: true, force: true});
+  }
 });

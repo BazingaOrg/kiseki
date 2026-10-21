@@ -58,16 +58,14 @@ test('lyrics can be renamed or deleted and only lyrics-dependent timeline is inv
   }
 });
 
-test('rename updates per-photo config and permanently invalidates derived metadata', () => {
+test('rename permanently invalidates derived metadata', () => {
   const folder = fixture();
   try {
     fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
-    fs.writeFileSync(path.join(folder, 'kiseki.json'), JSON.stringify({perPhoto: {'photo.jpg': {filter: 'mono'}}}));
     writeDerived(folder);
     mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
     assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), false);
     assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), true);
-    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(folder, 'kiseki.json'), 'utf8')).perPhoto, {'renamed.jpg': {filter: 'mono'}});
     assert.equal(fs.existsSync(path.join(folder, 'output', 'metadata', 'timeline.json')), false);
     assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
   } finally {

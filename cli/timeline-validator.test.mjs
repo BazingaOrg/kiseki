@@ -37,7 +37,6 @@ test('validates optional renderer fields in their real shapes', () => {
   timeline.meta.opening_recap = {start: 3, settle_start: 4.25, end: 4.5, order: 'reverse', layout: 'single', batch_size: 1};
   timeline.meta.chapters = {enabled: true, day_count: 2, card_count: 1};
   timeline.meta.branding = {outro_text: '', signature: 'signature.svg', intro: false};
-  timeline.meta.filter = null;
   timeline.beats = {bpm: 120, downbeats: [0, 2]};
   timeline.photos[0].motion = {type: 'none', from: 1, to: 1};
   timeline.photos[0].day_mark = '7月14日 · 第2天';
@@ -98,4 +97,28 @@ test('entrypoints validate before loading Remotion or reading render statistics'
   assert.ok(renderSource.indexOf('const timeline = readTimeline(timelinePath);') < renderSource.indexOf('loadRemotionRenderer()'));
   const cliSource = fs.readFileSync(new URL('./kiseki.mjs', import.meta.url), 'utf8');
   assert.ok(cliSource.indexOf('let tl = readValidatedTimeline(timelinePath);') < cliSource.indexOf('tl.photos.filter'));
+});
+
+test('photo clips accept a runtime film in its exact shape', () => {
+  const timeline = validTimeline();
+  const film = {roll: 'classic-chrome', strength: 0.6, sourceLook: {maker: 'fujifilm', label: '经典铬', roll: 'classic-chrome'}, date: '2026-10-02', seed: 12345};
+  timeline.photos[0].film = film;
+  assert.equal(validateTimeline(timeline), timeline);
+  timeline.photos[0].film = {...film, sourceLook: null, date: null};
+  assert.equal(validateTimeline(timeline), timeline);
+  const broken = [
+    [{...film, roll: 'kodachrome'}, /film\.roll/],
+    [{...film, strength: 1.2}, /film\.strength/],
+    [{...film, strength: '1'}, /film\.strength/],
+    [{...film, sourceLook: 'classic'}, /film\.sourceLook/],
+    [{...film, date: '2026.10.02'}, /film\.date/],
+    [{...film, date: 20261002}, /film\.date/],
+    [{...film, seed: 1.5}, /film\.seed/],
+    [{...film, seed: undefined}, /film\.seed/],
+    [null, /\$\.photos\[0\]\.film/],
+  ];
+  for (const [value, pattern] of broken) {
+    timeline.photos[0].film = value;
+    assert.throws(() => validateTimeline(timeline), pattern);
+  }
 });
