@@ -3,6 +3,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import {writeJsonAtomic} from '../atomic-json.mjs';
+import {filmSettingsPathFor} from '../film-settings.mjs';
+import {assertSafeFilmPath} from './film.mjs';
+
 import {resolveProjectPaths, scanFolderLoose} from '../project.mjs';
 import {isRecognizedLyricsManageable} from '../recognized-lyrics.mjs';
 import {createTaskLeaseManager, ProjectBusyError} from '../task-lease.mjs';
@@ -354,6 +358,36 @@ const withMutationLease = (folder, task, leaseManager = createTaskLeaseManager()
   }
 };
 
+const readRenameFilm = (folder) => {
+  const file = filmSettingsPathFor(folder);
+  try {
+    assertSafeFilmPath(folder, file);
+    if (!fs.existsSync(file)) return null;
+    const value = JSON.parse(fs.readFileSync(file, 'utf8'));
+    if (!value || value.version !== 1 || !value.photos || typeof value.photos !== 'object' || Array.isArray(value.photos)) throw new Error('invalid');
+    return value;
+  } catch { throw new AssetMutationError(409, '胶片设置无法安全读取，未改动照片'); }
+};
+
+const prepareFilmRename = (folder, from, to) => {
+  const before = readRenameFilm(folder);
+  if (!before) return null;
+  if (Object.hasOwn(before.photos, to)) throw new AssetMutationError(409, '目标文件名已有单张胶片设置，请先处理该设置');
+  if (!Object.hasOwn(before.photos, from)) return null;
+  const photos = {...before.photos, [to]: before.photos[from]};
+  delete photos[from];
+  return {before, after: {...before, photos}};
+};
+
+const assertRenameFilm = (folder, expected) => {
+  if (JSON.stringify(readRenameFilm(folder)) !== JSON.stringify(expected)) throw new AssetMutationError(409, '胶片设置已变化，不能覆盖后续修改');
+};
+
+const writeRenameFilm = (folder, expected, next) => {
+  assertRenameFilm(folder, expected);
+  writeJsonAtomic(filmSettingsPathFor(folder), next);
+};
+
 export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunning, leaseManager}) => withMutationLease(folder, (canonicalFolder) => {
   folder = canonicalFolder;
   assertNoRunningJob(isJobRunning);
@@ -372,6 +406,7 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
       if (fs.existsSync(to)) throw new AssetMutationError(409, '配对歌词的目标文件已存在');
       changes.push({from: lyric.target, to});
     }
+    const filmRename = asset.kind === 'photo' ? prepareFilmRename(folder, asset.relativePath, path.relative(folder, destination)) : null;
     let derived = [];
     const id = crypto.randomUUID();
     const operationDir = createOperationDir(folder, id);
@@ -379,6 +414,7 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
       for (const change of changes) move(change.from, change.to);
       derived = invalidateDerived(folder, operationDir, asset.kind);
       writeManifest({folder, operationDir, id, action: 'rename', files: changes, derived});
+      if (filmRename) writeRenameFilm(folder, filmRename.before, filmRename.after);
     } catch (error) {
       rollbackForwardMoves(changes);
       for (const entry of [...derived].reverse()) {
@@ -386,7 +422,7 @@ export const mutateAsset = ({folder, assetId, action, stem: newStem, isJobRunnin
       }
       throw error;
     }
-    const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: false})), derived};
+    const record = {id, action, folder, operationDir, files: changes.map((change) => ({...change, storedInOperation: false})), derived, filmRename};
     undoRecords.set(id, record);
     return {
       data: {assetId: `${asset.kind}:${path.relative(folder, destination)}`, name},
@@ -497,10 +533,18 @@ const undoAssetDeleteCore = ({folder, undoId, isJobRunning, retainRecord = false
     // and derived metadata are stored in the operation directory.
     if (!entries.find((entry) => entry.change === change)?.move) continue;
   }
+  if (record.filmRename) {
+    try { assertRenameFilm(folder, record.filmRename.after); }
+    catch (error) { throw recoveryFailure(record, '胶片设置已变化，恢复前请核对设置', error); }
+  }
   const reverse = entries.filter((entry) => entry.move).map(({source, destination}) => ({from: source, to: destination}));
   try {
     for (const change of reverse) move(change.from, change.to);
-  } catch (error) { rollbackForwardMoves(reverse); throw error; }
+    if (record.filmRename) writeRenameFilm(folder, record.filmRename.after, record.filmRename.before);
+  } catch (error) {
+    rollbackForwardMoves(reverse);
+    throw recoveryFailure(record, '文件与胶片设置未能完整恢复', error);
+  }
   record.restored = true;
   record.recoveryState = 'cleanup-pending';
   try { removeOperationDir(record); } catch (error) {

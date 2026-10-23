@@ -14,7 +14,7 @@ import type {JobOptions} from './useJob';
 import {hasPhotoCaptionFailure, type useJob} from './useJob';
 import {useTransitionPresence} from './useTransitionPresence';
 import {FilmField} from './FilmField';
-import {EMPTY_FILM} from './film-state';
+import type {FilmSettings} from './types';
 
 type Kind = 'render' | 'still';
 
@@ -376,6 +376,8 @@ const ActionCard = ({
 };
 
 interface MakeProps {
+  filmSettings: FilmSettings;
+  onFilmChange: (settings: FilmSettings) => void;
   project: ProjectResponse;
   capabilities: Capabilities;
   onRemedy: (target: Remedy['target']) => void;
@@ -388,7 +390,7 @@ interface MakeProps {
   onReset: () => void;
 }
 
-export const Make = ({project, capabilities, onRemedy, onManageCaptions, job, activeKind, locked, onStart, onReset}: MakeProps) => {
+export const Make = ({filmSettings, onFilmChange, project, capabilities, onRemedy, onManageCaptions, job, activeKind, locked, onStart, onReset}: MakeProps) => {
   const captionCount = project.assets?.photos.items.filter((item) => Boolean(item.caption)).length ?? 0;
   const otherRunning = () => locked;
   const [selectedKind, setSelectedKind] = useState<Kind>(() => activeKind ?? 'render');
@@ -402,7 +404,7 @@ export const Make = ({project, capabilities, onRemedy, onManageCaptions, job, ac
     {kind: 'still', label: '导出静态图', description: '按成片同款视觉导出单张照片，可带 EXIF 展签，也可以填名字生成签名落款。', icon: <ImageDown size={18} strokeWidth={1.5} />, capability: capabilities.exportStill},
   ];
   const selectedTab = outputTabs.find((tab) => tab.kind === selectedKind) ?? outputTabs[0];
-  const filmField = <FilmField folder={project.path} photos={project.assets?.photos.items ?? []} initial={project.film ?? EMPTY_FILM} locked={locked} />;
+  const filmField = <FilmField folder={project.path} photos={project.assets?.photos.items ?? []} settings={filmSettings} onSettingsChange={onFilmChange} locked={locked} />;
 
   return (
     <Section title="制作" titleHidden>

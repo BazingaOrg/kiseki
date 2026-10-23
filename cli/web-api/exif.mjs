@@ -34,7 +34,7 @@ export const getExif = async (root, requestedPath) => {
     return {status: 400, body: {error: '不是支持的图片格式'}};
   }
 
-  const [{formatted, shotTime}, {sourceLook}] = await Promise.all([readPhotoExif(safePath), readFilmSource(safePath)]);
+  const [{formatted, shotTime}, {sourceLook, date}] = await Promise.all([readPhotoExif(safePath), readFilmSource(safePath)]);
   return {
     status: 200,
     body: {
@@ -45,6 +45,7 @@ export const getExif = async (root, requestedPath) => {
       displayable: isDisplayableExif(formatted),
       shotTime,
       sourceLook,
+      date,
     },
   };
 };

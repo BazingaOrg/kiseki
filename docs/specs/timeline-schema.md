@@ -41,3 +41,8 @@
 可选 `beats` 是对象：`bpm` 为正有限数，`downbeats` 为非负有限数数组。它可供调试或其他消费者使用；validator 不推断节奏语义。
 
 `input_hash`、`plan_checksum` 及其他未被当前渲染器读取的字段可保留；validator 不将它们扩展为完整 schema 契约。
+
+
+## 胶片运行时字段
+
+照片 clip 的 `film` 由渲染入口从 `output/metadata/film.json` 注入，不使用磁盘时间线中手写的胶片值。形状为 `{roll, strength, sourceLook, date, seed}`：`roll` 是已知胶卷 ID，`strength` 在 0–1 之间，`date` 是 `YYYY-MM-DD` 或 `null`，`sourceLook` 是机内风格或 `null`，`seed` 是照片相对路径确定的整数。静态图与视频读取同一设置；单张覆盖优先于整卷及 CLI 的整卷覆盖。

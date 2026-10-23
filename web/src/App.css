@@ -3493,15 +3493,12 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 @media (hover: hover) and (pointer: fine) { .film-button:hover:not(:disabled) { border-color: var(--color-secondary-text); } }
 
 .darkroom {
-  --dr-bg: #151412;
-  --dr-panel: #1d1c19;
-  --dr-line: #2e2c28;
-  --dr-text: #e8e5de;
-  --dr-muted: #a29e95;
-  --dr-faint: #75716a;
-  --color-text: var(--dr-text);
-  --color-secondary-text: var(--dr-muted);
-  --color-divider: var(--dr-line);
+  --dr-bg: var(--color-background);
+  --dr-panel: var(--color-surface);
+  --dr-line: var(--color-divider);
+  --dr-text: var(--color-text);
+  --dr-muted: var(--color-secondary-text);
+  --dr-faint: var(--color-faint-text);
   position: fixed;
   inset: 0;
   z-index: 10040;
@@ -3509,7 +3506,6 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
   grid-template-rows: auto minmax(0, 1fr) auto;
   background: var(--dr-bg);
   color: var(--dr-text);
-  animation: dialog-fade-in 160ms ease-out;
 }
 .darkroom-header { display: flex; align-items: center; gap: 0.9rem; padding: 0.7rem 1rem; border-bottom: 1px solid var(--dr-line); }
 .darkroom-header h2 { margin: 0; font-family: var(--font-serif); font-size: 1.05rem; font-weight: 500; letter-spacing: 0.08em; }
@@ -3520,17 +3516,22 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 .darkroom-icon { display: inline-grid; place-items: center; width: 2rem; height: 2rem; border: none; border-radius: var(--radius-control); background: none; color: var(--dr-muted); cursor: pointer; transition: color 160ms ease-out, background 160ms ease-out; }
 .darkroom-icon:disabled { opacity: 0.35; cursor: default; }
 @media (hover: hover) and (pointer: fine) { .darkroom-icon:hover:not(:disabled) { color: var(--dr-text); background: var(--dr-panel); } }
+.darkroom-done { min-height: 2rem; margin-left: auto; padding: 0 0.7rem; width: auto; border: 1px solid var(--dr-line); border-radius: var(--radius-control); background: var(--dr-bg); color: var(--dr-text); font: inherit; font-size: 0.82rem; cursor: pointer; }
+.darkroom-done:disabled { opacity: 0.5; cursor: default; }
+.darkroom-done:hover:not(:disabled) { border-color: var(--dr-muted); }
 
-.darkroom-body { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; min-height: 0; }
-.darkroom-stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; padding: 1rem 1rem 0.75rem; gap: 0.6rem; }
-.darkroom-photo { display: grid; place-items: center; min-height: 0; }
-.darkroom-photo img { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 2px; box-shadow: 0 0 40px -12px rgba(255, 252, 244, 0.08); }
-.darkroom-stage-bar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; }
+.darkroom-body { display: grid; grid-template-columns: minmax(0, 1fr) 22rem; min-height: 0; overflow: hidden; }
+.darkroom-stage { display: grid; grid-template-rows: minmax(0, 1fr) auto auto auto; min-width: 0; min-height: 0; padding: 0.85rem 1rem 0.75rem; gap: 0.6rem; }
+.darkroom-photo { display: grid; place-items: center; min-height: 0; overflow: hidden; border-radius: var(--radius-media); background: var(--dr-panel); }
+.darkroom-stage-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
 .darkroom-current { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; font-family: var(--font-serif); font-size: 1rem; }
 .darkroom-tag { padding: 0.05rem 0.45rem; border: 1px solid var(--dr-muted); border-radius: 3px; font-family: var(--font-sans); font-size: 0.72rem; color: var(--dr-text); }
 .darkroom-tag-quiet { border-color: var(--dr-line); color: var(--dr-muted); }
 .darkroom-hold { display: inline-flex; align-items: center; gap: 0.35rem; min-height: 1.9rem; padding: 0 0.7rem; border: 1px solid var(--dr-line); border-radius: var(--radius-control); background: none; color: var(--dr-muted); font: inherit; font-size: 0.78rem; cursor: pointer; user-select: none; touch-action: none; }
-.darkroom-hold:active { color: var(--dr-text); border-color: var(--dr-muted); }
+.darkroom-preview-actions { display: flex; align-items: center; gap: 0.5rem; margin-left: auto; flex-shrink: 0; }
+.darkroom-hold[aria-pressed="true"] { background: var(--dr-panel); border-color: var(--dr-text); color: var(--dr-text); }
+.darkroom-hold:disabled { opacity: 0.5; cursor: default; }
+.darkroom-hold:active:not(:disabled) { color: var(--dr-text); border-color: var(--dr-muted); }
 .darkroom-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.5rem 1rem; font-size: 0.82rem; }
 .darkroom-controls .link-button { display: inline-flex; align-items: center; gap: 0.3rem; color: var(--dr-muted); }
 .darkroom-strength { display: flex; align-items: center; gap: 0.6rem; color: var(--dr-muted); }
@@ -3538,34 +3539,89 @@ button.asset-name { cursor: pointer; transition: color 0.16s ease-out; }
 .darkroom-strength output { min-width: 2.6rem; color: var(--dr-text); font-variant-numeric: tabular-nums; }
 .darkroom-strip { display: flex; gap: 0.4rem; margin: 0; padding: 0.15rem 0 0.25rem; overflow-x: auto; list-style: none; scrollbar-width: thin; }
 .darkroom-strip button { display: grid; gap: 0.2rem; width: 4.6rem; padding: 0; border: none; background: none; color: var(--dr-faint); cursor: pointer; }
-.darkroom-strip img { width: 4.6rem; height: 3.1rem; object-fit: cover; border-radius: 2px; outline: 1px solid transparent; outline-offset: 1px; opacity: 0.7; transition: opacity 160ms ease-out, outline-color 160ms ease-out; }
+.darkroom-strip img { width: 4.6rem; height: 3.1rem; object-fit: cover; border-radius: var(--radius-media); outline: 1px solid transparent; outline-offset: 1px; opacity: 0.7; transition: opacity 160ms ease-out, outline-color 160ms ease-out; }
 .darkroom-strip button.active img { opacity: 1; outline-color: var(--dr-text); }
 .darkroom-strip-label { overflow: hidden; font-size: 0.68rem; text-overflow: ellipsis; white-space: nowrap; }
 .darkroom-strip-label.overridden { color: var(--dr-text); }
 
-.darkroom-films { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; border-left: 1px solid var(--dr-line); background: var(--dr-panel); }
-.darkroom-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.85rem 0.85rem 0.6rem; }
+.darkroom-films { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; border-left: 1px solid var(--dr-line); background: var(--dr-bg); }
+.darkroom-tags { display: flex; flex-wrap: wrap; gap: 0.35rem; padding: 0.85rem 0.85rem 0.6rem; border-bottom: 1px solid var(--dr-line); }
 .darkroom-tags .photo-sort-button { min-height: 1.6rem; padding: 0 0.55rem; font-size: 0.74rem; }
 .darkroom-film-list { display: grid; align-content: start; gap: 0.5rem; padding: 0 0.85rem 0.85rem; overflow-y: auto; scrollbar-width: thin; }
-.film-card { display: grid; grid-template-columns: 6.2rem minmax(0, 1fr); gap: 0.7rem; padding: 0.45rem; border: 1px solid transparent; border-radius: var(--radius-panel); background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color 160ms ease-out, background 160ms ease-out; }
-.film-card-selected { border-color: var(--dr-text); background: rgba(255, 252, 244, 0.04); }
+.film-card { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); column-gap: 0.75rem; row-gap: 0.5rem; padding: 0.6rem; border: 1px solid transparent; border-radius: 6px; background: none; color: inherit; font: inherit; text-align: left; cursor: pointer; transition: border-color 160ms ease-out, background 160ms ease-out; }
+.film-card-selected { border-color: var(--dr-text); background: var(--dr-panel); }
 @media (hover: hover) and (pointer: fine) { .film-card:hover:not(.film-card-selected) { border-color: var(--dr-line); } }
-.film-card-thumb { position: relative; align-self: start; aspect-ratio: 3 / 2; overflow: hidden; border-radius: 2px; background: #000; }
+.film-card-thumb { position: relative; align-self: center; aspect-ratio: 1; overflow: hidden; border-radius: var(--radius-media); background: var(--dr-panel); }
 .film-card-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.film-card-maker { position: absolute; left: 0.25rem; bottom: 0.25rem; padding: 0 0.3rem; border-radius: 2px; background: rgba(12, 11, 10, 0.72); color: #e8e5de; font-size: 0.64rem; line-height: 1.5; }
-.film-card-body { display: grid; align-content: start; gap: 0.2rem; min-width: 0; }
-.film-card-name { display: flex; align-items: center; gap: 0.4rem; font-family: var(--font-serif); font-size: 0.95rem; }
+.film-card-body { display: grid; align-self: center; align-content: center; gap: 0.35rem; min-width: 0; }
+.film-card-name { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem; font-family: var(--font-serif); font-size: 0.95rem; }
 .film-card-badge { padding: 0 0.3rem; border: 1px solid var(--dr-muted); border-radius: 3px; font-family: var(--font-sans); font-size: 0.64rem; color: var(--dr-muted); }
-.film-card-desc { display: -webkit-box; overflow: hidden; color: var(--dr-muted); font-size: 0.75rem; line-height: 1.5; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
-.film-card-ref { color: var(--dr-faint); font-size: 0.68rem; }
-.film-card-note { color: var(--color-status-warn); font-size: 0.68rem; }
+.film-card-desc { display: block; color: var(--dr-muted); font-size: 0.75rem; line-height: 1.55; overflow-wrap: anywhere; }
+.film-card-ref { grid-column: 1 / -1; color: var(--dr-muted); font-size: 0.68rem; line-height: 1.5; overflow-wrap: anywhere; }
+.film-card-note { grid-column: 1 / -1; line-height: 1.5; color: var(--color-status-warn); font-size: 0.68rem; }
 .darkroom-keys { margin: 0; padding: 0.6rem 0.85rem; border-top: 1px solid var(--dr-line); color: var(--dr-faint); font-size: 0.72rem; }
-.darkroom-error { position: absolute; left: 50%; bottom: 1rem; margin: 0; padding: 0.5rem 0.9rem; border-radius: var(--radius-control); background: #3a1d19; color: #f09a8f; font-size: 0.82rem; transform: translateX(-50%); }
+.darkroom-save-status { position: absolute; right: 1rem; bottom: 0.5rem; color: var(--dr-muted); font-size: 0.78rem; }
+.darkroom-error { position: absolute; left: 50%; bottom: 1rem; margin: 0; padding: 0.5rem 0.9rem; border: 1px solid var(--color-status-error); border-radius: var(--radius-control); background: var(--dr-bg); color: var(--color-status-error); font-size: 0.82rem; transform: translateX(-50%); }
+.darkroom-error button { margin-left: 0.75rem; border: 0; background: transparent; color: inherit; text-decoration: underline; cursor: pointer; }
 
 @media (max-width: 760px) {
   .darkroom-scope-hint { display: none; }
-  .darkroom-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1.1fr) minmax(0, 1fr); }
+  .darkroom-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(30rem, 1.1fr) minmax(18rem, 1fr); overflow-y: auto; }
   .darkroom-films { border-left: none; border-top: 1px solid var(--dr-line); }
   .darkroom-strength input { width: 8rem; }
   .darkroom-keys { display: none; }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .darkroom { animation: none; }
+  .darkroom-scope button,
+  .darkroom-icon,
+  .darkroom-strip img,
+  .film-card { transition: none; }
+}
+
+.darkroom > .darkroom-header,
+.darkroom > .darkroom-body {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity 160ms cubic-bezier(0.22, 1, 0.36, 1), transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.darkroom[data-visible='true'] > .darkroom-header,
+.darkroom[data-visible='true'] > .darkroom-body {
+  opacity: 1;
+  transform: translateY(0);
+  transition-duration: 220ms;
+}
+.darkroom-view-cycle { width: 7.5rem; justify-content: center; }
+.darkroom-hold,
+.darkroom-done,
+.darkroom-icon,
+.darkroom-scope button,
+.film-card { transition: transform 100ms ease-out, background-color 140ms ease-out, color 140ms ease-out, border-color 140ms ease-out; }
+.darkroom-hold:active:not(:disabled),
+.darkroom-done:active:not(:disabled),
+.darkroom-icon:active:not(:disabled),
+.darkroom-scope button:active:not(:disabled) { transform: scale(0.98); }
+.film-card:active { transform: scale(0.99); }
+@media (prefers-reduced-motion: reduce) {
+  .darkroom > .darkroom-header,
+  .darkroom > .darkroom-body { transform: none; transition: none; }
+  .darkroom-hold,
+  .darkroom-done,
+  .darkroom-icon,
+  .darkroom-scope button,
+  .film-card { transition: none; }
+  .darkroom button:active { transform: none; }
+}
+
+.darkroom-strip-section { min-width: 0; }
+.darkroom-strip-meta { display: flex; justify-content: space-between; margin-bottom: 0.3rem; color: var(--dr-muted); font-size: 0.72rem; font-variant-numeric: tabular-nums; }
+.darkroom-strip-window { position: relative; min-width: 0; }
+.darkroom-strip-window::before,
+.darkroom-strip-window::after { content: ''; position: absolute; top: 0; bottom: 0.65rem; z-index: 1; width: 0.8rem; opacity: 0; pointer-events: none; }
+.darkroom-strip-window::before { left: 0; background: linear-gradient(to right, var(--dr-bg), transparent); }
+.darkroom-strip-window::after { right: 0; background: linear-gradient(to left, var(--dr-bg), transparent); }
+.darkroom-strip-window[data-before='true']::before,
+.darkroom-strip-window[data-after='true']::after { opacity: 1; }
+.darkroom-strip { scroll-behavior: auto; overscroll-behavior-x: contain; }
+.darkroom-strip > li { flex: 0 0 auto; }

@@ -309,3 +309,118 @@ test('unverified retained lease acquires fresh authority, while a busy fresh acq
     );
   } finally { fs.renameSync = originalRename; fs.rmSync(folder, {recursive: true, force: true}); }
 });
+
+
+test('photo rename carries its film override and leaves other settings intact', () => {
+  const folder = fixture();
+  try {
+    fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
+    writeDerived(folder);
+    const file = path.join(folder, 'output/metadata/film.json');
+    const before = {version: 1, roll: 'velvia', strength: 0.8, photos: {'photo.jpg': {roll: null, strength: 1}, 'other.jpg': {roll: 'acros', strength: 0.4}}};
+    fs.writeFileSync(file, JSON.stringify(before));
+    mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
+    const after = JSON.parse(fs.readFileSync(file));
+    assert.deepEqual(after, {...before, photos: {'renamed.jpg': before.photos['photo.jpg'], 'other.jpg': before.photos['other.jpg']}});
+  } finally { fs.rmSync(folder, {recursive: true, force: true}); }
+});
+
+test('photo rename restores film and photo together when lease release fails', () => {
+  const folder = fixture();
+  try {
+    fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
+    writeDerived(folder);
+    const file = path.join(folder, 'output/metadata/film.json');
+    const before = {version: 1, roll: null, strength: 1, photos: {'photo.jpg': {roll: 'acros', strength: 0.4}}};
+    fs.writeFileSync(file, JSON.stringify(before));
+    assert.throws(() => mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: {acquire: () => ({}), release: () => false}}), /lease/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file)), before);
+    assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
+    assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), false);
+    assert.equal(fs.existsSync(path.join(folder, '.kiseki-trash')), false);
+  } finally { fs.rmSync(folder, {recursive: true, force: true}); }
+});
+
+test('photo rename refuses conflicting or unsafe film metadata before moving photos', () => {
+  const folder = fixture();
+  const outside = fixture();
+  try {
+    fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
+    writeDerived(folder);
+    const file = path.join(folder, 'output/metadata/film.json');
+    fs.writeFileSync(file, JSON.stringify({version: 1, photos: {'renamed.jpg': {roll: 'acros', strength: 1}}}));
+    const rename = () => mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()});
+    assert.throws(rename, /目标文件名/);
+    fs.writeFileSync(file, '{bad');
+    assert.throws(rename, /胶片设置/);
+    fs.rmSync(file);
+    const target = path.join(outside, 'film.json');
+    fs.writeFileSync(target, '{}');
+    fs.symlinkSync(target, file);
+    assert.throws(rename, /胶片设置/);
+    assert.equal(fs.readFileSync(target, 'utf8'), '{}');
+    assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
+    assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), false);
+  } finally {
+    fs.rmSync(folder, {recursive: true, force: true});
+    fs.rmSync(outside, {recursive: true, force: true});
+  }
+});
+
+test('failed film writes roll photo rename and derived metadata back', () => {
+  const folder = fixture();
+  const rename = fs.renameSync;
+  try {
+    fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
+    writeDerived(folder);
+    const file = path.join(fs.realpathSync(folder), 'output/metadata/film.json');
+    const before = {version: 1, roll: null, strength: 1, photos: {'photo.jpg': {roll: 'acros', strength: 1}}};
+    fs.writeFileSync(file, JSON.stringify(before));
+    fs.renameSync = (from, to) => {
+      if (to === file) throw new Error('simulated film write failure');
+      return rename(from, to);
+    };
+    assert.throws(() => mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: leaseManager()}), /simulated/);
+    assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
+    assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), false);
+    assert.equal(fs.existsSync(path.join(folder, 'output/metadata/timeline.json')), true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(file)), before);
+  } finally {
+    fs.renameSync = rename;
+    fs.rmSync(folder, {recursive: true, force: true});
+  }
+});
+
+test('rename recovery refuses to overwrite film changes made after the rename', () => {
+  const folder = fixture();
+  try {
+    fs.writeFileSync(path.join(folder, 'photo.jpg'), 'photo');
+    writeDerived(folder);
+    const file = path.join(folder, 'output/metadata/film.json');
+    const before = {version: 1, roll: null, strength: 1, photos: {'photo.jpg': {roll: 'acros', strength: 1}}};
+    fs.writeFileSync(file, JSON.stringify(before));
+    let releases = 0;
+    let after;
+    let recovery;
+    const manager = {
+      acquire: () => ({id: 'film-recovery'}),
+      verifyLeaseOwnership: () => true,
+      release: () => {
+        if (++releases !== 1) return true;
+        after = JSON.parse(fs.readFileSync(file));
+        fs.writeFileSync(file, JSON.stringify({...after, strength: 0.3}));
+        return false;
+      },
+    };
+    assert.throws(() => mutateAsset({folder, assetId: 'photo:photo.jpg', action: 'rename', stem: 'renamed', leaseManager: manager}), (error) => {
+      recovery = error.details?.recoveryUndoId;
+      return Boolean(recovery);
+    });
+    assert.equal(JSON.parse(fs.readFileSync(file)).strength, 0.3);
+    assert.equal(fs.existsSync(path.join(folder, 'renamed.jpg')), true);
+    fs.writeFileSync(file, JSON.stringify(after));
+    undoAssetDelete({folder, undoId: recovery, leaseManager: manager});
+    assert.deepEqual(JSON.parse(fs.readFileSync(file)), before);
+    assert.equal(fs.existsSync(path.join(folder, 'photo.jpg')), true);
+  } finally { fs.rmSync(folder, {recursive: true, force: true}); }
+});

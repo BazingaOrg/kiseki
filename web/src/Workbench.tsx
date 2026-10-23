@@ -6,6 +6,7 @@ import type {Remedy} from './capabilities';
 import {DoctorPanel} from './DoctorPanel';
 import {Logo} from './Logo';
 import {Make} from './Make';
+import {EMPTY_FILM} from './film-state';
 import {Materials} from './Materials';
 import {Results} from './Results';
 import type {DoctorState, ProjectResponse, ProjectSelection, RuntimeResponse} from './types';
@@ -64,6 +65,9 @@ export const Workbench = ({
   runtime = null,
   onCaptionKeySaved,
 }: WorkbenchProps) => {
+  const [filmSettings, setFilmSettings] = useState(project.film ?? EMPTY_FILM);
+  const filmKey = JSON.stringify(project.film ?? EMPTY_FILM);
+  useEffect(() => { setFilmSettings(JSON.parse(filmKey)); }, [project.path, filmKey]);
   const [section, setSection] = useState<SectionKey>(() => initialSection(project));
   const [photoTabRequest, setPhotoTabRequest] = useState(0);
   const [doctorRequest, setDoctorRequest] = useState(0);
@@ -522,6 +526,8 @@ export const Workbench = ({
           )}
           {section === 'make' && (
             <Make
+              filmSettings={filmSettings}
+              onFilmChange={setFilmSettings}
               project={project}
               capabilities={capabilities}
               onRemedy={handleRemedy}

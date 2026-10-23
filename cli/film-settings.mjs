@@ -1,7 +1,6 @@
-import crypto from 'node:crypto';
 import path from 'node:path';
 
-import {isRollId} from '../film/src/index.mjs';
+import {filmSeedFor, isRollId} from '../film/src/index.mjs';
 import {readJsonFile, writeJsonAtomic} from './atomic-json.mjs';
 import {readFilmSource} from './exif.mjs';
 
@@ -100,10 +99,7 @@ export const updateFilmSettings = (settings, patch) => {
   return next;
 };
 
-export const filmSeedFor = (key) => {
-  const value = crypto.createHash('sha256').update(String(key)).digest().readUInt32BE(0) & 0x7fffffff;
-  return value === 0 ? 1 : value;
-};
+export {filmSeedFor};
 
 export const isFilmPhotoClip = (clip) => (clip.kind === undefined || clip.kind === 'photo') && typeof clip.src === 'string';
 

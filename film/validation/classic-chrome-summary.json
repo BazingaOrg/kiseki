@@ -1,0 +1,65 @@
+{
+  "look": "classic-chrome",
+  "film_mode": "Classic Chrome",
+  "frames": {
+    "decoded": 284,
+    "used": 272,
+    "train": 208,
+    "test": 64
+  },
+  "heldout_delta_e": {
+    "canonical_vs_camera": {
+      "mean": 4.41,
+      "median": 4.08,
+      "n": 64
+    },
+    "fitted_vs_camera": {
+      "mean": 2.5,
+      "median": 1.81,
+      "n": 64
+    },
+    "fitted_vs_camera_inliers": {
+      "mean": 1.77,
+      "median": 1.66,
+      "n": 52
+    },
+    "fitted_p95": {
+      "mean": 5.48,
+      "median": 4.31,
+      "n": 64
+    }
+  },
+  "by_dynamic_range": {
+    "100%": {
+      "mean": 2.38,
+      "median": 1.81,
+      "n": 31
+    },
+    "200%": {
+      "mean": 2.62,
+      "median": 1.8,
+      "n": 33
+    }
+  },
+  "by_iso": {
+    "iso<=800": {
+      "mean": 1.84,
+      "median": 1.69,
+      "n": 46
+    },
+    "iso>800": {
+      "mean": 4.19,
+      "median": 4.15,
+      "n": 18
+    }
+  },
+  "color_coverage_percent": {
+    "red": 0.13,
+    "orange_skin": 9.92,
+    "yellow": 2.25,
+    "green": 0.23,
+    "cyan": 0.13,
+    "blue": 19.19,
+    "magenta": 0.03
+  }
+}

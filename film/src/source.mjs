@@ -62,3 +62,13 @@ export const effectiveStrength = (rollId, strength, sourceLook) => {
   if (sourceLook.roll && sourceLook.roll === rollId) return {color: 0, effects: strength, reason: 'same'};
   return {color: strength * STYLED_SOURCE_STRENGTH, effects: strength, reason: 'styled'};
 };
+
+export const filmSeedFor = (key) => {
+  let hash = 2166136261;
+  const value = String(key);
+  for (let index = 0; index < value.length; index += 1) {
+    hash ^= value.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 1) || 1;
+};

@@ -1,4 +1,4 @@
-import {develop} from '../../film/src/index.mjs';
+import {develop, filmSeedFor} from '../../film/src/index.mjs';
 import type {SourceLook} from '../../film/src/index.mjs';
 
 export interface PreviewRequest {
@@ -8,6 +8,7 @@ export interface PreviewRequest {
   sourceLook: SourceLook | null;
   grain: boolean;
   seed: number;
+  date: string | null;
 }
 
 const images = new Map<string, Promise<ImageData>>();
@@ -60,6 +61,7 @@ const run = async (request: PreviewRequest) => {
     sourceLook: request.sourceLook,
     grain: request.grain,
     seed: request.seed,
+    date: request.date,
   });
   const pixels = new ImageData(source.width, source.height);
   pixels.data.set(result.data);
@@ -87,11 +89,4 @@ export const developPreview = (request: PreviewRequest): Promise<string> => {
   return pending;
 };
 
-export const seedFor = (key: string) => {
-  let hash = 2166136261;
-  for (let index = 0; index < key.length; index += 1) {
-    hash ^= key.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return (hash >>> 1) || 1;
-};
+export const seedFor = (assetId: string) => filmSeedFor(assetId.replace(/^photo:/, ''));

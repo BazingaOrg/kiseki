@@ -109,3 +109,5 @@ export declare function detectSourceLook(makerNote: Uint8Array | null | undefine
 export declare function effectiveStrength(rollId: string, strength: number, sourceLook: SourceLook | null): {color: number; effects: number; reason: 'same' | 'styled' | null};
 export declare function stampText(date: string | number | Date): string | null;
 export declare function drawStamp(image: RgbaImage, text: string | null): RgbaImage;
+
+export declare const filmSeedFor: (key: string) => number;

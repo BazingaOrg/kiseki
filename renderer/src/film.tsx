@@ -72,7 +72,7 @@ const grainTileUrls = (film: PhotoFilm, photoHeight: number) => {
   const roll = getRoll(film.roll)!;
   const scale = grainScale(photoHeight, roll.effects.grainSize);
   const amount = grainAmount(film);
-  const key = JSON.stringify([roll.id, amount, Math.round(scale * 100)]);
+  const key = JSON.stringify([roll.id, amount, scale, film.seed]);
   const cached = grainTiles.get(key);
   if (cached) return cached;
   const canvas = document.createElement('canvas');

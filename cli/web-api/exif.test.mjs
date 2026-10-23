@@ -62,4 +62,6 @@ test('200s with null exif for an image that carries no metadata', async () => {
   assert.equal(result.body.exif, null);
   assert.equal(result.body.displayable, false);
   assert.equal(result.body.shotTime, null);
+  assert.equal(result.body.date, null);
+  assert.equal(result.body.sourceLook, null);
 });
