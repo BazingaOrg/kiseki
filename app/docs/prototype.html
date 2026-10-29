@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kiseki iPhone 原型</title>
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #fffdf8;
+    --ink: #243742;
+    --action: #31566a;
+    --line: #d8d7cf;
+    --muted: #6d6760;
+    --card: #fff;
+    --fill: #f6f1e8;
+    --ease: cubic-bezier(0.23, 1, 0.32, 1);
+    --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", sans-serif;
+    --serif: "Iowan Old Style", "Songti SC", "Source Han Serif SC", serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    min-height: 100%;
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    background: #ebe6dc;
+    color: var(--ink);
+    font-family: var(--font);
+  }
+  aside {
+    padding: 28px 22px;
+    border-right: 1px solid var(--line);
+    background: #f7f3eb;
+  }
+  aside h1 {
+    margin: 0 0 6px;
+    font-family: var(--serif);
+    font-weight: 500;
+    font-size: 28px;
+  }
+  aside p { margin: 0 0 18px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+  aside ol { margin: 0; padding-left: 18px; font-size: 13px; line-height: 1.55; }
+  aside li { margin: 0 0 8px; }
+  .stage {
+    display: grid;
+    place-items: center;
+    padding: 24px;
+  }
+  .phone {
+    width: 390px;
+    height: 844px;
+    background: var(--paper);
+    border-radius: 44px;
+    box-shadow: 0 24px 60px rgb(36 55 66 / 16%);
+    overflow: hidden;
+    position: relative;
+    display: flex;
+    flex-direction: column;
+  }
+  .status {
+    height: 54px;
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 0 28px 8px;
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .nav {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+  }
+  .nav button, .text-btn {
+    border: 0;
+    background: transparent;
+    color: var(--action);
+    font: inherit;
+    font-size: 17px;
+    padding: 8px;
+  }
+  .nav h2 { margin: 0; font-size: 17px; font-weight: 600; }
+  .scroll {
+    flex: 1;
+    overflow: auto;
+    padding: 4px 20px 24px;
+  }
+  .eyebrow {
+    margin: 8px 0 4px;
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+  }
+  .scroll h3 {
+    margin: 0 0 6px;
+    font-family: var(--serif);
+    font-size: 34px;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+  }
+  .lead { margin: 0 0 18px; color: var(--muted); font-size: 15px; line-height: 1.45; }
+  .choice, .row, .film-card {
+    width: 100%;
+    text-align: left;
+    border: 1px solid transparent;
+    background: var(--card);
+    border-radius: 16px;
+    font: inherit;
+    color: inherit;
+  }
+  .choice {
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    padding: 16px;
+    margin-bottom: 10px;
+    box-shadow: 0 0 0 1px rgb(36 55 66 / 4%);
+  }
+  .choice[aria-pressed="true"] {
+    background: #eef3f5;
+    box-shadow: inset 0 0 0 1px var(--action);
+  }
+  .choice:active, .film-card:active, .primary:active { transform: scale(0.98); }
+  .mark {
+    width: 28px;
+    text-align: center;
+    color: var(--action);
+    font-size: 18px;
+  }
+  .choice strong, .row strong { display: block; font-size: 17px; }
+  .choice small, .hint, .row small { color: var(--muted); font-size: 13px; line-height: 1.4; }
+  .tick { margin-left: auto; color: var(--action); }
+  .panel {
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--fill);
+    border-radius: 16px;
+  }
+  .panel h4 { margin: 0 0 4px; font-size: 17px; }
+  .meta { margin: 0 0 12px; color: var(--muted); font-size: 13px; }
+  .row {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+    padding: 12px 0;
+    border: 0;
+    border-top: 1px solid var(--line);
+    background: transparent;
+    border-radius: 0;
+  }
+  .seg {
+    display: flex;
+    padding: 2px;
+    background: #ece7de;
+    border-radius: 10px;
+  }
+  .seg button {
+    border: 0;
+    background: transparent;
+    font: inherit;
+    font-size: 13px;
+    padding: 6px 10px;
+    border-radius: 8px;
+    color: var(--ink);
+  }
+  .seg button[aria-pressed="true"] { background: white; }
+  input[type="range"] { width: 100%; accent-color: var(--action); }
+  .primary {
+    width: 100%;
+    margin-top: 12px;
+    border: 0;
+    border-radius: 12px;
+    background: var(--action);
+    color: white;
+    font: inherit;
+    font-size: 17px;
+    padding: 12px;
+  }
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 4px;
+    padding: 6px 10px 22px;
+    background: rgb(255 253 248 / 92%);
+    border-top: 1px solid var(--line);
+  }
+  .tabs button {
+    border: 0;
+    background: transparent;
+    color: var(--muted);
+    font: inherit;
+    font-size: 11px;
+    padding: 8px 0;
+    border-radius: 12px;
+  }
+  .tabs button[aria-selected="true"] { color: var(--action); background: rgb(49 86 106 / 9%); }
+  .sheet {
+    position: absolute;
+    inset: 0;
+    background: rgb(36 55 66 / 28%);
+    display: flex;
+    align-items: flex-end;
+  }
+  .sheet[hidden] { display: none; }
+  .sheet-card {
+    width: 100%;
+    max-height: 86%;
+    overflow: auto;
+    background: var(--paper);
+    border-radius: 22px 22px 0 0;
+    padding: 8px 20px 28px;
+  }
+  .grab {
+    width: 36px;
+    height: 5px;
+    border-radius: 3px;
+    background: #d5d0c6;
+    margin: 6px auto 12px;
+  }
+  .films { display: grid; gap: 10px; }
+  .film-card { display: grid; grid-template-columns: 72px 1fr; gap: 12px; padding: 10px; }
+  .film-card[aria-pressed="true"] { box-shadow: inset 0 0 0 1.5px var(--action); }
+  .swatch { height: 72px; border-radius: 12px; }
+  .hold {
+    margin-top: 14px;
+    width: 100%;
+    border-radius: 16px;
+    overflow: hidden;
+    position: relative;
+    height: 220px;
+  }
+  .hold span {
+    position: absolute;
+    left: 14px;
+    bottom: 12px;
+    color: white;
+    font-size: 13px;
+    text-shadow: 0 1px 2px rgb(0 0 0 / 40%);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .choice, .film-card, .primary { transition: none; }
+  }
+</style>
+</head>
+<body>
+<aside>
+  <h1>kiseki（軌跡）</h1>
+  <p>iPhone 下一轮交互参考。点底部四页，再打开胶片。这不是可导出的 App。</p>
+  <ol>
+    <li>先把导出改成 1080p、60 fps，画面不变。</li>
+    <li>补硬切和交叉溶解。</li>
+    <li>片头改为描边签名。</li>
+    <li>有音乐时按拍安排照片；做不到就退回均匀。</li>
+    <li>最后做胶片：选一卷、调强度、按住看原图。</li>
+  </ol>
+</aside>
+<div class="stage">
+  <div class="phone" id="phone">
+    <div class="status"><span>9:41</span><span>●●●</span></div>
+    <div class="nav">
+      <button type="button" id="back">日记</button>
+      <h2>大阪三日</h2>
+      <button type="button" aria-label="更多">···</button>
+    </div>
+    <div class="scroll" id="scroll"></div>
+    <div class="tabs" role="tablist">
+      <button type="button" data-tab="photos">照片</button>
+      <button type="button" data-tab="audio">声音</button>
+      <button type="button" data-tab="look">画面</button>
+      <button type="button" data-tab="preview">预览</button>
+    </div>
+    <div class="sheet" id="sheet" hidden>
+      <div class="sheet-card">
+        <div class="grab"></div>
+        <p class="eyebrow">FILM</p>
+        <h3 style="font-family:var(--serif);font-weight:500;font-size:28px;margin:0 0 8px">胶片</h3>
+        <p class="lead">整支影像用同一卷。按住预览看原图。</p>
+        <div class="hold" id="hold">
+          <span id="hold-label">按住看原图</span>
+        </div>
+        <div class="row" style="border:0">
+          <div><strong>强度</strong><small id="strength-label">60%</small></div>
+        </div>
+        <input id="strength" type="range" min="0" max="100" value="60">
+        <div class="films" id="films"></div>
+        <button class="primary" type="button" id="close-sheet">完成</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const rolls = [
+  ["原片", "不套胶片", "linear-gradient(160deg,#d9d3c7,#f7f4ee)"],
+  ["经典铬", "低饱和，阴影偏硬", "linear-gradient(160deg,#8ea4b0,#c9b59a)"],
+  ["怀旧负片", "阴影偏青，高光发暖", "linear-gradient(160deg,#6f8c96,#e7c2b0)"],
+  ["浓彩正片", "山海和日落更合适", "linear-gradient(160deg,#1f6b78,#e07a3d)"],
+  ["柔和人像", "肤色干净，高光不刺", "linear-gradient(160deg,#e7d2c4,#f4efe8)"],
+  ["电影青调", "影调平，暗部带青", "linear-gradient(160deg,#31566a,#9aa7a1)"]
+];
+const state = { tab: "audio", sound: "music", pacing: "beat", lyric: "双语", roll: "经典铬", strength: 60, holding: false };
+const scroll = document.querySelector("#scroll");
+const sheet = document.querySelector("#sheet");
+
+function pages() {
+  return {
+    photos: `
+      <p class="eyebrow">PHOTOS</p><h3>照片</h3>
+      <p class="lead">顺序就是成片顺序。拖动后，预览跟着变。</p>
+      <button class="choice" type="button"><span class="mark">＋</span><span><strong>继续添加</strong><small>从系统图库按选择顺序加入</small></span></button>
+      <div class="panel"><h4>12 张</h4><p class="meta">10 月 4 日 · 10 月 6 日</p><p class="hint">网格排序留在正式 App 里。这里只确认：顺序属于作品，不属于浏览方式。</p></div>`,
+    audio: `
+      <p class="eyebrow">SOUND</p><h3>声音</h3>
+      <p class="lead">可以无声，也可以让一首歌陪它走完。</p>
+      <button class="choice" type="button" data-sound="silent" aria-pressed="${state.sound === "silent"}"><span class="mark">◌</span><span><strong>无声影像</strong><small>每张 4 秒</small></span><span class="tick">${state.sound === "silent" ? "●" : "○"}</span></button>
+      <button class="choice" type="button" data-sound="music" aria-pressed="${state.sound === "music"}"><span class="mark">♪</span><span><strong>从“文件”导入音乐</strong><small>周末的海.m4a</small></span><span class="tick">${state.sound === "music" ? "●" : "○"}</span></button>
+      ${state.sound === "music" ? `<div class="panel"><h4>周末的海</h4><p class="meta">3 分 12 秒 · 1080p · 60 fps</p>
+        <button class="row" type="button" id="pacing"><span><strong>${state.pacing === "beat" ? "跟着音乐" : "均匀安排"}</strong><small>${state.pacing === "beat" ? "照片换在重要的拍子上。这首歌暂时算不出拍子时，会改回均匀并告诉你。" : "每张停留一样久。"}</small></span><span>›</span></button>
+        <div class="row"><span><strong>歌词</strong></span><div class="seg" id="lyric">${["原文","双语","不显示"].map((item) => `<button type="button" data-lyric="${item}" aria-pressed="${state.lyric === item}">${item}</button>`).join("")}</div></div>
+      </div>` : `<p class="hint">无声时不做音乐分析。</p>`}`,
+    look: `
+      <p class="eyebrow">IMAGE</p><h3>画面</h3>
+      <p class="lead">留一点空白，让照片保持自己的气息。</p>
+      <div class="panel"><div class="row" style="border:0"><span><strong>画幅</strong></span><div class="seg"><button type="button" aria-pressed="true">竖版</button><button type="button">横版</button></div></div>
+        <button class="row" type="button" id="open-film"><span><strong>胶片</strong><small>${state.roll} · ${state.strength}%</small></span><span>›</span></button>
+        <p class="hint">方形、其他模板先不放出来。导出保持 1080p、60 fps。</p>
+      </div>`,
+    preview: `
+      <p class="eyebrow">PREVIEW</p><h3>先看一眼</h3>
+      <p class="lead">确认排版与声音，再在这台 iPhone 上完成。</p>
+      <div class="panel"><h4>${state.sound === "music" && state.pacing === "beat" ? "照片会跟着拍子换" : "照片均匀安排"}</h4>
+        <p class="meta">${state.roll} · ${state.strength}% · 1080p · 60 fps</p>
+        <p class="hint">制作时请留在 App 里。取消或离开会保留草稿，不留半成品。</p>
+        <button class="primary" type="button">制作这支影像</button>
+      </div>`
+  };
+}
+
+function render() {
+  scroll.innerHTML = pages()[state.tab];
+  document.querySelectorAll(".tabs button").forEach((button) => {
+    button.setAttribute("aria-selected", button.dataset.tab === state.tab ? "true" : "false");
+  });
+  paintHold();
+}
+function paintHold() {
+  const hold = document.querySelector("#hold");
+  const label = document.querySelector("#hold-label");
+  const chosen = rolls.find((roll) => roll[0] === state.roll) || rolls[0];
+  hold.style.background = state.holding || state.roll === "原片" ? rolls[0][2] : chosen[2];
+  label.textContent = state.holding ? "原图" : "按住看原图";
+}
+document.querySelector(".tabs").addEventListener("click", (event) => {
+  const tab = event.target.closest("button")?.dataset.tab;
+  if (!tab) return;
+  state.tab = tab;
+  render();
+});
+scroll.addEventListener("click", (event) => {
+  const sound = event.target.closest("[data-sound]");
+  const lyric = event.target.closest("[data-lyric]");
+  if (sound) state.sound = sound.dataset.sound;
+  if (event.target.closest("#pacing")) state.pacing = state.pacing === "beat" ? "even" : "beat";
+  if (lyric) state.lyric = lyric.dataset.lyric;
+  if (event.target.closest("#open-film")) sheet.hidden = false;
+  if (sound || lyric || event.target.closest("#pacing")) render();
+});
+document.querySelector("#films").innerHTML = rolls.map(([name, desc, gradient]) =>
+  `<button class="film-card" type="button" data-roll="${name}"><span class="swatch" style="background:${gradient}"></span><span><strong>${name}</strong><small>${desc}</small></span></button>`).join("");
+document.querySelector("#films").addEventListener("click", (event) => {
+  const card = event.target.closest("[data-roll]");
+  if (!card) return;
+  state.roll = card.dataset.roll;
+  document.querySelectorAll(".film-card").forEach((item) => item.setAttribute("aria-pressed", item.dataset.roll === state.roll ? "true" : "false"));
+  paintHold();
+});
+document.querySelector("#strength").addEventListener("input", (event) => {
+  state.strength = Number(event.target.value);
+  document.querySelector("#strength-label").textContent = state.strength + "%";
+});
+const hold = document.querySelector("#hold");
+hold.addEventListener("pointerdown", () => { state.holding = true; paintHold(); });
+hold.addEventListener("pointerup", () => { state.holding = false; paintHold(); });
+hold.addEventListener("pointerleave", () => { state.holding = false; paintHold(); });
+document.querySelector("#close-sheet").addEventListener("click", () => { sheet.hidden = true; render(); });
+const initial = location.hash.replace("#", "");
+if (initial === "film") { state.tab = "look"; sheet.hidden = false; }
+else if (["photos", "audio", "look", "preview"].includes(initial)) state.tab = initial;
+render();
+document.querySelectorAll(".film-card").forEach((item) => item.setAttribute("aria-pressed", item.dataset.roll === state.roll ? "true" : "false"));
+</script>
+</body>
+</html>

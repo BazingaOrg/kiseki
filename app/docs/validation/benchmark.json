@@ -1,0 +1,14 @@
+{
+  "date": "2026-10-19",
+  "environment": "iPhone 13 mini simulator, iOS 26.5 on Mac; not physical iPhone",
+  "input": "30 synthetic JPEG photos",
+  "codec": "h264",
+  "width": 1920,
+  "height": 1080,
+  "fps": "30/1",
+  "durationSeconds": 90,
+  "decodedFrameCount": 2700,
+  "peakMemoryBytes": null,
+  "wallTimeSeconds": null,
+  "physicalDeviceVerified": false
+}
